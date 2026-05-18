@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { and, count, eq, gt, gte, isNull, lte } from "drizzle-orm";
+import { and, count, eq, gt, gte, isNull, lte, isNotNull } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { clusters, clusterItems, ingestedItems, trackedEntities } from "@/lib/db/schema";
 import { verifyCronSecret } from "@/lib/cron-auth";
@@ -96,8 +96,7 @@ export async function GET(req: Request) {
       const needsAIClassify =
         cluster.classification === "unclassified" ||
         !cluster.classifiedAt ||
-        cluster.lastSeenAt > cluster.classifiedAt ||
-        (cluster.classification === "narrative" && !cluster.sentimentLabel);
+        cluster.lastSeenAt > cluster.classifiedAt;
 
       if (!needsAIClassify) {
         // Velocity + stage refresh only — skip the AI call
@@ -209,5 +208,65 @@ export async function GET(req: Request) {
     }
   }
 
-  return NextResponse.json({ ok: true, classified, stageRefreshed, signalsTagged });
+  // Sentiment backfill: catch narrative clusters excluded from the main loop
+  // (e.g. analyst-reviewed clusters with analystClassification set)
+  let sentimentBackfilled = 0;
+  const needsSentiment = await db
+    .select({
+      id: clusters.id,
+      entityId: clusters.entityId,
+      label: clusters.label,
+    })
+    .from(clusters)
+    .where(
+      and(
+        isNull(clusters.archivedAt),
+        eq(clusters.classification, "narrative"),
+        isNull(clusters.sentimentLabel),
+        isNotNull(clusters.analystClassification)
+      )
+    )
+    .limit(BATCH_SIZE);
+
+  for (const cluster of needsSentiment) {
+    try {
+      const items = await db
+        .select({ title: ingestedItems.title, body: ingestedItems.body })
+        .from(clusterItems)
+        .innerJoin(ingestedItems, eq(clusterItems.itemId, ingestedItems.id))
+        .where(eq(clusterItems.clusterId, cluster.id))
+        .limit(5);
+
+      const titles = items.map((i) => i.title ?? i.body?.slice(0, 120) ?? "").filter(Boolean);
+      if (titles.length === 0) continue;
+
+      const [entity] = cluster.entityId
+        ? await db
+            .select({ label: trackedEntities.label })
+            .from(trackedEntities)
+            .where(eq(trackedEntities.id, cluster.entityId))
+        : [{ label: "Unknown" }];
+
+      const sentimentResult = await analyzeEntitySentiment({
+        entityLabel: entity?.label ?? "Unknown",
+        clusterLabel: cluster.label,
+        itemTitles: titles,
+      });
+
+      await db
+        .update(clusters)
+        .set({
+          sentimentScore: sentimentResult.score,
+          sentimentLabel: sentimentResult.sentiment,
+          sentimentAnalyzedAt: now,
+        })
+        .where(eq(clusters.id, cluster.id));
+
+      sentimentBackfilled++;
+    } catch (err) {
+      console.error(`[cron/classify] sentiment backfill cluster ${cluster.id}:`, err);
+    }
+  }
+
+  return NextResponse.json({ ok: true, classified, stageRefreshed, signalsTagged, sentimentBackfilled });
 }
