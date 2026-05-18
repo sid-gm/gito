@@ -5,6 +5,7 @@ import { cx, PlatformChip, Dot } from "@/components/primitives";
 import { VelocitySparkline } from "@/components/VelocitySparkline";
 import { useCompany } from "@/components/CompanyContext";
 import { StagePill, StageKey } from "@/components/StagePill";
+import { AddItemDialog } from "@/components/AddItemDialog";
 
 type MergeInfo = {
   absorbedLabel: string | null;
@@ -204,6 +205,7 @@ export default function NarrativesPage() {
   const [editingLabelId, setEditingLabelId] = useState<string | null>(null);
   const [editingLabelDraft, setEditingLabelDraft] = useState("");
   const [savingLabel, setSavingLabel] = useState(false);
+  const [addItemNarrativeId, setAddItemNarrativeId] = useState<string | null>(null);
 
   const fetchNarratives = useCallback(async () => {
     if (!activeCompanyId) return;
@@ -383,6 +385,15 @@ export default function NarrativesPage() {
             </div>
           );
         })}
+        <div style={{ paddingTop: 6, display: "flex", justifyContent: "flex-end" }}>
+          <button
+            className="btn btn-ghost"
+            style={{ fontSize: 11, fontFamily: "var(--font-mono)", letterSpacing: "0.05em" }}
+            onClick={() => setAddItemNarrativeId(narrative.id)}
+          >
+            + Add item
+          </button>
+        </div>
       </div>
     );
   }
@@ -629,6 +640,18 @@ export default function NarrativesPage() {
           </div>
         )}
       </div>
+
+      {addItemNarrativeId && (
+        <AddItemDialog
+          clusterId={addItemNarrativeId}
+          clusterEntityId={narratives.find((n) => n.id === addItemNarrativeId)?.trackedEntities[0]?.id ?? null}
+          onAdded={async () => {
+            await reloadItems(addItemNarrativeId);
+            fetchNarratives();
+          }}
+          onClose={() => setAddItemNarrativeId(null)}
+        />
+      )}
     </>
   );
 }

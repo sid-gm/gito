@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { desc, eq } from "drizzle-orm";
+import { z } from "zod";
 import { db } from "@/lib/db";
 import { clusterItems, clusterMerges, clusterPeriodNarratives, ingestedItems } from "@/lib/db/schema";
 
@@ -104,4 +105,19 @@ export async function GET(
   }
 
   return NextResponse.json({ items: displayable, merges, periodNarratives });
+}
+
+export async function POST(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  const { itemId } = z.object({ itemId: z.string().uuid() }).parse(await req.json());
+  await db.insert(clusterItems).values({
+    clusterId: id,
+    itemId,
+    similarity: 1.0,
+    itemSignal: "unclassified",
+  }).onConflictDoNothing();
+  return NextResponse.json({ ok: true }, { status: 201 });
 }

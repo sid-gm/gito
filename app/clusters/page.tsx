@@ -5,6 +5,7 @@ import { cx, PlatformChip, Dot } from "@/components/primitives";
 import { VelocitySparkline } from "@/components/VelocitySparkline";
 import { useCompany } from "@/components/CompanyContext";
 import { StagePill, StageKey } from "@/components/StagePill";
+import { AddItemDialog } from "@/components/AddItemDialog";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -313,6 +314,7 @@ export default function ClustersPage() {
   const [lassoEnd, setLassoEnd] = useState<Point | null>(null);
   const [mergeModal, setMergeModal] = useState<MergeModalState | null>(null);
   const [mergeBusy, setMergeBusy] = useState(false);
+  const [addItemClusterId, setAddItemClusterId] = useState<string | null>(null);
   const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const gridRef = useRef<HTMLDivElement>(null);
 
@@ -534,6 +536,15 @@ export default function ClustersPage() {
             </div>
           );
         })}
+        <div style={{ paddingTop: 6, display: "flex", justifyContent: "flex-end" }}>
+          <button
+            className="btn btn-ghost"
+            style={{ fontSize: 11, fontFamily: "var(--font-mono)", letterSpacing: "0.05em" }}
+            onClick={() => setAddItemClusterId(cluster.id)}
+          >
+            + Add item
+          </button>
+        </div>
       </div>
     );
   }
@@ -584,6 +595,20 @@ export default function ClustersPage() {
           onConfirm={confirmMerge}
           onCancel={() => setMergeModal(null)}
           busy={mergeBusy}
+        />
+      )}
+
+      {addItemClusterId && (
+        <AddItemDialog
+          clusterId={addItemClusterId}
+          clusterEntityId={clusterList.find((c) => c.id === addItemClusterId)?.entityId ?? null}
+          onAdded={async () => {
+            const res = await fetch(`/api/clusters/${addItemClusterId}/items`);
+            const data = await res.json();
+            setExpandedData((prev) => ({ ...prev, [addItemClusterId!]: data }));
+            fetchClusters();
+          }}
+          onClose={() => setAddItemClusterId(null)}
         />
       )}
 
