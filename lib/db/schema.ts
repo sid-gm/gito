@@ -126,6 +126,10 @@ export const clusters = pgTable("clusters", {
   analystClassification: text("analyst_classification"), // 'narrative' | 'noise'
   analystNote: text("analyst_note"),
   classifiedAt: timestamp("classified_at"),
+  // Sentiment fields
+  sentimentScore: real("sentiment_score"),
+  sentimentLabel: text("sentiment_label"),
+  sentimentAnalyzedAt: timestamp("sentiment_analyzed_at"),
 });
 
 // Tracks merge history — one row per absorbed cluster

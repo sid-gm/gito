@@ -60,6 +60,8 @@ type Cluster = {
   platformCount: number | null;
   analystClassification: string | null;
   analystNote: string | null;
+  sentimentScore: number | null;
+  sentimentLabel: string | null;
   topItems: ClusterItem[];
   platforms: string[];
   trackedEntities: Array<{ id: string; label: string }>;
@@ -121,6 +123,21 @@ function ClassificationPill({ classification }: { classification: string }) {
   );
 }
 
+
+function SentimentPill({ label }: { label: string }) {
+  const styles: Record<string, { color: string; glyph: string }> = {
+    positive: { color: "var(--ok)",     glyph: "↑" },
+    negative: { color: "var(--err)",    glyph: "↓" },
+    neutral:  { color: "var(--ink-40)", glyph: "→" },
+    mixed:    { color: "var(--warn)",   glyph: "~" },
+  };
+  const s = styles[label] ?? styles.neutral;
+  return (
+    <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, fontWeight: 600, letterSpacing: "0.1em", textTransform: "uppercase", color: s.color, border: `1px solid ${s.color}`, borderRadius: 3, padding: "1px 5px", lineHeight: 1.4 }}>
+      {s.glyph} {label}
+    </span>
+  );
+}
 
 function SignalDot({ signal }: { signal: string }) {
   const color = signal === "signal" ? "var(--ok)" : signal === "watch" ? "var(--accent)" : signal === "noise" ? "var(--ink-20)" : "var(--ink-10)";
@@ -684,6 +701,7 @@ export default function ClustersPage() {
                       <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 4 }}>
                         <ClassificationPill classification={cluster.effectiveClassification} />
                         {cluster.itemCount >= 2 && cluster.narrativeStage && <StagePill stage={cluster.narrativeStage} velocity24h={cluster.velocity24h} prevVelocity24h={cluster.prevVelocity24h} peakMomentum={cluster.peakMomentum} firstSeenAt={cluster.firstSeenAt} platformCount={cluster.platformCount} />}
+                        {cluster.sentimentLabel && <SentimentPill label={cluster.sentimentLabel} />}
                         {cluster.momentum != null && cluster.momentum > 0 && (
                           <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--ink-40)" }}>↑{cluster.momentum.toFixed(1)}/day</span>
                         )}

@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { clusters, clusterItems, ingestedItems, trackedEntities } from "@/lib/db/schema";
 import { verifyCronSecret } from "@/lib/cron-auth";
 import { classifyCluster, classifyItemSignals } from "@/lib/ai/classify";
+import { analyzeEntitySentiment } from "@/lib/ai/sentiment";
 import { computeNarrativeStage, NEWS_PLATFORMS } from "@/lib/narrative-stage";
 
 const BATCH_SIZE = 15;
@@ -28,6 +29,7 @@ export async function GET(req: Request) {
       classification: clusters.classification,
       peakMomentum: clusters.peakMomentum,
       narrativeStage: clusters.narrativeStage,
+      sentimentLabel: clusters.sentimentLabel,
     })
     .from(clusters)
     .where(
@@ -94,7 +96,8 @@ export async function GET(req: Request) {
       const needsAIClassify =
         cluster.classification === "unclassified" ||
         !cluster.classifiedAt ||
-        cluster.lastSeenAt > cluster.classifiedAt;
+        cluster.lastSeenAt > cluster.classifiedAt ||
+        (cluster.classification === "narrative" && !cluster.sentimentLabel);
 
       if (!needsAIClassify) {
         // Velocity + stage refresh only — skip the AI call
@@ -125,6 +128,19 @@ export async function GET(req: Request) {
         platformCount: platforms.length,
       });
 
+      let sentimentScore: number | null = null;
+      let sentimentLabel: string | null = null;
+
+      if (result.classification === "narrative") {
+        const sentimentResult = await analyzeEntitySentiment({
+          entityLabel: entity?.label ?? "Unknown",
+          clusterLabel: cluster.label,
+          itemTitles: titles,
+        });
+        sentimentScore = sentimentResult.score;
+        sentimentLabel = sentimentResult.sentiment;
+      }
+
       await db
         .update(clusters)
         .set({
@@ -137,6 +153,11 @@ export async function GET(req: Request) {
           prevVelocity24h,
           platformCount: platforms.length,
           classifiedAt: now,
+          ...(sentimentLabel !== null && {
+            sentimentScore,
+            sentimentLabel,
+            sentimentAnalyzedAt: now,
+          }),
         })
         .where(eq(clusters.id, cluster.id));
 

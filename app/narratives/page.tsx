@@ -56,6 +56,8 @@ type Narrative = {
   platformCount: number | null;
   analystClassification: string | null;
   analystNote: string | null;
+  sentimentScore: number | null;
+  sentimentLabel: string | null;
   effectiveClassification: string;
   topItems: ClusterItem[];
   platforms: string[];
@@ -106,6 +108,21 @@ function SignalBadge({ signal }: { signal: string }) {
       flexShrink: 0,
     }}>
       {m.label}
+    </span>
+  );
+}
+
+function SentimentPill({ label }: { label: string }) {
+  const styles: Record<string, { color: string; glyph: string }> = {
+    positive: { color: "var(--ok)",     glyph: "↑" },
+    negative: { color: "var(--err)",    glyph: "↓" },
+    neutral:  { color: "var(--ink-40)", glyph: "→" },
+    mixed:    { color: "var(--warn)",   glyph: "~" },
+  };
+  const s = styles[label] ?? styles.neutral;
+  return (
+    <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, fontWeight: 600, letterSpacing: "0.1em", textTransform: "uppercase", color: s.color, border: `1px solid ${s.color}`, borderRadius: 3, padding: "1px 5px", lineHeight: 1.4 }}>
+      {s.glyph} {label}
     </span>
   );
 }
@@ -463,6 +480,7 @@ export default function NarrativesPage() {
                     <div style={{ flex: 1 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 6 }}>
                         {n.itemCount >= 2 && n.narrativeStage && <StagePill stage={n.narrativeStage} velocity24h={n.velocity24h} prevVelocity24h={n.prevVelocity24h} peakMomentum={n.peakMomentum} firstSeenAt={n.firstSeenAt} platformCount={n.platformCount} />}
+                        {n.sentimentLabel && <SentimentPill label={n.sentimentLabel} />}
                         {n.momentum != null && n.momentum > 0 && (
                           <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--accent)" }}>
                             ↑{n.momentum.toFixed(1)}/day

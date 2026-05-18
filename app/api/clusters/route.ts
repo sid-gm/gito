@@ -109,6 +109,8 @@ export async function GET(req: Request) {
       platformCount: clusters.platformCount,
       analystClassification: clusters.analystClassification,
       analystNote: clusters.analystNote,
+      sentimentScore: clusters.sentimentScore,
+      sentimentLabel: clusters.sentimentLabel,
     })
     .from(clusters)
     .where(and(...baseConditions))
