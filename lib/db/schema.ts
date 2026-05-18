@@ -46,6 +46,7 @@ export const narrativeStageEnum = pgEnum("narrative_stage", [
   "relaxed",
   "developing",
   "peaked",
+  "revival",
   "declining",
 ]);
 
@@ -199,5 +200,5 @@ export type ClusterMerge = typeof clusterMerges.$inferSelect;
 export type RedditSubreddit = typeof redditSubreddits.$inferSelect;
 
 export type ClusterClassification = "unclassified" | "narrative" | "noise";
-export type NarrativeStage = "emerging" | "developing" | "peaked" | "declining";
+export type NarrativeStage = "relaxed" | "emerging" | "developing" | "peaked" | "revival" | "declining";
 export type ItemSignal = "unclassified" | "signal" | "noise" | "watch";

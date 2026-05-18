@@ -23,6 +23,7 @@ export async function POST() {
       classifiedAt: clusters.classifiedAt,
       classification: clusters.classification,
       peakMomentum: clusters.peakMomentum,
+      narrativeStage: clusters.narrativeStage,
     })
     .from(clusters)
     .where(
@@ -81,6 +82,7 @@ export async function POST() {
         ageInDays,
         platformCount: platforms.length,
         nonNewsPlatformCount,
+        currentStage: cluster.narrativeStage ?? undefined,
       });
 
       const needsAIClassify =

@@ -128,7 +128,7 @@ async function updateVelocityAndStage(clusterIds: string[]) {
   const h48ago = new Date(now.getTime() - 48 * 60 * 60 * 1000);
 
   const clusterRows = await db
-    .select({ id: clusters.id, firstSeenAt: clusters.firstSeenAt, peakMomentum: clusters.peakMomentum })
+    .select({ id: clusters.id, firstSeenAt: clusters.firstSeenAt, peakMomentum: clusters.peakMomentum, narrativeStage: clusters.narrativeStage })
     .from(clusters)
     .where(inArray(clusters.id, clusterIds));
 
@@ -166,6 +166,7 @@ async function updateVelocityAndStage(clusterIds: string[]) {
         ageInDays,
         platformCount: platforms.length,
         nonNewsPlatformCount,
+        currentStage: cluster.narrativeStage ?? undefined,
       });
 
       await db

@@ -27,6 +27,7 @@ export async function GET(req: Request) {
       classifiedAt: clusters.classifiedAt,
       classification: clusters.classification,
       peakMomentum: clusters.peakMomentum,
+      narrativeStage: clusters.narrativeStage,
     })
     .from(clusters)
     .where(
@@ -87,6 +88,7 @@ export async function GET(req: Request) {
         ageInDays,
         platformCount: platforms.length,
         nonNewsPlatformCount,
+        currentStage: cluster.narrativeStage ?? undefined,
       });
 
       const needsAIClassify =

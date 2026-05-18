@@ -75,10 +75,11 @@ export async function GET(req: Request) {
   const stagePriority = sql<number>`CASE ${clusters.narrativeStage}
     WHEN 'emerging'   THEN 1
     WHEN 'developing' THEN 2
-    WHEN 'relaxed'    THEN 3
+    WHEN 'revival'    THEN 3
     WHEN 'peaked'     THEN 4
-    WHEN 'declining'  THEN 5
-    ELSE 6
+    WHEN 'relaxed'    THEN 5
+    WHEN 'declining'  THEN 6
+    ELSE 7
   END`;
 
   const secondarySort =

@@ -6,6 +6,7 @@ import { Sparkline } from "@/components/primitives";
 const STAGE_COLORS: Record<string, string> = {
   emerging:   "var(--ok)",
   developing: "var(--accent)",
+  revival:    "#8B5CF6",
   peaked:     "var(--warn)",
   declining:  "var(--err)",
   relaxed:    "var(--ink-40)",

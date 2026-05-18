@@ -16,6 +16,7 @@ export async function POST() {
       id: clusters.id,
       firstSeenAt: clusters.firstSeenAt,
       peakMomentum: clusters.peakMomentum,
+      narrativeStage: clusters.narrativeStage,
     })
     .from(clusters)
     .where(and(isNull(clusters.archivedAt), gte(clusters.itemCount, 2)));
@@ -63,6 +64,7 @@ export async function POST() {
         ageInDays,
         platformCount: platforms.length,
         nonNewsPlatformCount,
+        currentStage: cluster.narrativeStage ?? undefined,
       });
 
       await db
