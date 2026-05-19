@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { and, count, eq, gt, gte, isNull, lte, isNotNull } from "drizzle-orm";
+import { and, count, eq, gt, gte, isNull, lte } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { clusters, clusterItems, ingestedItems, trackedEntities } from "@/lib/db/schema";
 import { verifyCronSecret } from "@/lib/cron-auth";
@@ -222,8 +222,7 @@ export async function GET(req: Request) {
       and(
         isNull(clusters.archivedAt),
         eq(clusters.classification, "narrative"),
-        isNull(clusters.sentimentLabel),
-        isNotNull(clusters.analystClassification)
+        isNull(clusters.sentimentLabel)
       )
     )
     .limit(BATCH_SIZE);
