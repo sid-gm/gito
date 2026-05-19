@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { and, count, eq, gt, gte, isNull, lte } from "drizzle-orm";
+import { and, count, eq, gt, gte, isNull, lte, or } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { clusters, clusterItems, ingestedItems, trackedEntities } from "@/lib/db/schema";
 import { verifyCronSecret } from "@/lib/cron-auth";
@@ -221,7 +221,10 @@ export async function GET(req: Request) {
     .where(
       and(
         isNull(clusters.archivedAt),
-        eq(clusters.classification, "narrative"),
+        or(
+          eq(clusters.classification, "narrative"),
+          eq(clusters.analystClassification, "narrative")
+        ),
         isNull(clusters.sentimentLabel)
       )
     )
