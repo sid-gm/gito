@@ -146,6 +146,8 @@ export async function GET(req: Request) {
             similarity: clusterItems.similarity,
             itemSignal: clusterItems.itemSignal,
             analystSignal: clusterItems.analystSignal,
+            analystNote: clusterItems.analystNote,
+            analystFlag: clusterItems.analystFlag,
             title: ingestedItems.title,
             body: ingestedItems.body,
             url: ingestedItems.url,

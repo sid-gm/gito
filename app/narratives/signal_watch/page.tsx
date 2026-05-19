@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { cx, PlatformChip } from "@/components/primitives";
 import { useCompany } from "@/components/CompanyContext";
 import { StagePill } from "@/components/StagePill";
+import { ItemAnnotations } from "@/components/ItemAnnotations";
 
 type ClusterItem = {
   clusterId: string;
@@ -11,6 +12,8 @@ type ClusterItem = {
   similarity: number;
   itemSignal: string;
   analystSignal: string | null;
+  analystNote: string | null;
+  analystFlag: string | null;
   signalReason: string | null;
   mergeId: string | null;
   title: string | null;
@@ -349,6 +352,19 @@ export default function SignalWatchPage() {
                               cleanTitle(item.title) ?? item.body?.slice(0, 140) ?? "—"
                             )}
                           </span>
+                          <ItemAnnotations
+                            clusterId={cluster.id}
+                            itemId={item.itemId}
+                            note={item.analystNote}
+                            flag={item.analystFlag as "review" | "highlight" | null}
+                            onUpdate={(note, flag) => {
+                              setExpandedData((prev) => {
+                                const d = prev[cluster.id];
+                                if (!d) return prev;
+                                return { ...prev, [cluster.id]: { ...d, items: d.items.map((it) => it.itemId === item.itemId ? { ...it, analystNote: note, analystFlag: flag } : it) } };
+                              });
+                            }}
+                          />
                         </div>
                       );
                     };

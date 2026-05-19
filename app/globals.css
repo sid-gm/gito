@@ -539,6 +539,52 @@ input, select, textarea { font: inherit; color: inherit; }
 .cluster-item-title { font-size: 13px; color: var(--ink-80); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cluster-item-title a { color: inherit; text-decoration: none; }
 .cluster-item-title a:hover { text-decoration: underline; color: var(--ink); }
+
+/* Item annotation icons */
+.item-annotation-icons { display: flex; gap: 3px; align-items: center; opacity: 0; transition: opacity 0.1s; }
+.cluster-item-row:hover .item-annotation-icons,
+.cluster-item-row:focus-within .item-annotation-icons { opacity: 1; }
+.item-annotation-icons.has-content { opacity: 1; }
+.annotation-btn { background: none; border: none; cursor: pointer; padding: 2px; color: var(--ink-30); border-radius: 3px; display: flex; align-items: center; line-height: 1; transition: color 0.1s, background 0.1s; }
+.annotation-btn:hover { color: var(--ink-70); background: var(--paper-3); }
+
+/* Note popover */
+.item-note-popover {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 200;
+  width: 280px;
+  background: var(--paper);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.item-note-textarea {
+  width: 100%;
+  font-size: 12px;
+  font-family: var(--font-sans);
+  color: var(--ink);
+  background: var(--paper-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 8px;
+  resize: vertical;
+  box-sizing: border-box;
+  outline: none;
+  line-height: 1.5;
+}
+.item-note-textarea:focus { border-color: var(--accent); }
+.item-note-actions { display: flex; gap: 6px; justify-content: flex-end; }
+.item-note-save-btn { font-size: 11px; padding: 3px 10px; background: var(--accent); color: #fff; border: none; border-radius: 4px; cursor: pointer; font-family: var(--font-sans); }
+.item-note-save-btn:hover { opacity: 0.85; }
+.item-note-save-btn:disabled { opacity: 0.5; cursor: default; }
+.item-note-cancel-btn { font-size: 11px; padding: 3px 8px; background: none; color: var(--ink-50); border: 1px solid var(--border); border-radius: 4px; cursor: pointer; font-family: var(--font-sans); }
+.item-note-cancel-btn:hover { color: var(--ink-70); }
 .cluster-card-foot { display: flex; justify-content: space-between; align-items: center; padding-top: 8px; margin-top: 4px; border-top: 1px dashed var(--border-soft); }
 .cluster-card-more {
   font-size: 11.5px;

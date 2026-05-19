@@ -6,6 +6,7 @@ import { VelocitySparkline } from "@/components/VelocitySparkline";
 import { useCompany } from "@/components/CompanyContext";
 import { StagePill, StageKey } from "@/components/StagePill";
 import { AddItemDialog } from "@/components/AddItemDialog";
+import { ItemAnnotations } from "@/components/ItemAnnotations";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -25,6 +26,8 @@ type ClusterItem = {
   similarity: number;
   itemSignal: string;
   analystSignal: string | null;
+  analystNote: string | null;
+  analystFlag: string | null;
   mergeId: string | null;
   title: string | null;
   body: string | null;
@@ -532,7 +535,7 @@ export default function ClustersPage() {
                   {periodText ?? <span style={{ opacity: 0.4 }}>Add note…</span>}
                 </div>
               )}
-              {dayItems.map((item, i) => renderItemRow(item, i))}
+              {dayItems.map((item, i) => renderItemRow(item, i, cluster.id))}
             </div>
           );
         })}
@@ -549,7 +552,7 @@ export default function ClustersPage() {
     );
   }
 
-  function renderItemRow(item: ClusterItem, i: number) {
+  function renderItemRow(item: ClusterItem, i: number, clusterId: string) {
     const effectiveSignal = item.analystSignal ?? item.itemSignal;
     const href = item.platform === "hackernews" && item.externalId
       ? `https://news.ycombinator.com/item?id=${item.externalId}`
@@ -566,6 +569,19 @@ export default function ClustersPage() {
             cleanTitle(item.title) ?? item.body?.slice(0, 120) ?? "—"
           )}
         </span>
+        <ItemAnnotations
+          clusterId={clusterId}
+          itemId={item.itemId}
+          note={item.analystNote}
+          flag={item.analystFlag as "review" | "highlight" | null}
+          onUpdate={(note, flag) => {
+            setExpandedData((prev) => {
+              const d = prev[clusterId];
+              if (!d) return prev;
+              return { ...prev, [clusterId]: { ...d, items: d.items.map((it) => it.itemId === item.itemId ? { ...it, analystNote: note, analystFlag: flag } : it) } };
+            });
+          }}
+        />
         <SignalDot signal={effectiveSignal} />
         <Dot color={simColor(item.similarity)} size={7} />
       </div>
@@ -793,7 +809,7 @@ export default function ClustersPage() {
                     ? renderExpandedItems(cluster)
                     : displayItems.length > 0 && (
                       <div className="cluster-card-items">
-                        {displayItems.map((item, i) => renderItemRow(item, i))}
+                        {displayItems.map((item, i) => renderItemRow(item, i, cluster.id))}
                       </div>
                     )
                   }

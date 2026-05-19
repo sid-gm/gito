@@ -29,6 +29,8 @@ export async function GET(
       itemSignal: clusterItems.itemSignal,
       signalReason: clusterItems.signalReason,
       analystSignal: clusterItems.analystSignal,
+      analystNote: clusterItems.analystNote,
+      analystFlag: clusterItems.analystFlag,
       mergeId: clusterItems.mergeId,
       title: ingestedItems.title,
       body: ingestedItems.body,

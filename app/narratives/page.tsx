@@ -6,6 +6,7 @@ import { VelocitySparkline } from "@/components/VelocitySparkline";
 import { useCompany } from "@/components/CompanyContext";
 import { StagePill, StageKey } from "@/components/StagePill";
 import { AddItemDialog } from "@/components/AddItemDialog";
+import { ItemAnnotations } from "@/components/ItemAnnotations";
 
 type MergeInfo = {
   absorbedLabel: string | null;
@@ -23,6 +24,8 @@ type ClusterItem = {
   similarity: number;
   itemSignal: string;
   analystSignal: string | null;
+  analystNote: string | null;
+  analystFlag: string | null;
   signalReason: string | null;
   mergeId: string | null;
   title: string | null;
@@ -322,6 +325,19 @@ export default function NarrativesPage() {
             cleanTitle(item.title) ?? item.body?.slice(0, 140) ?? "—"
           )}
         </span>
+        <ItemAnnotations
+          clusterId={narrativeId}
+          itemId={item.itemId}
+          note={item.analystNote}
+          flag={item.analystFlag as "review" | "highlight" | null}
+          onUpdate={(note, flag) => {
+            setExpandedData((prev) => {
+              const d = prev[narrativeId];
+              if (!d) return prev;
+              return { ...prev, [narrativeId]: { ...d, items: d.items.map((it) => it.itemId === item.itemId ? { ...it, analystNote: note, analystFlag: flag } : it) } };
+            });
+          }}
+        />
         <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
           <SignalBadge signal={effectiveSignal} />
           <ItemSignalOverride

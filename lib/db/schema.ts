@@ -160,6 +160,8 @@ export const clusterItems = pgTable(
     itemSignal: itemSignalEnum("item_signal").default("unclassified").notNull(),
     signalReason: text("signal_reason"),
     analystSignal: text("analyst_signal"), // 'signal' | 'noise' | 'watch'
+    analystNote: text("analyst_note"),
+    analystFlag: text("analyst_flag"), // null | 'review' | 'highlight'
     // Merge provenance — null means item was original to this cluster
     mergeId: uuid("merge_id").references(() => clusterMerges.id, { onDelete: "set null" }),
   },
