@@ -14,10 +14,6 @@ const SOURCES_NAV = [
   { href: "/submit",  label: "Manual",  glyph: "✎" },
 ];
 
-const SOON = [
-  { label: "Analysis", stage: "P4" },
-  { label: "Report",   stage: "P5" },
-];
 
 export function Sidebar() {
   const path = usePathname();
@@ -242,20 +238,14 @@ export function Sidebar() {
           <span className="nav-label">Noise</span>
         </Link>
 
-        <div className="nav-section" style={{ marginTop: 16 }}>
-          Pipeline (locked)
-        </div>
-        {SOON.map((n) => (
-          <div
-            key={n.label}
-            className="nav-item nav-item-soon"
-            title={`Phase ${n.stage} — not yet built`}
-          >
-            <span className="nav-glyph">·</span>
-            <span className="nav-label">{n.label}</span>
-            <span className="nav-stage">{n.stage}</span>
-          </div>
-        ))}
+        <div className="nav-section" style={{ marginTop: 16 }}>Publish</div>
+        <Link
+          href="/report"
+          className={cx("nav-item nav-item-sub", path.startsWith("/report") && "nav-item-on")}
+        >
+          <span className="nav-glyph">◉</span>
+          <span className="nav-label">Report</span>
+        </Link>
       </nav>
 
       <div className="sb-foot">

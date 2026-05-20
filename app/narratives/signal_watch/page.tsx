@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { cx, PlatformChip } from "@/components/primitives";
 import { useCompany } from "@/components/CompanyContext";
 import { StagePill } from "@/components/StagePill";
@@ -123,6 +124,7 @@ function WaveHeader({ label, isFirst }: { label: string; isFirst: boolean }) {
 
 export default function SignalWatchPage() {
   const { activeCompanyId } = useCompany();
+  const router = useRouter();
   const [clusters, setClusters] = useState<Cluster[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
@@ -443,11 +445,21 @@ export default function SignalWatchPage() {
                       <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--ink-40)" }}>Source</span>
                       {cluster.platforms.map((p) => <PlatformChip key={p} platform={p} size="sm" />)}
                     </div>
-                    {cluster.itemCount > 3 && (
-                      <button className="cluster-card-more" onClick={() => toggleExpand(cluster.id)}>
-                        {isExpanded ? "show less" : `+ ${cluster.itemCount - 3} more`}
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      {cluster.itemCount > 3 && (
+                        <button className="cluster-card-more" onClick={() => toggleExpand(cluster.id)}>
+                          {isExpanded ? "show less" : `+ ${cluster.itemCount - 3} more`}
+                        </button>
+                      )}
+                      <button
+                        className="btn-ghost btn"
+                        style={{ fontSize: 10, padding: "2px 8px", fontFamily: "var(--font-mono)", letterSpacing: "0.04em" }}
+                        onClick={() => router.push(`/report/${cluster.id}`)}
+                        title="Generate Signal Brief for this cluster"
+                      >
+                        ◉ Report
                       </button>
-                    )}
+                    </div>
                   </div>
                   {cluster.trackedEntities?.length > 0 && (
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6, paddingTop: 6, borderTop: "1px solid var(--ink-10)" }}>

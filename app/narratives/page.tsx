@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { cx, PlatformChip, Dot } from "@/components/primitives";
 import { VelocitySparkline } from "@/components/VelocitySparkline";
 import { useCompany } from "@/components/CompanyContext";
@@ -191,6 +192,7 @@ function ItemSignalOverride({
 
 export default function NarrativesPage() {
   const { activeCompanyId } = useCompany();
+  const router = useRouter();
   const [narratives, setNarratives] = useState<Narrative[]>([]);
   const [entities, setEntities] = useState<Entity[]>([]);
   const [entityId, setEntityId] = useState("all");
@@ -630,16 +632,26 @@ export default function NarrativesPage() {
                       <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--ink-40)" }}>Source</span>
                       {n.platforms.map((p) => <PlatformChip key={p} platform={p} size="sm" />)}
                     </div>
-                    <button
-                      className="cluster-card-more"
-                      onClick={() => toggleExpand(n.id)}
-                    >
-                      {expandLoading.has(n.id)
-                        ? "loading…"
-                        : isExpanded
-                        ? "show less"
-                        : n.itemCount > 3 ? `+ ${n.itemCount - 3} more` : "show all"}
-                    </button>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <button
+                        className="cluster-card-more"
+                        onClick={() => toggleExpand(n.id)}
+                      >
+                        {expandLoading.has(n.id)
+                          ? "loading…"
+                          : isExpanded
+                          ? "show less"
+                          : n.itemCount > 3 ? `+ ${n.itemCount - 3} more` : "show all"}
+                      </button>
+                      <button
+                        className="btn-ghost btn"
+                        style={{ fontSize: 10, padding: "2px 8px", fontFamily: "var(--font-mono)", letterSpacing: "0.04em" }}
+                        onClick={() => router.push(`/report/${n.id}`)}
+                        title="Generate Signal Brief for this narrative"
+                      >
+                        ◉ Report
+                      </button>
+                    </div>
                   </div>
                   {n.trackedEntities?.length > 0 && (
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6, paddingTop: 6, borderTop: "1px solid var(--ink-10)" }}>
