@@ -42,6 +42,18 @@ export async function POST() {
       $$
     `);
 
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS cluster_reports (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        cluster_id UUID NOT NULL REFERENCES clusters(id) ON DELETE CASCADE,
+        company_id UUID REFERENCES companies(id) ON DELETE CASCADE,
+        snapshot_data JSONB NOT NULL,
+        cluster_label TEXT,
+        company_name TEXT,
+        generated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+
     return NextResponse.json({ ok: true, message: "Migration applied" });
   } catch (err) {
     console.error("[POST /api/migrate]", err);

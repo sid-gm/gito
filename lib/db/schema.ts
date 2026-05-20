@@ -192,6 +192,19 @@ export const redditSubreddits = pgTable("reddit_subreddits", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (t) => [unique("reddit_subreddits_company_subreddit_unique").on(t.companyId, t.subredditName)]);
 
+export const clusterReports = pgTable("cluster_reports", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  clusterId: uuid("cluster_id")
+    .references(() => clusters.id, { onDelete: "cascade" })
+    .notNull(),
+  companyId: uuid("company_id")
+    .references(() => companies.id, { onDelete: "cascade" }),
+  snapshotData: jsonb("snapshot_data").notNull(),
+  clusterLabel: text("cluster_label"),
+  companyName: text("company_name"),
+  generatedAt: timestamp("generated_at").defaultNow().notNull(),
+});
+
 export type Company = typeof companies.$inferSelect;
 export type NewCompany = typeof companies.$inferInsert;
 export type TrackedEntity = typeof trackedEntities.$inferSelect;
@@ -204,6 +217,7 @@ export type ClusterItem = typeof clusterItems.$inferSelect;
 export type ClusterPeriodNarrative = typeof clusterPeriodNarratives.$inferSelect;
 export type ClusterMerge = typeof clusterMerges.$inferSelect;
 export type RedditSubreddit = typeof redditSubreddits.$inferSelect;
+export type ClusterReport = typeof clusterReports.$inferSelect;
 
 export type ClusterClassification = "unclassified" | "narrative" | "noise";
 export type NarrativeStage = "relaxed" | "emerging" | "developing" | "peaked" | "revival" | "declining";

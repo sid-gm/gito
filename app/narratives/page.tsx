@@ -193,6 +193,7 @@ function ItemSignalOverride({
 export default function NarrativesPage() {
   const { activeCompanyId } = useCompany();
   const router = useRouter();
+  const [reportingId, setReportingId] = useState<string | null>(null);
   const [narratives, setNarratives] = useState<Narrative[]>([]);
   const [entities, setEntities] = useState<Entity[]>([]);
   const [entityId, setEntityId] = useState("all");
@@ -211,6 +212,17 @@ export default function NarrativesPage() {
   const [editingLabelDraft, setEditingLabelDraft] = useState("");
   const [savingLabel, setSavingLabel] = useState(false);
   const [addItemNarrativeId, setAddItemNarrativeId] = useState<string | null>(null);
+
+  const generateReport = useCallback(async (clusterId: string) => {
+    setReportingId(clusterId);
+    try {
+      const res = await fetch(`/api/clusters/${clusterId}/report`, { method: "POST" });
+      const { reportId } = await res.json();
+      router.push(`/report/${reportId}`);
+    } catch {
+      setReportingId(null);
+    }
+  }, [router]);
 
   const fetchNarratives = useCallback(async () => {
     if (!activeCompanyId) return;
@@ -646,10 +658,11 @@ export default function NarrativesPage() {
                       <button
                         className="btn-ghost btn"
                         style={{ fontSize: 10, padding: "2px 8px", fontFamily: "var(--font-mono)", letterSpacing: "0.04em" }}
-                        onClick={() => router.push(`/report/${n.id}`)}
+                        onClick={() => generateReport(n.id)}
+                        disabled={reportingId === n.id}
                         title="Generate Signal Brief for this narrative"
                       >
-                        ◉ Report
+                        {reportingId === n.id ? "Generating…" : "◉ Report"}
                       </button>
                     </div>
                   </div>

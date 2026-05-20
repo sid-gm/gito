@@ -288,6 +288,7 @@ function MergeModal({
 export default function ClustersPage() {
   const { activeCompanyId } = useCompany();
   const router = useRouter();
+  const [reportingId, setReportingId] = useState<string | null>(null);
   const [clusterList, setClusterList] = useState<Cluster[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [entities, setEntities] = useState<Entity[]>([]);
@@ -420,6 +421,17 @@ export default function ClustersPage() {
       setMergeBusy(false);
     }
   };
+
+  const generateReport = useCallback(async (clusterId: string) => {
+    setReportingId(clusterId);
+    try {
+      const res = await fetch(`/api/clusters/${clusterId}/report`, { method: "POST" });
+      const { reportId } = await res.json();
+      router.push(`/report/${reportId}`);
+    } catch {
+      setReportingId(null);
+    }
+  }, [router]);
 
   const runCluster = useCallback(async () => {
     setClusterRunning(true); setClusterResult(null);
@@ -830,10 +842,11 @@ export default function ClustersPage() {
                       <button
                         className="btn-ghost btn"
                         style={{ fontSize: 10, padding: "2px 8px", fontFamily: "var(--font-mono)", letterSpacing: "0.04em" }}
-                        onClick={() => router.push(`/report/${cluster.id}`)}
+                        onClick={() => generateReport(cluster.id)}
+                        disabled={reportingId === cluster.id}
                         title="Generate Signal Brief for this cluster"
                       >
-                        ◉ Report
+                        {reportingId === cluster.id ? "Generating…" : "◉ Report"}
                       </button>
                     </div>
                   </div>

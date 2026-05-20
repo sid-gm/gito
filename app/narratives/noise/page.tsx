@@ -101,6 +101,7 @@ function WaveHeader({ label, isFirst }: { label: string; isFirst: boolean }) {
 export default function NoisePage() {
   const { activeCompanyId } = useCompany();
   const router = useRouter();
+  const [reportingId, setReportingId] = useState<string | null>(null);
   const [clusters, setClusters] = useState<Cluster[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
@@ -111,6 +112,17 @@ export default function NoisePage() {
   const [editingLabelId, setEditingLabelId] = useState<string | null>(null);
   const [editingLabelDraft, setEditingLabelDraft] = useState("");
   const [savingLabel, setSavingLabel] = useState(false);
+
+  const generateReport = useCallback(async (clusterId: string) => {
+    setReportingId(clusterId);
+    try {
+      const res = await fetch(`/api/clusters/${clusterId}/report`, { method: "POST" });
+      const { reportId } = await res.json();
+      router.push(`/report/${reportId}`);
+    } catch {
+      setReportingId(null);
+    }
+  }, [router]);
 
   const fetchClusters = useCallback(async () => {
     if (!activeCompanyId) return;
@@ -421,10 +433,11 @@ export default function NoisePage() {
                       <button
                         className="btn-ghost btn"
                         style={{ fontSize: 10, padding: "2px 8px", fontFamily: "var(--font-mono)", letterSpacing: "0.04em" }}
-                        onClick={() => router.push(`/report/${cluster.id}`)}
+                        onClick={() => generateReport(cluster.id)}
+                        disabled={reportingId === cluster.id}
                         title="Generate Signal Brief for this cluster"
                       >
-                        ◉ Report
+                        {reportingId === cluster.id ? "Generating…" : "◉ Report"}
                       </button>
                     </div>
                   </div>

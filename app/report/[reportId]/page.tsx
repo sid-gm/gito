@@ -49,6 +49,8 @@ type VelocityBucket = {
 };
 
 type ReportData = {
+  reportId: string;
+  generatedAt: string;
   cluster: ReportCluster;
   narratives: PeriodNarrative[];
   items: ReportItem[];
@@ -216,16 +218,16 @@ function VelocityChart({ buckets }: { buckets: VelocityBucket[] }) {
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function ReportPage() {
-  const params = useParams<{ clusterId: string }>();
+  const params = useParams<{ reportId: string }>();
   const [data, setData] = useState<ReportData | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch(`/api/clusters/${params.clusterId}/report`)
+    fetch(`/api/reports/${params.reportId}`)
       .then((r) => r.ok ? r.json() : Promise.reject("not found"))
       .then(setData)
       .catch(() => setError("Report not found."));
-  }, [params.clusterId]);
+  }, [params.reportId]);
 
   if (error) {
     return (
@@ -251,7 +253,6 @@ export default function ReportPage() {
   const velocityDeltaCls = velocityChangeCls(cluster.velocity24h, cluster.prevVelocity24h);
   const maxSourceCount = Math.max(...sourceBreakdown.map((s) => s.itemCount), 1);
 
-  // Period narratives — prefer analyst override
   const periodEntries = narratives
     .filter((n) => n.analystNarrative || n.aiNarrative)
     .map((n, i) => ({
@@ -260,7 +261,9 @@ export default function ReportPage() {
       text: n.analystNarrative ?? n.aiNarrative ?? "",
     }));
 
-  const generatedAt = new Date().toISOString().slice(0, 16).replace("T", " ") + " UTC";
+  const generatedAt = data.generatedAt
+    ? new Date(data.generatedAt).toISOString().slice(0, 16).replace("T", " ") + " UTC"
+    : "—";
 
   return (
     <div style={{ maxWidth: 1100, margin: "0 auto", padding: "32px 32px 80px", fontFamily: "var(--font-sans)" }}>
@@ -384,7 +387,7 @@ export default function ReportPage() {
       {/* ── Velocity chart + Source breakdown ──────────────────────────────── */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", fontFamily: "var(--font-mono)", fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--ink-50)", padding: "0 0 8px", margin: "32px 0 14px", borderBottom: "1px solid var(--border-soft)" }}>
         <span>Velocity &amp; sources</span>
-        <span style={{ fontSize: 10, color: "var(--ink-40)", letterSpacing: "0.06em" }}>last 48 hours · hourly</span>
+        <span style={{ fontSize: 10, color: "var(--ink-40)", letterSpacing: "0.06em" }}>snapshot · last 48h from generation</span>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 18 }}>
         {/* Velocity chart */}
@@ -476,7 +479,7 @@ export default function ReportPage() {
 
       {/* ── Footer ─────────────────────────────────────────────────────────── */}
       <footer style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 22, marginTop: 32, borderTop: "1px solid var(--border-soft)", fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--ink-50)" }}>
-        <span>Gito · Signal Brief · {cluster.id.slice(0, 8)}</span>
+        <span>Gito · Signal Brief · {data.reportId.slice(0, 8)}</span>
         <span>Generated {generatedAt}</span>
       </footer>
     </div>

@@ -4,18 +4,14 @@ import {
   clusters,
   clusterItems,
   clusterPeriodNarratives,
+  clusterReports,
   ingestedItems,
   trackedEntities,
   companies,
 } from "@/lib/db/schema";
 import { and, count, desc, eq, gte, sql } from "drizzle-orm";
 
-export async function GET(
-  _req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const { id } = await params;
-
+async function buildReportData(id: string) {
   const clusterRow = await db
     .select({
       id: clusters.id,
@@ -34,6 +30,7 @@ export async function GET(
       analystNote: clusters.analystNote,
       entityLabel: trackedEntities.label,
       companyName: companies.name,
+      companyId: companies.id,
     })
     .from(clusters)
     .leftJoin(trackedEntities, eq(clusters.entityId, trackedEntities.id))
@@ -41,14 +38,7 @@ export async function GET(
     .where(eq(clusters.id, id))
     .limit(1);
 
-  if (!clusterRow.length)
-    return NextResponse.json({ error: "not found" }, { status: 404 });
-
-  const cluster = {
-    ...clusterRow[0],
-    firstSeenAt: clusterRow[0].firstSeenAt.toISOString(),
-    lastSeenAt: clusterRow[0].lastSeenAt.toISOString(),
-  };
+  if (!clusterRow.length) return null;
 
   const narratives = await db
     .select({
@@ -96,8 +86,26 @@ export async function GET(
     .groupBy(sql`DATE_TRUNC('hour', ${clusterItems.addedAt})`)
     .orderBy(sql`DATE_TRUNC('hour', ${clusterItems.addedAt})`);
 
-  return NextResponse.json({
-    cluster,
+  const raw = clusterRow[0];
+  return {
+    cluster: {
+      id: raw.id,
+      label: raw.label,
+      itemCount: raw.itemCount,
+      firstSeenAt: raw.firstSeenAt.toISOString(),
+      lastSeenAt: raw.lastSeenAt.toISOString(),
+      narrativeStage: raw.narrativeStage,
+      narrativeSummary: raw.narrativeSummary,
+      sentimentScore: raw.sentimentScore,
+      sentimentLabel: raw.sentimentLabel,
+      velocity24h: raw.velocity24h,
+      prevVelocity24h: raw.prevVelocity24h,
+      platformCount: raw.platformCount,
+      analystClassification: raw.analystClassification,
+      analystNote: raw.analystNote,
+      entityLabel: raw.entityLabel,
+      companyName: raw.companyName,
+    },
     narratives,
     items: items.map((i) => ({
       ...i,
@@ -105,5 +113,41 @@ export async function GET(
     })),
     sourceBreakdown,
     velocityHistory,
-  });
+    _meta: { companyId: raw.companyId, clusterLabel: raw.label, companyName: raw.companyName },
+  };
+}
+
+export async function GET(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  const data = await buildReportData(id);
+  if (!data) return NextResponse.json({ error: "not found" }, { status: 404 });
+  const { _meta: _, ...reportData } = data;
+  return NextResponse.json(reportData);
+}
+
+export async function POST(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  const data = await buildReportData(id);
+  if (!data) return NextResponse.json({ error: "not found" }, { status: 404 });
+
+  const { _meta, ...snapshotData } = data;
+
+  const [inserted] = await db
+    .insert(clusterReports)
+    .values({
+      clusterId: id,
+      companyId: _meta.companyId ?? null,
+      snapshotData,
+      clusterLabel: _meta.clusterLabel,
+      companyName: _meta.companyName,
+    })
+    .returning({ id: clusterReports.id });
+
+  return NextResponse.json({ reportId: inserted.id }, { status: 201 });
 }
