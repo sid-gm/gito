@@ -67,34 +67,32 @@ export async function GET(req: Request) {
 
     for (const item of items) {
       const vec = item.embedding!;
-      let bestClusterId: string | null = null;
-      let bestSimilarity = 0;
+      const matches: { clusterId: string; similarity: number }[] = [];
 
       for (const cluster of activeClusters) {
         if (!cluster.centroidEmbedding) continue;
         const sim = cosineSimilarity(vec, cluster.centroidEmbedding);
-        if (sim > bestSimilarity) {
-          bestSimilarity = sim;
-          if (sim >= SIMILARITY_THRESHOLD) bestClusterId = cluster.id;
-        }
+        if (sim >= SIMILARITY_THRESHOLD) matches.push({ clusterId: cluster.id, similarity: sim });
       }
 
       try {
-        if (bestClusterId) {
-          const cluster = activeClusters.find((c) => c.id === bestClusterId)!;
-          const newCentroid = updateCentroid(cluster.centroidEmbedding!, vec, cluster.itemCount);
-          const newCount = cluster.itemCount + 1;
+        if (matches.length > 0) {
+          for (const { clusterId, similarity } of matches) {
+            const cluster = activeClusters.find((c) => c.id === clusterId)!;
+            const newCentroid = updateCentroid(cluster.centroidEmbedding!, vec, cluster.itemCount);
+            const newCount = cluster.itemCount + 1;
 
-          await db
-            .update(clusters)
-            .set({ centroidEmbedding: newCentroid, itemCount: newCount, lastSeenAt: item.publishedAt ?? new Date() })
-            .where(eq(clusters.id, bestClusterId));
+            await db
+              .update(clusters)
+              .set({ centroidEmbedding: newCentroid, itemCount: newCount, lastSeenAt: item.publishedAt ?? new Date() })
+              .where(eq(clusters.id, clusterId));
 
-          await db.insert(clusterItems).values({ clusterId: bestClusterId, itemId: item.id, similarity: bestSimilarity });
+            await db.insert(clusterItems).values({ clusterId, itemId: item.id, similarity });
 
-          cluster.centroidEmbedding = newCentroid;
-          cluster.itemCount = newCount;
-          if (newCount >= 2) updatedClusterIds.add(bestClusterId);
+            cluster.centroidEmbedding = newCentroid;
+            cluster.itemCount = newCount;
+            if (newCount >= 2) updatedClusterIds.add(clusterId);
+          }
           assigned++;
         } else {
           const now = item.publishedAt ?? new Date();
