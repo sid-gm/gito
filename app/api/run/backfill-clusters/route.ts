@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { and, count, eq, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, count, eq, gt, inArray, isNotNull, isNull, lte, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { ingestedItems, clusters, clusterItems } from "@/lib/db/schema";
 import { computeNarrativeStage, NEWS_PLATFORMS } from "@/lib/narrative-stage";
@@ -18,7 +18,6 @@ function cosineSimilarity(a: number[], b: number[]): number {
 }
 
 export async function POST() {
-  // Fetch all embedded items grouped by entity
   const allItems = await db
     .select({
       id: ingestedItems.id,
@@ -47,18 +46,15 @@ export async function POST() {
 
     if (activeClusters.length === 0) continue;
 
-    // Fetch all existing (clusterId, itemId) pairs for this entity's items in one query
     const itemIds = items.map((i) => i.id);
+
     const existingRows = await db
       .select({ clusterId: clusterItems.clusterId, itemId: clusterItems.itemId })
       .from(clusterItems)
-      .where(
-        sql`${clusterItems.itemId} = ANY(${sql.raw(`ARRAY[${itemIds.map((id) => `'${id}'`).join(",")}]::uuid[]`)})`,
-      );
+      .where(inArray(clusterItems.itemId, itemIds));
 
     const existingPairs = new Set(existingRows.map((r) => `${r.clusterId}:${r.itemId}`));
 
-    // Collect new assignments
     const toInsert: { clusterId: string; itemId: string; similarity: number }[] = [];
 
     for (const item of items) {
@@ -75,18 +71,16 @@ export async function POST() {
       }
     }
 
-    // Batch insert, skipping conflicts (already-existing pairs)
     if (toInsert.length > 0) {
       const CHUNK = 500;
       for (let i = 0; i < toInsert.length; i += CHUNK) {
         const chunk = toInsert.slice(i, i + CHUNK);
-        await db.insert(clusterItems).values(chunk).onConflictDoNothing();
-        newLinks += chunk.length;
+        const inserted = await db.insert(clusterItems).values(chunk).onConflictDoNothing().returning();
+        newLinks += inserted.length;
       }
     }
   }
 
-  // Recompute itemCount for all affected clusters from source of truth
   for (const clusterId of affectedClusterIds) {
     try {
       const [{ cnt }] = await db
@@ -95,11 +89,10 @@ export async function POST() {
         .where(eq(clusterItems.clusterId, clusterId));
       await db.update(clusters).set({ itemCount: cnt }).where(eq(clusters.id, clusterId));
     } catch (err) {
-      console.error(`[backfill-clusters] recount cluster ${clusterId}:`, err);
+      console.error(`[backfill-clusters] recount ${clusterId}:`, err);
     }
   }
 
-  // Refresh narrative stage for affected clusters
   if (affectedClusterIds.size > 0) {
     await refreshStages([...affectedClusterIds]);
   }
@@ -116,20 +109,20 @@ async function refreshStages(clusterIds: string[]) {
   const clusterRows = await db
     .select({ id: clusters.id, firstSeenAt: clusters.firstSeenAt, peakMomentum: clusters.peakMomentum, narrativeStage: clusters.narrativeStage })
     .from(clusters)
-    .where(sql`${clusters.id} = ANY(${sql.raw(`ARRAY[${clusterIds.map((id) => `'${id}'`).join(",")}]::uuid[]`)})`)
+    .where(inArray(clusters.id, clusterIds));
 
   for (const cluster of clusterRows) {
     try {
       const [v24] = await db
         .select({ cnt: count(clusterItems.itemId) })
         .from(clusterItems)
-        .where(and(eq(clusterItems.clusterId, cluster.id), sql`${clusterItems.addedAt} > ${h24ago}`));
+        .where(and(eq(clusterItems.clusterId, cluster.id), gt(clusterItems.addedAt, h24ago)));
       const velocity24h = v24?.cnt ?? 0;
 
       const [vPrev] = await db
         .select({ cnt: count(clusterItems.itemId) })
         .from(clusterItems)
-        .where(and(eq(clusterItems.clusterId, cluster.id), sql`${clusterItems.addedAt} > ${h48ago}`, sql`${clusterItems.addedAt} <= ${h24ago}`));
+        .where(and(eq(clusterItems.clusterId, cluster.id), gt(clusterItems.addedAt, h48ago), lte(clusterItems.addedAt, h24ago)));
       const prevVelocity24h = vPrev?.cnt ?? 0;
 
       const platformRows = await db
