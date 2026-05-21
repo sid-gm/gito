@@ -1,86 +1,59 @@
 import { NextResponse } from "next/server";
-import { and, count, eq, gt, inArray, isNotNull, isNull, lte, sql } from "drizzle-orm";
+import { and, count, eq, gt, inArray, isNull, lte, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { ingestedItems, clusters, clusterItems } from "@/lib/db/schema";
 import { computeNarrativeStage, NEWS_PLATFORMS } from "@/lib/narrative-stage";
 
 const SIMILARITY_THRESHOLD = 0.75;
 
-function cosineSimilarity(a: number[], b: number[]): number {
-  let dot = 0, normA = 0, normB = 0;
-  for (let i = 0; i < a.length; i++) {
-    dot += a[i] * b[i];
-    normA += a[i] * a[i];
-    normB += b[i] * b[i];
-  }
-  const denom = Math.sqrt(normA) * Math.sqrt(normB);
-  return denom === 0 ? 0 : dot / denom;
-}
-
 export async function POST() {
-  const allItems = await db
-    .select({
-      id: ingestedItems.id,
-      entityId: ingestedItems.entityId,
-      publishedAt: ingestedItems.publishedAt,
-      embedding: ingestedItems.embedding,
-    })
-    .from(ingestedItems)
-    .where(isNotNull(ingestedItems.embedding));
+  // Use pgvector's cosine distance operator (<=>).
+  // 1 - cosine_distance = cosine_similarity.
+  // Find every (item, cluster) pair above threshold that isn't already linked.
+  const newPairs = await db.execute<{ item_id: string; cluster_id: string; similarity: number }>(
+    sql`
+      SELECT
+        i.id          AS item_id,
+        c.id          AS cluster_id,
+        (1 - (i.embedding <=> c.centroid_embedding))::float AS similarity
+      FROM ingested_items i
+      CROSS JOIN clusters c
+      WHERE i.entity_id = c.entity_id
+        AND i.embedding IS NOT NULL
+        AND c.centroid_embedding IS NOT NULL
+        AND c.archived_at IS NULL
+        AND (1 - (i.embedding <=> c.centroid_embedding)) >= ${SIMILARITY_THRESHOLD}
+        AND NOT EXISTS (
+          SELECT 1 FROM cluster_items ci
+          WHERE ci.item_id = i.id AND ci.cluster_id = c.id
+        )
+    `
+  );
 
-  const byEntity = new Map<string, typeof allItems>();
-  for (const item of allItems) {
-    if (!item.entityId) continue;
-    if (!byEntity.has(item.entityId)) byEntity.set(item.entityId, []);
-    byEntity.get(item.entityId)!.push(item);
+  const rows = newPairs.rows;
+
+  if (rows.length === 0) {
+    return NextResponse.json({ ok: true, newLinks: 0, affectedClusters: 0 });
   }
 
+  // Insert new cluster_items in chunks
+  const CHUNK = 500;
   let newLinks = 0;
   const affectedClusterIds = new Set<string>();
 
-  for (const [entityId, items] of byEntity) {
-    const activeClusters = await db
-      .select()
-      .from(clusters)
-      .where(and(eq(clusters.entityId, entityId), isNull(clusters.archivedAt)));
-
-    if (activeClusters.length === 0) continue;
-
-    const itemIds = items.map((i) => i.id);
-
-    const existingRows = await db
-      .select({ clusterId: clusterItems.clusterId, itemId: clusterItems.itemId })
-      .from(clusterItems)
-      .where(inArray(clusterItems.itemId, itemIds));
-
-    const existingPairs = new Set(existingRows.map((r) => `${r.clusterId}:${r.itemId}`));
-
-    const toInsert: { clusterId: string; itemId: string; similarity: number }[] = [];
-
-    for (const item of items) {
-      const vec = item.embedding!;
-      for (const cluster of activeClusters) {
-        if (!cluster.centroidEmbedding) continue;
-        const pairKey = `${cluster.id}:${item.id}`;
-        if (existingPairs.has(pairKey)) continue;
-        const sim = cosineSimilarity(vec, cluster.centroidEmbedding);
-        if (sim >= SIMILARITY_THRESHOLD) {
-          toInsert.push({ clusterId: cluster.id, itemId: item.id, similarity: sim });
-          affectedClusterIds.add(cluster.id);
-        }
-      }
-    }
-
-    if (toInsert.length > 0) {
-      const CHUNK = 500;
-      for (let i = 0; i < toInsert.length; i += CHUNK) {
-        const chunk = toInsert.slice(i, i + CHUNK);
-        const inserted = await db.insert(clusterItems).values(chunk).onConflictDoNothing().returning();
-        newLinks += inserted.length;
-      }
-    }
+  for (let i = 0; i < rows.length; i += CHUNK) {
+    const chunk = rows.slice(i, i + CHUNK);
+    const values = chunk.map((r) => ({
+      clusterId: r.cluster_id,
+      itemId: r.item_id,
+      similarity: r.similarity,
+    }));
+    const inserted = await db.insert(clusterItems).values(values).onConflictDoNothing().returning();
+    newLinks += inserted.length;
+    for (const r of chunk) affectedClusterIds.add(r.cluster_id);
   }
 
+  // Recompute itemCount for affected clusters
   for (const clusterId of affectedClusterIds) {
     try {
       const [{ cnt }] = await db
@@ -93,6 +66,7 @@ export async function POST() {
     }
   }
 
+  // Refresh narrative stages
   if (affectedClusterIds.size > 0) {
     await refreshStages([...affectedClusterIds]);
   }
