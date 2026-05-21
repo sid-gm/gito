@@ -436,6 +436,76 @@ export default function ReportPage() {
         </div>
       </div>
 
+      {/* ── Timeline ───────────────────────────────────────────────────────── */}
+      {items.length > 0 && (() => {
+        const byDate: Record<string, ReportItem[]> = {};
+        for (const item of items) {
+          const key = item.publishedAt
+            ? new Date(item.publishedAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })
+            : "Unknown date";
+          (byDate[key] ??= []).push(item);
+        }
+        const days = Object.keys(byDate).sort((a, b) => {
+          const da = byDate[a][0].publishedAt;
+          const db = byDate[b][0].publishedAt;
+          if (!da) return 1;
+          if (!db) return -1;
+          return new Date(da).getTime() - new Date(db).getTime();
+        });
+        if (days.length < 2) return null;
+        return (
+          <>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", fontFamily: "var(--font-mono)", fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--ink-50)", padding: "0 0 8px", margin: "32px 0 14px", borderBottom: "1px solid var(--border-soft)" }}>
+              <span>Timeline</span>
+              <span style={{ fontSize: 10, color: "var(--ink-40)", letterSpacing: "0.06em" }}>{days.length} days of activity</span>
+            </div>
+            <div style={{ position: "relative", paddingLeft: 20 }}>
+              <div style={{ position: "absolute", left: 7, top: 8, bottom: 8, width: 1, background: "var(--border-soft)" }} />
+              {days.map((day, di) => {
+                const dayItems = byDate[day];
+                const platforms = [...new Set(dayItems.map((it) => it.platform))];
+                return (
+                  <div key={day} style={{ position: "relative", paddingBottom: di < days.length - 1 ? 20 : 0 }}>
+                    <div style={{ position: "absolute", left: -16, top: 6, width: 8, height: 8, borderRadius: "50%", background: "var(--accent)", border: "2px solid var(--paper)" }} />
+                    <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 6, flexWrap: "wrap" }}>
+                      <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--ink-70)" }}>{day}</span>
+                      <span style={{ fontFamily: "var(--font-mono)", fontSize: 10.5, color: "var(--ink-40)" }}>{dayItems.length} item{dayItems.length !== 1 ? "s" : ""}</span>
+                      <span style={{ display: "flex", gap: 4 }}>
+                        {platforms.map((p) => {
+                          const pc = getPlatform(p);
+                          return (
+                            <span key={p} style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, fontWeight: 600, letterSpacing: "0.04em", padding: "1px 4px", borderRadius: 3, background: pc.color, color: "#fff" }}>{pc.short}</span>
+                          );
+                        })}
+                      </span>
+                    </div>
+                    <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 4 }}>
+                      {dayItems.slice(0, 4).map((it, ii) => (
+                        <li key={ii} style={{ fontSize: 13, lineHeight: 1.4, color: "var(--ink-80)", paddingLeft: 12, position: "relative" }}>
+                          <span style={{ position: "absolute", left: 0, top: "0.45em", width: 4, height: 4, borderRadius: "50%", background: "var(--ink-30)", display: "block" }} />
+                          {it.url ? (
+                            <a href={it.url} target="_blank" rel="noopener noreferrer" style={{ color: "inherit", textDecoration: "none" }}
+                              onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.textDecoration = "underline"; }}
+                              onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.textDecoration = "none"; }}>
+                              {it.title ?? it.url}
+                            </a>
+                          ) : (
+                            it.title ?? "—"
+                          )}
+                        </li>
+                      ))}
+                      {dayItems.length > 4 && (
+                        <li style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--ink-40)", paddingLeft: 12 }}>+{dayItems.length - 4} more</li>
+                      )}
+                    </ul>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        );
+      })()}
+
       {/* ── Supporting evidence ────────────────────────────────────────────── */}
       {items.length > 0 && (
         <>
