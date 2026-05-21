@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { and, eq, inArray, min, max, sum } from "drizzle-orm";
+import { and, eq, inArray, min, max, sum, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { clusters, clusterItems, clusterMerges } from "@/lib/db/schema";
 
@@ -53,7 +53,16 @@ export async function POST(req: Request) {
       })
       .returning();
 
-    // Move all items from absorbed → surviving, tagging with mergeId
+    // Drop items from absorbed cluster that already exist in surviving (PK conflict guard)
+    await db.execute(
+      sql`DELETE FROM cluster_items
+          WHERE cluster_id = ${absorbedCluster.id}
+            AND item_id IN (
+              SELECT item_id FROM cluster_items WHERE cluster_id = ${surviving.id}
+            )`
+    );
+
+    // Move remaining items from absorbed → surviving, tagging with mergeId
     await db
       .update(clusterItems)
       .set({ clusterId: surviving.id, mergeId: merge.id })
