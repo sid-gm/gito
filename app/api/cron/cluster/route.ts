@@ -5,7 +5,7 @@ import { ingestedItems, clusters, clusterItems } from "@/lib/db/schema";
 import { verifyCronSecret } from "@/lib/cron-auth";
 import { computeNarrativeStage, NEWS_PLATFORMS } from "@/lib/narrative-stage";
 
-const SIMILARITY_THRESHOLD = 0.80;
+const SIMILARITY_THRESHOLD = 0.75;
 const BATCH_SIZE = 100;
 
 function cosineSimilarity(a: number[], b: number[]): number {

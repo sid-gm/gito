@@ -39,7 +39,7 @@ export async function collectTwitter(
   entity: TrackedEntity
 ): Promise<NewIngestedItem[]> {
   const query = encodeURIComponent(
-    `${toTwitterQuery(entity)} -is:retweet lang:en`
+    `${toTwitterQuery(entity)} lang:en`
   );
 
   const res = await fetch(
@@ -66,13 +66,14 @@ export async function collectTwitter(
 
   return data.data.map((tweet) => {
     const user = usersById.get(tweet.author_id);
+    const cleanBody = tweet.text.replace(/^RT @\w+:\s*/i, "").trim();
     return {
       entityId: entity.id,
       platform: "twitter" as const,
       externalId: tweet.id,
       url: `https://twitter.com/i/web/status/${tweet.id}`,
       title: null,
-      body: tweet.text,
+      body: cleanBody,
       author: user ? `@${user.username}` : tweet.author_id,
       publishedAt: new Date(tweet.created_at),
       rawJson: tweet,
