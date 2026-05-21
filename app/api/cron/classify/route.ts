@@ -134,7 +134,7 @@ export async function GET(req: Request) {
         const sentimentResult = await analyzeEntitySentiment({
           entityLabel: entity?.label ?? "Unknown",
           clusterLabel: cluster.label,
-          itemTitles: titles,
+          items: items.map((i) => ({ title: i.title, body: i.body, analystNote: null })),
         });
         sentimentScore = sentimentResult.score;
         sentimentLabel = sentimentResult.sentiment;
@@ -252,7 +252,7 @@ export async function GET(req: Request) {
       const sentimentResult = await analyzeEntitySentiment({
         entityLabel: entity?.label ?? "Unknown",
         clusterLabel: cluster.label,
-        itemTitles: titles,
+        items: items.map((i) => ({ title: i.title, body: i.body, analystNote: null })),
       });
 
       await db

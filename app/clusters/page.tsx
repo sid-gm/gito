@@ -289,6 +289,7 @@ export default function ClustersPage() {
   const { activeCompanyId } = useCompany();
   const router = useRouter();
   const [reportingId, setReportingId] = useState<string | null>(null);
+  const [analyzingSentimentId, setAnalyzingSentimentId] = useState<string | null>(null);
   const [clusterList, setClusterList] = useState<Cluster[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [entities, setEntities] = useState<Entity[]>([]);
@@ -432,6 +433,21 @@ export default function ClustersPage() {
       setReportingId(null);
     }
   }, [router]);
+
+  const analyzeSentiment = useCallback(async (clusterId: string) => {
+    setAnalyzingSentimentId(clusterId);
+    try {
+      const res = await fetch(`/api/clusters/${clusterId}/sentiment`, { method: "POST" });
+      if (res.ok) {
+        const { sentimentLabel, sentimentScore } = await res.json();
+        setClusterList((prev) =>
+          prev.map((c) => c.id === clusterId ? { ...c, sentimentLabel, sentimentScore } : c)
+        );
+      }
+    } finally {
+      setAnalyzingSentimentId(null);
+    }
+  }, []);
 
   const runCluster = useCallback(async () => {
     setClusterRunning(true); setClusterResult(null);
@@ -839,6 +855,15 @@ export default function ClustersPage() {
                           {expandLoading.has(cluster.id) ? "loading…" : isExpanded ? "show less" : `+ ${cluster.itemCount - 3} more`}
                         </button>
                       )}
+                      <button
+                        className="btn-ghost btn"
+                        style={{ fontSize: 10, padding: "2px 8px", fontFamily: "var(--font-mono)", letterSpacing: "0.04em" }}
+                        onClick={() => analyzeSentiment(cluster.id)}
+                        disabled={analyzingSentimentId === cluster.id}
+                        title="Re-analyze sentiment from all articles and notes"
+                      >
+                        {analyzingSentimentId === cluster.id ? "Analyzing…" : "◎ Sentiment"}
+                      </button>
                       <button
                         className="btn-ghost btn"
                         style={{ fontSize: 10, padding: "2px 8px", fontFamily: "var(--font-mono)", letterSpacing: "0.04em" }}

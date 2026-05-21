@@ -194,6 +194,7 @@ export default function NarrativesPage() {
   const { activeCompanyId } = useCompany();
   const router = useRouter();
   const [reportingId, setReportingId] = useState<string | null>(null);
+  const [analyzingSentimentId, setAnalyzingSentimentId] = useState<string | null>(null);
   const [narratives, setNarratives] = useState<Narrative[]>([]);
   const [entities, setEntities] = useState<Entity[]>([]);
   const [entityId, setEntityId] = useState("all");
@@ -223,6 +224,21 @@ export default function NarrativesPage() {
       setReportingId(null);
     }
   }, [router]);
+
+  const analyzeSentiment = useCallback(async (clusterId: string) => {
+    setAnalyzingSentimentId(clusterId);
+    try {
+      const res = await fetch(`/api/clusters/${clusterId}/sentiment`, { method: "POST" });
+      if (res.ok) {
+        const { sentimentLabel, sentimentScore } = await res.json();
+        setNarratives((prev) =>
+          prev.map((n) => n.id === clusterId ? { ...n, sentimentLabel, sentimentScore } : n)
+        );
+      }
+    } finally {
+      setAnalyzingSentimentId(null);
+    }
+  }, []);
 
   const fetchNarratives = useCallback(async () => {
     if (!activeCompanyId) return;
@@ -654,6 +670,15 @@ export default function NarrativesPage() {
                           : isExpanded
                           ? "show less"
                           : n.itemCount > 3 ? `+ ${n.itemCount - 3} more` : "show all"}
+                      </button>
+                      <button
+                        className="btn-ghost btn"
+                        style={{ fontSize: 10, padding: "2px 8px", fontFamily: "var(--font-mono)", letterSpacing: "0.04em" }}
+                        onClick={() => analyzeSentiment(n.id)}
+                        disabled={analyzingSentimentId === n.id}
+                        title="Re-analyze sentiment from all articles and notes"
+                      >
+                        {analyzingSentimentId === n.id ? "Analyzing…" : "◎ Sentiment"}
                       </button>
                       <button
                         className="btn-ghost btn"

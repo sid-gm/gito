@@ -9,19 +9,41 @@ export type SentimentResult = {
 export async function analyzeEntitySentiment(opts: {
   entityLabel: string;
   clusterLabel: string | null;
-  itemTitles: string[];
+  items: Array<{ title: string | null; body: string | null; analystNote: string | null }>;
+  periodNarratives?: Array<{ periodDate: string; narrative: string }>;
+  clusterAnalystNote?: string | null;
 }): Promise<SentimentResult> {
-  const { entityLabel, clusterLabel, itemTitles } = opts;
-  const itemList = itemTitles.map((t, i) => `${i + 1}. ${t}`).join("\n");
+  const { entityLabel, clusterLabel, items, periodNarratives = [], clusterAnalystNote } = opts;
+
+  const itemList = items
+    .slice(0, 20)
+    .map((item, i) => {
+      const title = item.title ?? "";
+      const bodyExcerpt = item.body?.slice(0, 200) ?? "";
+      const note = item.analystNote ? ` [analyst: ${item.analystNote}]` : "";
+      const parts = [title, bodyExcerpt].filter(Boolean).join(" | ");
+      return `${i + 1}. ${parts}${note}`;
+    })
+    .filter((line) => line.trim().length > 4)
+    .join("\n");
+
+  const timelineSection =
+    periodNarratives.length > 0
+      ? `\nNarrative timeline:\n${periodNarratives.map((p) => `[${p.periodDate}] ${p.narrative}`).join("\n")}\n`
+      : "";
+
+  const analystNoteSection = clusterAnalystNote
+    ? `\nAnalyst note on this story: "${clusterAnalystNote}"\n`
+    : "";
 
   const { text } = await generateText({
     model: openai("gpt-4o-mini"),
-    prompt: `You are analyzing public sentiment towards a specific entity based on news headlines. Respond ONLY with valid JSON.
+    prompt: `You are analyzing public sentiment towards a specific entity based on news coverage, article content, and analyst notes. Respond ONLY with valid JSON.
 
 Entity being tracked: "${entityLabel}"
 Story cluster: "${clusterLabel ?? "Unnamed cluster"}"
-
-Headlines:
+${analystNoteSection}${timelineSection}
+Article coverage (title | body excerpt | analyst note):
 ${itemList}
 
 Assess the OVERALL sentiment of this coverage towards "${entityLabel}" specifically (not the topic in general).
