@@ -38,9 +38,7 @@ interface TwitterUser {
 export async function collectTwitter(
   entity: TrackedEntity
 ): Promise<NewIngestedItem[]> {
-  const query = encodeURIComponent(
-    `${toTwitterQuery(entity)} lang:en`
-  );
+  const query = encodeURIComponent(toTwitterQuery(entity));
 
   const res = await fetch(
     `https://api.twitter.com/2/tweets/search/recent?query=${query}&max_results=25&tweet.fields=created_at,author_id&expansions=author_id&user.fields=username,name`,

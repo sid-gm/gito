@@ -26,7 +26,7 @@ export async function GET() {
   const results = await Promise.all(
     entities.map(async (entity) => {
       const sanitizedQuery = toTwitterQuery(entity.queryString, entity.label);
-      const rawQuery = `${sanitizedQuery} -is:retweet lang:en`;
+      const rawQuery = sanitizedQuery;
       const query = encodeURIComponent(rawQuery);
       const url = `https://api.twitter.com/2/tweets/search/recent?query=${query}&max_results=10&tweet.fields=created_at,author_id&expansions=author_id&user.fields=username,name`;
 
