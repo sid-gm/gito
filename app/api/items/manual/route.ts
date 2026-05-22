@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
+import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { ingestedItems } from "@/lib/db/schema";
+import { embedText } from "@/lib/ai/embed";
 import { z } from "zod";
 
 const schema = z.object({
@@ -35,6 +37,15 @@ export async function POST(req: Request) {
       rawJson: null,
     })
     .returning();
+
+  try {
+    const text = [title, itemBody].filter(Boolean).join("\n");
+    const vec = await embedText(text);
+    await db.update(ingestedItems).set({ embedding: vec }).where(eq(ingestedItems.id, item.id));
+    item.embedding = vec;
+  } catch (err) {
+    console.error("[items/manual] embed failed, story saved without embedding:", err);
+  }
 
   return NextResponse.json(item, { status: 201 });
 }
