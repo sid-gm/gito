@@ -20,6 +20,18 @@ const emptyForm = {
   googleAlertsFeedUrl: "",
 };
 
+function mergeTwitterHandle(queryString: string, handle: string): string {
+  const clean = handle.replace(/^@/, "").trim();
+  if (!clean) return queryString;
+  const withoutOld = queryString.replace(/\bfrom:\w+/gi, "").trim();
+  return [withoutOld, `from:${clean}`].filter(Boolean).join(" ");
+}
+
+function extractTwitterHandle(queryString: string): string {
+  const m = queryString.match(/\bfrom:(\w+)/i);
+  return m ? m[1] : "";
+}
+
 function fillSeries(
   sparse: { date: string; count: number }[],
   slots: number,
@@ -34,6 +46,9 @@ function fillSeries(
   });
 }
 
+const entityGlyph = (type: Entity["entityType"]) =>
+  type === "executive" ? "◉" : type === "product" ? "◧" : "◇";
+
 export default function TrackPage() {
   const { activeCompanyId } = useCompany();
   const [entities, setEntities] = useState<Entity[]>([]);
@@ -41,10 +56,26 @@ export default function TrackPage() {
   const [query, setQuery] = useState("");
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState(emptyForm);
+  const [twitterHandle, setTwitterHandle] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [sparklines, setSparklines] = useState<Record<string, number[]>>({});
   const [entityTotals, setEntityTotals] = useState<Record<string, number>>({});
+
+  // Modal state
+  const [selectedEntity, setSelectedEntity] = useState<Entity | null>(null);
+  const [editMode, setEditMode] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [editForm, setEditForm] = useState({
+    label: "",
+    queryString: "",
+    entityType: "keyword" as Entity["entityType"],
+    googleAlertsFeedUrl: "",
+    twitterHandle: "",
+  });
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState("");
+  const [deleting, setDeleting] = useState(false);
 
   const load = () => {
     if (!activeCompanyId) return;
@@ -71,6 +102,29 @@ export default function TrackPage() {
     });
   }, [entities]);
 
+  // Pre-fill edit form when modal opens
+  useEffect(() => {
+    if (!selectedEntity) return;
+    setEditMode(false);
+    setConfirmingDelete(false);
+    setEditError("");
+    setEditForm({
+      label: selectedEntity.label,
+      queryString: selectedEntity.queryString,
+      entityType: selectedEntity.entityType,
+      googleAlertsFeedUrl: selectedEntity.googleAlertsFeedUrl ?? "",
+      twitterHandle: extractTwitterHandle(selectedEntity.queryString),
+    });
+  }, [selectedEntity]);
+
+  // Escape key closes modal
+  useEffect(() => {
+    if (!selectedEntity) return;
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") setSelectedEntity(null); };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [selectedEntity]);
+
   const counts = useMemo(() => {
     const c = { all: entities.length, keyword: 0, executive: 0, product: 0 };
     for (const e of entities) c[e.entityType]++;
@@ -93,13 +147,15 @@ export default function TrackPage() {
     e.preventDefault();
     setSaving(true);
     setError("");
+    const finalQuery = mergeTwitterHandle(form.queryString, twitterHandle);
     const res = await fetch("/api/entities", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...form, companyId: activeCompanyId }),
+      body: JSON.stringify({ ...form, queryString: finalQuery, companyId: activeCompanyId }),
     });
     if (res.ok) {
       setForm(emptyForm);
+      setTwitterHandle("");
       setAdding(false);
       await load();
     } else {
@@ -108,11 +164,42 @@ export default function TrackPage() {
     setSaving(false);
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm("Delete this tracked entity?")) return;
-    await fetch(`/api/entities/${id}`, { method: "DELETE" });
+  const handleEditSave = async () => {
+    if (!selectedEntity) return;
+    setEditSaving(true);
+    setEditError("");
+    const finalQuery = mergeTwitterHandle(editForm.queryString, editForm.twitterHandle);
+    const res = await fetch(`/api/entities/${selectedEntity.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        label: editForm.label,
+        queryString: finalQuery,
+        entityType: editForm.entityType,
+        googleAlertsFeedUrl: editForm.googleAlertsFeedUrl,
+      }),
+    });
+    if (res.ok) {
+      setSelectedEntity(null);
+      await load();
+    } else {
+      setEditError("Failed to save changes.");
+    }
+    setEditSaving(false);
+  };
+
+  const handleDelete = async () => {
+    if (!selectedEntity) return;
+    setDeleting(true);
+    await fetch(`/api/entities/${selectedEntity.id}`, { method: "DELETE" });
+    setSelectedEntity(null);
+    setDeleting(false);
     await load();
   };
+
+  const modalSources = selectedEntity
+    ? ["hackernews", "reddit", "twitter"].concat(selectedEntity.googleAlertsFeedUrl ? ["google_alerts"] : [])
+    : [];
 
   return (
     <>
@@ -172,9 +259,7 @@ export default function TrackPage() {
                   onClick={() => setType(t)}
                 >
                   {t !== "all" && (
-                    <span className={`ebadge-glyph eg-${t}`}>
-                      {t === "executive" ? "◉" : t === "product" ? "◧" : "◇"}
-                    </span>
+                    <span className={`ebadge-glyph eg-${t}`}>{entityGlyph(t as Entity["entityType"])}</span>
                   )}
                   {t === "all" ? "All" : t[0].toUpperCase() + t.slice(1)}{" "}
                   <span className="seg-count">{counts[t]}</span>
@@ -214,22 +299,31 @@ export default function TrackPage() {
                       className={cx("seg-btn", form.entityType === t && "seg-btn-on")}
                       onClick={() => setForm((f) => ({ ...f, entityType: t }))}
                     >
-                      <span className={`ebadge-glyph eg-${t}`}>
-                        {t === "executive" ? "◉" : t === "product" ? "◧" : "◇"}
-                      </span>
+                      <span className={`ebadge-glyph eg-${t}`}>{entityGlyph(t)}</span>
                       {t[0].toUpperCase() + t.slice(1)}
                     </button>
                   ))}
                 </div>
               </Field>
               <Field
+                label="Twitter / X account"
+                hint="@handle of the account to track on X/Twitter — automatically added to the search query"
+              >
+                <input
+                  className="ipt mono"
+                  placeholder="@sama"
+                  value={twitterHandle}
+                  onChange={(e) => setTwitterHandle(e.target.value)}
+                />
+              </Field>
+              <Field
                 label="Search query"
-                hint='Boolean operators: "exact phrase" OR term1 OR term2 · use from:handle for Twitter accounts · commas are not supported'
+                hint='Boolean operators: "exact phrase" OR term1 OR term2 · commas are not supported'
                 full
               >
                 <input
                   className="ipt mono"
-                  placeholder='"Sam Altman" OR "sama" OR from:sama'
+                  placeholder='"Sam Altman" OR "sama"'
                   value={form.queryString}
                   onChange={(e) => setForm((f) => ({ ...f, queryString: e.target.value }))}
                   required
@@ -280,7 +374,6 @@ export default function TrackPage() {
                 <th style={{ width: 120 }}>Sources</th>
                 <th style={{ width: 150 }}>Volume</th>
                 <th style={{ width: 100 }}>Added</th>
-                <th style={{ width: 80 }} />
               </tr>
             </thead>
             <tbody>
@@ -293,10 +386,15 @@ export default function TrackPage() {
                   <tr key={e.id} className="entity-row">
                     <td>
                       <span className={cx("ebadge-glyph", `eg-${e.entityType}`)}>
-                        {e.entityType === "executive" ? "◉" : e.entityType === "product" ? "◧" : "◇"}
+                        {entityGlyph(e.entityType)}
                       </span>
                     </td>
-                    <td className="entity-label">{e.label}</td>
+                    <td
+                      className="entity-label entity-label-link"
+                      onClick={() => setSelectedEntity(e)}
+                    >
+                      {e.label}
+                    </td>
                     <td>
                       <span className={cx("type-pill", `type-${e.entityType}`)}>
                         {e.entityType}
@@ -321,15 +419,6 @@ export default function TrackPage() {
                     <td className="mono dim">
                       {new Date(e.createdAt).toLocaleDateString()}
                     </td>
-                    <td className="actions">
-                      <button
-                        className="iconbtn iconbtn-danger"
-                        title="Delete"
-                        onClick={() => handleDelete(e.id)}
-                      >
-                        ×
-                      </button>
-                    </td>
                   </tr>
                 );
               })}
@@ -344,6 +433,180 @@ export default function TrackPage() {
           )}
         </div>
       </div>
+
+      {/* Entity detail / edit modal */}
+      {selectedEntity && (
+        <div
+          style={{ position: "fixed", inset: 0, zIndex: 200, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center" }}
+          onClick={() => setSelectedEntity(null)}
+        >
+          <div
+            style={{ background: "var(--paper)", border: "1px solid var(--border)", borderRadius: 8, boxShadow: "0 8px 32px rgba(0,0,0,0.18)", width: 560, maxWidth: "94vw", maxHeight: "88vh", display: "flex", flexDirection: "column" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div style={{ padding: "14px 16px 12px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10 }}>
+              <span className={cx("ebadge-glyph", `eg-${selectedEntity.entityType}`)} style={{ fontSize: 16 }}>
+                {entityGlyph(selectedEntity.entityType)}
+              </span>
+              <span style={{ fontSize: 14, fontWeight: 600, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {selectedEntity.label}
+              </span>
+              <span className={cx("type-pill", `type-${selectedEntity.entityType}`)} style={{ flexShrink: 0 }}>
+                {selectedEntity.entityType}
+              </span>
+              <button className="btn btn-ghost" style={{ fontSize: 11, padding: "2px 8px", flexShrink: 0 }} onClick={() => setSelectedEntity(null)}>✕</button>
+            </div>
+
+            {/* Body */}
+            <div style={{ flex: 1, overflowY: "auto", padding: "16px" }}>
+              {confirmingDelete ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                  <div className="banner" style={{ background: "oklch(0.96 0.05 25)", color: "var(--err)", border: "1px solid oklch(0.86 0.10 25)" }}>
+                    This will permanently remove <strong>{selectedEntity.label}</strong> and all linked clusters. Ingested items will be kept but unlinked.
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                    <button className="btn btn-ghost" onClick={() => setConfirmingDelete(false)} disabled={deleting}>
+                      Cancel
+                    </button>
+                    <button
+                      className="btn"
+                      style={{ background: "var(--err)", color: "#fff", border: "none" }}
+                      onClick={handleDelete}
+                      disabled={deleting}
+                    >
+                      {deleting ? "Deleting…" : "Confirm delete"}
+                    </button>
+                  </div>
+                </div>
+              ) : editMode ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                  <Field label="Label" hint="Display name used everywhere">
+                    <input
+                      className="ipt"
+                      value={editForm.label}
+                      onChange={(e) => setEditForm((f) => ({ ...f, label: e.target.value }))}
+                    />
+                  </Field>
+                  <Field label="Type">
+                    <div className="seg">
+                      {(["keyword", "product", "executive"] as const).map((t) => (
+                        <button
+                          key={t}
+                          type="button"
+                          className={cx("seg-btn", editForm.entityType === t && "seg-btn-on")}
+                          onClick={() => setEditForm((f) => ({ ...f, entityType: t }))}
+                        >
+                          <span className={`ebadge-glyph eg-${t}`}>{entityGlyph(t)}</span>
+                          {t[0].toUpperCase() + t.slice(1)}
+                        </button>
+                      ))}
+                    </div>
+                  </Field>
+                  <Field
+                    label="Twitter / X account"
+                    hint="@handle of the account to track — automatically merged into the search query"
+                  >
+                    <input
+                      className="ipt mono"
+                      placeholder="@sama"
+                      value={editForm.twitterHandle}
+                      onChange={(e) => setEditForm((f) => ({ ...f, twitterHandle: e.target.value }))}
+                    />
+                  </Field>
+                  <Field
+                    label="Search query"
+                    hint='Boolean operators: "exact phrase" OR term1 OR term2'
+                  >
+                    <input
+                      className="ipt mono"
+                      value={editForm.queryString}
+                      onChange={(e) => setEditForm((f) => ({ ...f, queryString: e.target.value }))}
+                    />
+                  </Field>
+                  <Field label="Google Alerts RSS" hint="RSS feed URL from your Google Alert (optional)">
+                    <input
+                      className="ipt mono"
+                      placeholder="https://www.google.com/alerts/feeds/…"
+                      value={editForm.googleAlertsFeedUrl}
+                      onChange={(e) => setEditForm((f) => ({ ...f, googleAlertsFeedUrl: e.target.value }))}
+                    />
+                  </Field>
+                  {editError && <span style={{ color: "var(--err)", fontSize: 12 }}>{editError}</span>}
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+                  {[
+                    {
+                      label: "Search query",
+                      value: <code className="codepill" style={{ fontSize: 12, whiteSpace: "pre-wrap", wordBreak: "break-all" }}>{selectedEntity.queryString}</code>,
+                    },
+                    ...(extractTwitterHandle(selectedEntity.queryString)
+                      ? [{
+                          label: "Twitter / X account",
+                          value: <span className="mono" style={{ fontSize: 13 }}>@{extractTwitterHandle(selectedEntity.queryString)}</span>,
+                        }]
+                      : []),
+                    {
+                      label: "Google Alerts",
+                      value: selectedEntity.googleAlertsFeedUrl
+                        ? <a href={selectedEntity.googleAlertsFeedUrl} target="_blank" rel="noreferrer" className="mono" style={{ fontSize: 11, color: "var(--accent)", wordBreak: "break-all" }}>{selectedEntity.googleAlertsFeedUrl}</a>
+                        : <span style={{ color: "var(--ink-40)", fontSize: 13 }}>—</span>,
+                    },
+                    {
+                      label: "Sources",
+                      value: (
+                        <div className="src-stack" style={{ paddingTop: 2 }}>
+                          {modalSources.map((s) => <PlatformChip key={s} platform={s} />)}
+                        </div>
+                      ),
+                    },
+                    {
+                      label: "Added",
+                      value: <span className="mono" style={{ fontSize: 13 }}>{new Date(selectedEntity.createdAt).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" })}</span>,
+                    },
+                  ].map(({ label, value }) => (
+                    <div key={label} style={{ display: "flex", gap: 16, padding: "10px 0", borderBottom: "1px solid var(--border-soft)" }}>
+                      <div style={{ width: 130, flexShrink: 0, fontSize: 11.5, fontWeight: 500, color: "var(--ink-60)", fontFamily: "var(--font-mono)", paddingTop: 2 }}>{label}</div>
+                      <div style={{ flex: 1, minWidth: 0 }}>{value}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            {!confirmingDelete && (
+              <div style={{ padding: "10px 16px", borderTop: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                {editMode ? (
+                  <>
+                    <div />
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button className="btn btn-ghost" onClick={() => setEditMode(false)} disabled={editSaving}>Cancel</button>
+                      <button className="btn btn-primary" onClick={handleEditSave} disabled={editSaving}>
+                        {editSaving ? "Saving…" : "Save changes"}
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      className="btn btn-ghost"
+                      style={{ color: "var(--err)" }}
+                      onClick={() => setConfirmingDelete(true)}
+                    >
+                      Delete…
+                    </button>
+                    <button className="btn btn-primary" onClick={() => setEditMode(true)}>
+                      Edit
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </>
   );
 }

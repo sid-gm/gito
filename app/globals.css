@@ -406,6 +406,8 @@ input, select, textarea { font: inherit; color: inherit; }
 .tbl-title a:hover { text-decoration: underline; }
 .tbl-entities .entity-row td { padding-top: 12px; padding-bottom: 12px; }
 .entity-label { font-weight: 600; }
+.entity-label-link { cursor: pointer; }
+.entity-label-link:hover { text-decoration: underline; color: var(--accent); }
 .type-pill { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; padding: 2px 7px; border-radius: 3px; }
 .type-keyword   { background: oklch(0.95 0.05 290); color: oklch(0.40 0.16 290); }
 .type-product   { background: oklch(0.95 0.05 60);  color: oklch(0.40 0.14 60);  }
