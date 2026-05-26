@@ -8,6 +8,13 @@
       "when": 1779154826306,
       "tag": "0000_grey_thunderbolt",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1779825009964,
+      "tag": "0001_graceful_ikaris",
+      "breakpoints": true
     }
   ]
 }

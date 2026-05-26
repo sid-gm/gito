@@ -130,6 +130,8 @@ export const clusters = pgTable("clusters", {
   sentimentScore: real("sentiment_score"),
   sentimentLabel: text("sentiment_label"),
   sentimentAnalyzedAt: timestamp("sentiment_analyzed_at"),
+  // LLM-suggested keywords when the cluster was formed
+  suggestedKeywords: jsonb("suggested_keywords").$type<string[]>(),
 });
 
 // Tracks merge history — one row per absorbed cluster

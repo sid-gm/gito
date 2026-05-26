@@ -54,6 +54,11 @@ export async function POST() {
       )
     `);
 
+    await db.execute(sql`
+      ALTER TABLE clusters
+      ADD COLUMN IF NOT EXISTS suggested_keywords JSONB
+    `);
+
     return NextResponse.json({ ok: true, message: "Migration applied" });
   } catch (err) {
     console.error("[POST /api/migrate]", err);
