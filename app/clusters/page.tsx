@@ -67,6 +67,7 @@ type Cluster = {
   analystNote: string | null;
   sentimentScore: number | null;
   sentimentLabel: string | null;
+  suggestedKeywords: string[] | null;
   topItems: ClusterItem[];
   platforms: string[];
   trackedEntities: Array<{ id: string; label: string }>;
@@ -294,7 +295,7 @@ export default function ClustersPage() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [entities, setEntities] = useState<Entity[]>([]);
   const [entityId, setEntityId] = useState("all");
-  const [sort, setSort] = useState("size");
+  const [sort, setSort] = useState("activity");
   const [hideSingletons, setHideSingletons] = useState(true);
   const [classificationFilter, setClassificationFilter] = useState("all");
 
@@ -880,6 +881,16 @@ export default function ClustersPage() {
                       {cluster.trackedEntities.map((e) => (
                         <span key={e.id} style={{ fontSize: 10, fontFamily: "var(--font-mono)", padding: "2px 8px", borderRadius: 99, background: "color-mix(in oklch, var(--accent) 8%, var(--paper))", color: "var(--ink-60)", border: "1px solid color-mix(in oklch, var(--accent) 18%, transparent)", whiteSpace: "nowrap" }}>
                           {e.label}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {cluster.suggestedKeywords && cluster.suggestedKeywords.length > 0 && (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6, paddingTop: 6, borderTop: "1px solid var(--ink-10)", alignItems: "center" }}>
+                      <span style={{ fontSize: 9, fontFamily: "var(--font-mono)", textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--ink-30)", marginRight: 2 }}>suggested</span>
+                      {cluster.suggestedKeywords.map((kw) => (
+                        <span key={kw} style={{ fontSize: 10, fontFamily: "var(--font-mono)", padding: "2px 8px", borderRadius: 99, background: "color-mix(in oklch, var(--warn) 8%, var(--paper))", color: "color-mix(in oklch, var(--warn) 70%, var(--ink))", border: "1px solid color-mix(in oklch, var(--warn) 25%, transparent)", whiteSpace: "nowrap" }}>
+                          {kw}
                         </span>
                       ))}
                     </div>

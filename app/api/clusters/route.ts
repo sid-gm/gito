@@ -111,6 +111,7 @@ export async function GET(req: Request) {
       analystNote: clusters.analystNote,
       sentimentScore: clusters.sentimentScore,
       sentimentLabel: clusters.sentimentLabel,
+      suggestedKeywords: clusters.suggestedKeywords,
     })
     .from(clusters)
     .where(and(...baseConditions))
