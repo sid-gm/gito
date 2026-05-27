@@ -15,13 +15,15 @@ export async function GET(req: Request) {
   if (entityId) baseConditions.push(eq(clusters.entityId, entityId));
 
   const companyId = searchParams.get("companyId") ?? undefined;
+  let companyEntityIds: string[] = [];
   if (companyId) {
-    const entityIds = await db
+    const entityRows = await db
       .select({ id: trackedEntities.id })
       .from(trackedEntities)
       .where(eq(trackedEntities.companyId, companyId));
-    if (entityIds.length > 0) {
-      baseConditions.push(inArray(clusters.entityId, entityIds.map((e) => e.id)));
+    if (entityRows.length > 0) {
+      companyEntityIds = entityRows.map((e) => e.id);
+      baseConditions.push(inArray(clusters.entityId, companyEntityIds));
     } else {
       return NextResponse.json([]);
     }
@@ -119,22 +121,31 @@ export async function GET(req: Request) {
 
   const filtered = allClusters;
 
-  // Stats (no extra filters — always show total picture)
+  // Stats scoped to the same company/entity as the main query
   const statsConditions = [isNull(clusters.archivedAt)];
   if (entityId) statsConditions.push(eq(clusters.entityId, entityId));
+  if (companyId && companyEntityIds.length > 0) statsConditions.push(inArray(clusters.entityId, companyEntityIds));
 
   const [clusterStats] = await db
     .select({ total: count(clusters.id), avgSize: avg(clusters.itemCount) })
     .from(clusters)
     .where(and(...statsConditions));
 
-  const [itemStats] = await db
-    .select({ totalItems: count(ingestedItems.id) })
-    .from(ingestedItems);
+  const itemStatsWhere = entityId
+    ? eq(ingestedItems.entityId, entityId)
+    : companyEntityIds.length > 0
+      ? inArray(ingestedItems.entityId, companyEntityIds)
+      : undefined;
+
+  const [itemStats] = itemStatsWhere
+    ? await db.select({ totalItems: count(ingestedItems.id) }).from(ingestedItems).where(itemStatsWhere)
+    : await db.select({ totalItems: count(ingestedItems.id) }).from(ingestedItems);
 
   const [clusteredStats] = await db
     .select({ itemsClustered: count(clusterItems.itemId) })
-    .from(clusterItems);
+    .from(clusterItems)
+    .innerJoin(clusters, eq(clusterItems.clusterId, clusters.id))
+    .where(and(...statsConditions));
 
   // Fetch all items for visible clusters in one query, then group in memory
   const clusterIds = filtered.map((c) => c.id);
