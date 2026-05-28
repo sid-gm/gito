@@ -3,35 +3,69 @@ import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { clusters, clusterItems, ingestedItems, trackedEntities, companies } from "@/lib/db/schema";
 
-// Bubble positions (SVG viewBox 1080×640) — pre-placed for 1–8 clusters
-const BUBBLE_PRESETS: Array<Array<{ x: number; y: number }>> = [
-  [{ x: 540, y: 320 }],
-  [{ x: 350, y: 300 }, { x: 730, y: 340 }],
-  [{ x: 540, y: 160 }, { x: 280, y: 480 }, { x: 800, y: 440 }],
-  [{ x: 360, y: 200 }, { x: 760, y: 180 }, { x: 820, y: 500 }, { x: 280, y: 520 }],
-  [{ x: 410, y: 480 }, { x: 800, y: 245 }, { x: 870, y: 660 }, { x: 220, y: 760 }, { x: 180, y: 230 }],
-  [{ x: 540, y: 160 }, { x: 820, y: 240 }, { x: 940, y: 480 }, { x: 700, y: 680 }, { x: 260, y: 680 }, { x: 160, y: 380 }],
-  [{ x: 540, y: 160 }, { x: 800, y: 220 }, { x: 950, y: 420 }, { x: 870, y: 620 }, { x: 550, y: 720 }, { x: 200, y: 640 }, { x: 170, y: 360 }],
-  [{ x: 540, y: 150 }, { x: 780, y: 220 }, { x: 950, y: 400 }, { x: 900, y: 580 }, { x: 650, y: 700 }, { x: 340, y: 700 }, { x: 160, y: 540 }, { x: 180, y: 310 }],
-];
+const TZ = "America/Los_Angeles";
+
+function getTzAbbr(d: Date): string {
+  return (
+    new Intl.DateTimeFormat("en-US", { timeZone: TZ, timeZoneName: "short" })
+      .formatToParts(d)
+      .find((p) => p.type === "timeZoneName")?.value ?? "PT"
+  );
+}
+
+function getPacificParts(d: Date) {
+  const fmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: TZ,
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hour12: false,
+  });
+  const parts = Object.fromEntries(fmt.formatToParts(d).map((p) => [p.type, p.value]));
+  return {
+    year: parseInt(parts.year),
+    month: parseInt(parts.month),
+    day: parseInt(parts.day),
+    hour: parseInt(parts.hour === "24" ? "0" : parts.hour),
+    minute: parseInt(parts.minute),
+  };
+}
+
+function pacificMidnight(d: Date): Date {
+  const p = getPacificParts(d);
+  // Build a UTC Date that represents midnight Pacific on this calendar day
+  const utcMidnightNaive = Date.UTC(p.year, p.month - 1, p.day);
+  const offsetMs = d.getTime() - new Date(d.toLocaleDateString("en-CA", { timeZone: TZ }) + "T00:00:00").getTime();
+  return new Date(utcMidnightNaive + offsetMs);
+}
 
 function formatDate(d: Date): string {
-  return d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" });
+  return d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: TZ });
 }
 
 function getDayName(d: Date): string {
-  return d.toLocaleDateString("en-US", { weekday: "short", timeZone: "UTC" });
+  return d.toLocaleDateString("en-US", { weekday: "short", timeZone: TZ });
 }
 
-function formatFirstSeen(firstSeenAt: Date, todayStart: Date): string {
+function formatFirstSeen(firstSeenAt: Date, todayStart: Date, tz: string): string {
   if (firstSeenAt < todayStart) {
     const daysAgo = Math.floor((todayStart.getTime() - firstSeenAt.getTime()) / 86400000);
     if (daysAgo === 1) return "yesterday";
     return `${daysAgo}d ago`;
   }
-  const h = firstSeenAt.getUTCHours().toString().padStart(2, "0");
-  const m = firstSeenAt.getUTCMinutes().toString().padStart(2, "0");
-  return `${h}:${m}`;
+  const p = getPacificParts(firstSeenAt);
+  return `${p.hour.toString().padStart(2, "0")}:${p.minute.toString().padStart(2, "0")} ${tz}`;
+}
+
+function computePositions(n: number): Array<{ x: number; y: number }> {
+  if (n === 1) return [{ x: 540, y: 320 }];
+  const cx = 540, cy = 320;
+  const ringRadius = n <= 2 ? 200 : n <= 4 ? 210 : n <= 6 ? 240 : 260;
+  return Array.from({ length: n }, (_, i) => {
+    const angle = (2 * Math.PI * i) / n - Math.PI / 2;
+    return {
+      x: Math.round(cx + ringRadius * Math.cos(angle)),
+      y: Math.round(cy + ringRadius * Math.sin(angle)),
+    };
+  });
 }
 
 export async function GET(req: Request) {
@@ -40,8 +74,9 @@ export async function GET(req: Request) {
   if (!companyId) return NextResponse.json({ error: "companyId required" }, { status: 400 });
 
   const now = new Date();
-  const todayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-  const currentHour = now.getUTCHours();
+  const tz = getTzAbbr(now);
+  const todayStart = pacificMidnight(now);
+  const currentHour = getPacificParts(now).hour;
 
   const [company] = await db.select({ name: companies.name }).from(companies).where(eq(companies.id, companyId));
 
@@ -51,7 +86,7 @@ export async function GET(req: Request) {
   const empty = {
     date: formatDate(now),
     day: getDayName(now),
-    tz: "UTC",
+    tz,
     company: company?.name ?? "—",
     currentHour,
     clusters: [],
@@ -90,7 +125,6 @@ export async function GET(req: Request) {
     .where(inArray(clusterItems.clusterId, clusterIds))
     .orderBy(desc(ingestedItems.createdAt));
 
-  // Group by cluster, compute hourly cumulative counts + collect items
   type ItemRow = { platform: string; title: string | null; author: string | null; createdAt: Date };
   const itemsByCluster = new Map<string, ItemRow[]>();
   const platformsByCluster = new Map<string, Set<string>>();
@@ -104,19 +138,18 @@ export async function GET(req: Request) {
   }
 
   const topN = Math.min(clusterRows.length, 8);
-  const positions = BUBBLE_PRESETS[topN - 1] ?? BUBBLE_PRESETS[0];
+  const positions = computePositions(topN);
 
   const result = clusterRows.slice(0, topN).map((c, i) => {
     const items = itemsByCluster.get(c.id) ?? [];
     const platforms = [...(platformsByCluster.get(c.id) ?? new Set())];
 
-    // Compute hourly cumulative counts
     const baseCount = items.filter((it) => it.createdAt < todayStart).length;
     const todayItems = items.filter((it) => it.createdAt >= todayStart);
 
     const hourCounts = new Map<number, number>();
     for (const it of todayItems) {
-      const h = it.createdAt.getUTCHours();
+      const h = getPacificParts(it.createdAt).hour;
       hourCounts.set(h, (hourCounts.get(h) ?? 0) + 1);
     }
 
@@ -127,13 +160,11 @@ export async function GET(req: Request) {
       hourly.push(cumulative);
     }
 
-    // Top items for the detail panel (most recent 12)
     const displayItems = items.slice(0, 12).map((it) => {
-      const d = it.createdAt;
-      const beforeToday = d < todayStart;
+      const beforeToday = it.createdAt < todayStart;
       const time = beforeToday
-        ? `${Math.floor((todayStart.getTime() - d.getTime()) / 86400000)}d ago`
-        : `${d.getUTCHours().toString().padStart(2, "0")}:${d.getUTCMinutes().toString().padStart(2, "0")}`;
+        ? `${Math.floor((todayStart.getTime() - it.createdAt.getTime()) / 86400000)}d ago`
+        : (() => { const p = getPacificParts(it.createdAt); return `${p.hour.toString().padStart(2, "0")}:${p.minute.toString().padStart(2, "0")}`; })();
       return {
         platform: it.platform,
         title: it.title ?? "—",
@@ -148,7 +179,7 @@ export async function GET(req: Request) {
       short: (c.label ?? `Cluster ${i + 1}`).split(" ").slice(0, 3).join(" "),
       stage: c.narrativeStage ?? "relaxed",
       velocity: c.velocity24h ?? 0,
-      firstSeen: formatFirstSeen(c.firstSeenAt, todayStart),
+      firstSeen: formatFirstSeen(c.firstSeenAt, todayStart, tz),
       platforms,
       x: positions[i]?.x ?? 540,
       y: positions[i]?.y ?? 320,
@@ -161,7 +192,7 @@ export async function GET(req: Request) {
   return NextResponse.json({
     date: formatDate(now),
     day: getDayName(now),
-    tz: "UTC",
+    tz,
     company: company?.name ?? "—",
     currentHour,
     clusters: result,
