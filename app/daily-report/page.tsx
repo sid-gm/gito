@@ -53,12 +53,68 @@ function stageColor(stage: string) {
 const VIEW_W = 1080;
 const VIEW_H = 640;
 const R_MIN = 36;
-const R_MAX = 200;
 
-function radiusFor(count: number, maxFinal: number): number {
+function getMaxRadius(n: number): number {
+  if (n <= 2) return 200;
+  if (n <= 4) return 180;
+  if (n <= 6) return 155;
+  return 130;
+}
+
+function radiusFor(count: number, maxFinal: number, rMax: number): number {
   if (count <= 0) return 0;
   const k = Math.sqrt(count / Math.max(maxFinal, 1));
-  return R_MIN + (R_MAX - R_MIN) * k;
+  return R_MIN + (rMax - R_MIN) * k;
+}
+
+// Force simulation: push overlapping bubbles apart, attract toward center.
+// Runs on final-hour radii so positions are stable during animation.
+function solvePositions(
+  clusters: ReportCluster[],
+  maxFinal: number,
+  rMax: number,
+): Array<{ x: number; y: number }> {
+  const n = clusters.length;
+  const radii = clusters.map((c) =>
+    radiusFor(c.hourly[c.hourly.length - 1] ?? 0, maxFinal, rMax),
+  );
+  const pos = clusters.map((c) => ({ x: c.x, y: c.y }));
+  const CX = VIEW_W / 2, CY = VIEW_H / 2;
+  const PAD = 8;
+
+  for (let iter = 0; iter < 500; iter++) {
+    const attract = 0.018 * Math.pow(1 - iter / 500, 1.5);
+
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        const dx = pos[j].x - pos[i].x;
+        const dy = pos[j].y - pos[i].y;
+        const dist = Math.sqrt(dx * dx + dy * dy) || 0.001;
+        const minDist = radii[i] + radii[j] + PAD;
+        if (dist < minDist) {
+          const push = (minDist - dist) / 2 + 0.5;
+          const nx = dx / dist, ny = dy / dist;
+          pos[i].x -= nx * push;
+          pos[i].y -= ny * push;
+          pos[j].x += nx * push;
+          pos[j].y += ny * push;
+        }
+      }
+    }
+
+    for (let i = 0; i < n; i++) {
+      pos[i].x += (CX - pos[i].x) * attract;
+      pos[i].y += (CY - pos[i].y) * attract;
+    }
+  }
+
+  for (let i = 0; i < n; i++) {
+    const r = radii[i] + 4;
+    pos[i].x = Math.max(r, Math.min(VIEW_W - r, pos[i].x));
+    pos[i].y = Math.max(r, Math.min(VIEW_H - r, pos[i].y));
+  }
+
+  return pos;
 }
 
 function bubbleFontSize(r: number): number {
@@ -97,11 +153,13 @@ function useAnimatedHour(maxHour: number) {
 // ─── BubbleGraph ──────────────────────────────────────────────────────────────
 
 function DRBubble({
-  cluster, currentHour, maxFinal, selectedId, onSelect, anyHovered, hovered, onHover,
+  cluster, pos, currentHour, maxFinal, rMax, selectedId, onSelect, anyHovered, hovered, onHover,
 }: {
   cluster: ReportCluster;
+  pos: { x: number; y: number };
   currentHour: number;
   maxFinal: number;
+  rMax: number;
   selectedId: string | null;
   onSelect: (id: string) => void;
   anyHovered: boolean;
@@ -109,7 +167,7 @@ function DRBubble({
   onHover: (id: string | null) => void;
 }) {
   const count = cluster.hourly[currentHour] ?? 0;
-  const r = radiusFor(count, maxFinal);
+  const r = radiusFor(count, maxFinal, rMax);
   const color = stageColor(cluster.stage);
   const selected = selectedId === cluster.id;
   const dim = (!!selectedId && !selected) || (anyHovered && !hovered);
@@ -121,7 +179,7 @@ function DRBubble({
 
   return (
     <g
-      transform={`translate(${cluster.x}, ${cluster.y})`}
+      transform={`translate(${pos.x}, ${pos.y})`}
       style={{ opacity: dim ? 0.32 : 1, transition: "opacity 180ms ease" }}
       onMouseEnter={() => onHover(cluster.id)}
       onMouseLeave={() => onHover(null)}
@@ -170,7 +228,17 @@ function DRBubbleGraph({ clusters, currentHour, selectedId, onSelect }: {
   onSelect: (id: string) => void;
 }) {
   const [hovered, setHovered] = useState<string | null>(null);
-  const maxFinal = Math.max(...clusters.map((c) => c.hourly[c.hourly.length - 1] ?? 0), 1);
+  const maxFinal = useMemo(
+    () => Math.max(...clusters.map((c) => c.hourly[c.hourly.length - 1] ?? 0), 1),
+    [clusters],
+  );
+  const rMax = getMaxRadius(clusters.length);
+  // Positions are stable — computed once from final radii so bubbles don't jump during playback.
+  const positions = useMemo(
+    () => solvePositions(clusters, maxFinal, rMax),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [clusters],
+  );
 
   return (
     <svg
@@ -178,12 +246,14 @@ function DRBubbleGraph({ clusters, currentHour, selectedId, onSelect }: {
       className="dr-bubble-svg"
       preserveAspectRatio="xMidYMid meet"
     >
-      {clusters.map((c) => (
+      {clusters.map((c, i) => (
         <DRBubble
           key={c.id}
           cluster={c}
+          pos={positions[i] ?? { x: c.x, y: c.y }}
           currentHour={currentHour}
           maxFinal={maxFinal}
+          rMax={rMax}
           selectedId={selectedId}
           onSelect={onSelect}
           anyHovered={!!hovered}
@@ -197,11 +267,12 @@ function DRBubbleGraph({ clusters, currentHour, selectedId, onSelect }: {
 
 // ─── Timeline ─────────────────────────────────────────────────────────────────
 
-function DRTimeline({ currentHour, maxHour, onScrub, playing }: {
+function DRTimeline({ currentHour, maxHour, onScrub, playing, tz }: {
   currentHour: number;
   maxHour: number;
   onScrub: (h: number) => void;
   playing: boolean;
+  tz: string;
 }) {
   const ticks = Array.from({ length: 24 }, (_, i) => i);
   const hh = currentHour.toString().padStart(2, "0");
@@ -214,7 +285,7 @@ function DRTimeline({ currentHour, maxHour, onScrub, playing }: {
             ? <Dot color="var(--accent)" pulse />
             : <span style={{ width: 6, height: 6, background: "var(--ink-30)", borderRadius: "50%", display: "inline-block" }} />
           }
-          <span>{hh}:00 UTC</span>
+          <span>{hh}:00 {tz}</span>
         </div>
       </div>
       <div className="dr-tl-bar">
@@ -457,6 +528,7 @@ export default function DailyReportPage() {
                   maxHour={maxHour}
                   onScrub={scrub}
                   playing={playing}
+                  tz={data.tz}
                 />
               </div>
             </div>
