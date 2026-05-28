@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { and, desc, eq, inArray, isNull } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, lt } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { clusters, clusterItems, ingestedItems, trackedEntities, companies } from "@/lib/db/schema";
 
@@ -29,12 +29,19 @@ function getPacificParts(d: Date) {
   };
 }
 
-function pacificMidnight(d: Date): Date {
-  const p = getPacificParts(d);
-  // Build a UTC Date that represents midnight Pacific on this calendar day
-  const utcMidnightNaive = Date.UTC(p.year, p.month - 1, p.day);
-  const offsetMs = d.getTime() - new Date(d.toLocaleDateString("en-CA", { timeZone: TZ }) + "T00:00:00").getTime();
-  return new Date(utcMidnightNaive + offsetMs);
+// Returns the UTC Date representing midnight Pacific for a given YYYY-MM-DD (Pacific) string.
+// Tries UTC-7 (PDT) then UTC-8 (PST) and picks whichever lands at hour 0 in Pacific.
+function pacificMidnightFromStr(dateStr: string): Date {
+  for (const utcHour of [7, 8]) {
+    const candidate = new Date(`${dateStr}T${String(utcHour).padStart(2, "0")}:00:00.000Z`);
+    if (
+      candidate.toLocaleDateString("en-CA", { timeZone: TZ }) === dateStr &&
+      getPacificParts(candidate).hour === 0
+    ) {
+      return candidate;
+    }
+  }
+  return new Date(`${dateStr}T08:00:00.000Z`); // fallback: PST
 }
 
 function formatDate(d: Date): string {
@@ -45,9 +52,9 @@ function getDayName(d: Date): string {
   return d.toLocaleDateString("en-US", { weekday: "short", timeZone: TZ });
 }
 
-function formatFirstSeen(firstSeenAt: Date, todayStart: Date, tz: string): string {
-  if (firstSeenAt < todayStart) {
-    const daysAgo = Math.floor((todayStart.getTime() - firstSeenAt.getTime()) / 86400000);
+function formatFirstSeen(firstSeenAt: Date, dayStart: Date, tz: string): string {
+  if (firstSeenAt < dayStart) {
+    const daysAgo = Math.floor((dayStart.getTime() - firstSeenAt.getTime()) / 86400000);
     if (daysAgo === 1) return "yesterday";
     return `${daysAgo}d ago`;
   }
@@ -71,28 +78,42 @@ function computePositions(n: number): Array<{ x: number; y: number }> {
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const companyId = searchParams.get("companyId");
+  const dateParam = searchParams.get("date"); // optional YYYY-MM-DD in Pacific
   if (!companyId) return NextResponse.json({ error: "companyId required" }, { status: 400 });
 
   const now = new Date();
   const tz = getTzAbbr(now);
-  const todayStart = pacificMidnight(now);
-  const currentHour = getPacificParts(now).hour;
+  const todayKey = now.toLocaleDateString("en-CA", { timeZone: TZ });
+  const requestedKey = dateParam ?? todayKey;
+  const isToday = requestedKey === todayKey;
+
+  const dayStart = pacificMidnightFromStr(requestedKey);
+  // +25h safely clears any DST transition before finding next midnight
+  const dayEnd = pacificMidnightFromStr(
+    new Date(dayStart.getTime() + 25 * 60 * 60 * 1000).toLocaleDateString("en-CA", { timeZone: TZ }),
+  );
+  const currentHour = isToday ? getPacificParts(now).hour : 23;
 
   const [company] = await db.select({ name: companies.name }).from(companies).where(eq(companies.id, companyId));
 
-  const entityRows = await db.select({ id: trackedEntities.id }).from(trackedEntities).where(eq(trackedEntities.companyId, companyId));
+  const entityRows = await db
+    .select({ id: trackedEntities.id })
+    .from(trackedEntities)
+    .where(eq(trackedEntities.companyId, companyId));
   const entityIds = entityRows.map((e) => e.id);
 
-  const empty = {
-    date: formatDate(now),
-    day: getDayName(now),
+  const emptyResponse = {
+    date: formatDate(dayStart),
+    day: getDayName(dayStart),
+    dateKey: requestedKey,
+    todayKey,
     tz,
     company: company?.name ?? "—",
     currentHour,
     clusters: [],
   };
 
-  if (entityIds.length === 0) return NextResponse.json(empty);
+  if (entityIds.length === 0) return NextResponse.json(emptyResponse);
 
   const clusterRows = await db
     .select({
@@ -108,7 +129,7 @@ export async function GET(req: Request) {
     .where(and(isNull(clusters.archivedAt), inArray(clusters.entityId, entityIds)))
     .orderBy(desc(clusters.itemCount));
 
-  if (clusterRows.length === 0) return NextResponse.json(empty);
+  if (clusterRows.length === 0) return NextResponse.json(emptyResponse);
 
   const clusterIds = clusterRows.map((c) => c.id);
 
@@ -122,7 +143,11 @@ export async function GET(req: Request) {
     })
     .from(clusterItems)
     .innerJoin(ingestedItems, eq(clusterItems.itemId, ingestedItems.id))
-    .where(inArray(clusterItems.clusterId, clusterIds))
+    .where(and(
+      inArray(clusterItems.clusterId, clusterIds),
+      gte(ingestedItems.createdAt, dayStart),
+      lt(ingestedItems.createdAt, dayEnd),
+    ))
     .orderBy(desc(ingestedItems.createdAt));
 
   type ItemRow = { platform: string; title: string | null; author: string | null; createdAt: Date };
@@ -137,18 +162,19 @@ export async function GET(req: Request) {
     itemsByCluster.get(cid)!.push({ platform: row.platform, title: row.title, author: row.author, createdAt: row.createdAt });
   }
 
-  const topN = Math.min(clusterRows.length, 8);
+  // Only surface clusters that had activity on this specific day
+  const activeClusters = clusterRows.filter((c) => (itemsByCluster.get(c.id)?.length ?? 0) > 0);
+  if (activeClusters.length === 0) return NextResponse.json(emptyResponse);
+
+  const topN = Math.min(activeClusters.length, 8);
   const positions = computePositions(topN);
 
-  const result = clusterRows.slice(0, topN).map((c, i) => {
+  const result = activeClusters.slice(0, topN).map((c, i) => {
     const items = itemsByCluster.get(c.id) ?? [];
     const platforms = [...(platformsByCluster.get(c.id) ?? new Set())];
 
-    const baseCount = items.filter((it) => it.createdAt < todayStart).length;
-    const todayItems = items.filter((it) => it.createdAt >= todayStart);
-
     const hourCounts = new Map<number, number>();
-    for (const it of todayItems) {
+    for (const it of items) {
       const h = getPacificParts(it.createdAt).hour;
       hourCounts.set(h, (hourCounts.get(h) ?? 0) + 1);
     }
@@ -161,14 +187,11 @@ export async function GET(req: Request) {
     }
 
     const displayItems = items.slice(0, 12).map((it) => {
-      const beforeToday = it.createdAt < todayStart;
-      const time = beforeToday
-        ? `${Math.floor((todayStart.getTime() - it.createdAt.getTime()) / 86400000)}d ago`
-        : (() => { const p = getPacificParts(it.createdAt); return `${p.hour.toString().padStart(2, "0")}:${p.minute.toString().padStart(2, "0")}`; })();
+      const p = getPacificParts(it.createdAt);
       return {
         platform: it.platform,
         title: it.title ?? "—",
-        time,
+        time: `${p.hour.toString().padStart(2, "0")}:${p.minute.toString().padStart(2, "0")}`,
         author: it.author ?? "—",
       };
     });
@@ -179,7 +202,7 @@ export async function GET(req: Request) {
       short: (c.label ?? `Cluster ${i + 1}`).split(" ").slice(0, 3).join(" "),
       stage: c.narrativeStage ?? "relaxed",
       velocity: c.velocity24h ?? 0,
-      firstSeen: formatFirstSeen(c.firstSeenAt, todayStart, tz),
+      firstSeen: formatFirstSeen(c.firstSeenAt, dayStart, tz),
       platforms,
       x: positions[i]?.x ?? 540,
       y: positions[i]?.y ?? 320,
@@ -190,8 +213,10 @@ export async function GET(req: Request) {
   });
 
   return NextResponse.json({
-    date: formatDate(now),
-    day: getDayName(now),
+    date: formatDate(dayStart),
+    day: getDayName(dayStart),
+    dateKey: requestedKey,
+    todayKey,
     tz,
     company: company?.name ?? "—",
     currentHour,

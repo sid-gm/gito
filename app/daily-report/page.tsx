@@ -27,11 +27,19 @@ type ReportCluster = {
 type DailyReportData = {
   date: string;
   day: string;
+  dateKey: string;   // YYYY-MM-DD Pacific
+  todayKey: string;  // today's YYYY-MM-DD Pacific
   tz: string;
   company: string;
   currentHour: number;
   clusters: ReportCluster[];
 };
+
+function shiftDate(dateStr: string, days: number): string {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d + days));
+  return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, "0")}-${String(dt.getUTCDate()).padStart(2, "0")}`;
+}
 
 // ─── Stage colors ─────────────────────────────────────────────────────────────
 
@@ -384,20 +392,30 @@ export default function DailyReportPage() {
   const [data, setData] = useState<DailyReportData | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [viewDate, setViewDate] = useState<string | null>(null); // null = today
 
   useEffect(() => {
     if (!activeCompanyId) return;
     setLoading(true);
-    fetch(`/api/daily-report?companyId=${activeCompanyId}`)
+    const qs = viewDate
+      ? `companyId=${activeCompanyId}&date=${viewDate}`
+      : `companyId=${activeCompanyId}`;
+    fetch(`/api/daily-report?${qs}`)
       .then((r) => r.json())
       .then(setData)
       .finally(() => setLoading(false));
-  }, [activeCompanyId]);
+  }, [activeCompanyId, viewDate]);
 
   const clusters = data?.clusters ?? [];
   const maxHour = data?.currentHour ?? 0;
 
   const { hour, playing, completed, toggle, scrub, replay } = useAnimatedHour(maxHour);
+
+  // Reset animation whenever we navigate to a different day
+  const dateKey = data?.dateKey;
+  useEffect(() => {
+    if (dateKey) replay();
+  }, [dateKey, replay]);
 
   const ranked = useMemo(
     () => [...clusters].sort((a, b) => (b.hourly[hour] ?? 0) - (a.hourly[hour] ?? 0)),
@@ -472,12 +490,24 @@ export default function DailyReportPage() {
         {/* Date strip */}
         <div className="dr-datebar">
           <div className="dr-date-nav">
-            <button className="dr-date-step" title="Previous day">←</button>
+            <button
+              className="dr-date-step"
+              title="Previous day"
+              onClick={() => setViewDate(shiftDate(data.dateKey, -1))}
+            >←</button>
             <div className="dr-date-title">
               {data.date}
               <span className="dr-date-tz">{data.day.toUpperCase()} · {data.tz}</span>
             </div>
-            <button className="dr-date-step" disabled title="Tomorrow — not yet polled">→</button>
+            <button
+              className="dr-date-step"
+              title={data.dateKey >= data.todayKey ? "Tomorrow — not yet polled" : "Next day"}
+              disabled={data.dateKey >= data.todayKey}
+              onClick={() => {
+                const next = shiftDate(data.dateKey, 1);
+                setViewDate(next >= data.todayKey ? null : next);
+              }}
+            >→</button>
           </div>
           <div className="dr-toolbar">
             <span className="dr-share-status">
