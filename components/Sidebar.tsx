@@ -240,11 +240,18 @@ export function Sidebar() {
 
         <div className="nav-section" style={{ marginTop: 16 }}>Publish</div>
         <Link
+          href="/daily-report"
+          className={cx("nav-item nav-item-sub", path === "/daily-report" && "nav-item-on")}
+        >
+          <span className="nav-glyph">◐</span>
+          <span className="nav-label">Daily reports</span>
+        </Link>
+        <Link
           href="/report"
           className={cx("nav-item nav-item-sub", path.startsWith("/report") && "nav-item-on")}
         >
           <span className="nav-glyph">◉</span>
-          <span className="nav-label">Report</span>
+          <span className="nav-label">Signal briefs</span>
         </Link>
       </nav>
 
