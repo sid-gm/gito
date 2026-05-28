@@ -66,7 +66,12 @@ ${clusterList}
 New items to classify:
 ${itemList}
 
-For each item, decide if it belongs to an existing cluster or is a new story.
+Rules:
+- Assign an item to an existing cluster ONLY if it covers the same specific event, announcement, or development as that cluster.
+- Sharing a person's name or a broad topic is NOT sufficient — the item must be about the same incident or thread.
+- Different controversies, appointments, statements, or events involving the same person belong in separate clusters.
+- When in doubt, mark the item as "new".
+
 Respond ONLY with a valid JSON object mapping each item number to a cluster number or "new".
 Example: {"1": 2, "2": "new", "3": 1}`;
 
@@ -119,12 +124,17 @@ export async function groupNewItems(
     .map((item, i) => `[${i + 1}] "${item.title ?? "(no title)"}"`)
     .join("\n");
 
-  const prompt = `You are grouping news articles, tweets, and posts about "${entityLabel}" into stories.
+  const prompt = `You are grouping news articles, tweets, and posts about "${entityLabel}" into story clusters.
 
 Articles:
 ${itemList}
 
-Group items that cover the same specific event or story. Items about different events should be in separate groups.
+Rules:
+- Group items ONLY if they cover the same specific event, announcement, or incident — not just because they mention the same person.
+- Each distinct controversy, appointment, statement, or event must be its own separate group.
+- A bizarre or off-topic story (e.g. a casting call, satire, unrelated mention) should never be grouped with a legitimate news story even if they share a name.
+- When in doubt, keep items in separate groups.
+
 For groups with 2 or more items: provide a concise 3-6 word label and 3-5 search keywords to track this story.
 Singletons (1 item): set label to null and keywords to [].
 
