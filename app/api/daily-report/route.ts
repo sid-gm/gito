@@ -154,7 +154,7 @@ export async function GET(req: Request) {
     }
 
     const hourly: number[] = [];
-    let cumulative = baseCount;
+    let cumulative = 0;
     for (let h = 0; h < 24; h++) {
       cumulative += hourCounts.get(h) ?? 0;
       hourly.push(cumulative);
