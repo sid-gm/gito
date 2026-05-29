@@ -4,8 +4,8 @@ import { db } from "@/lib/db";
 import { clusters, clusterItems, ingestedItems } from "@/lib/db/schema";
 import { runClustering } from "@/lib/ai/run-cluster";
 
-export async function POST(_req: Request, { params }: { params: { id: string } }) {
-  const { id } = params;
+export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
 
   const items = await db
     .select({ itemId: clusterItems.itemId })
