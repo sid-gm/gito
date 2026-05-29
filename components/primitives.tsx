@@ -9,6 +9,7 @@ export const PLATFORMS: Record<string, { label: string; short: string; hue: numb
   twitter:       { label: "X / Twitter",   short: "XM", hue: 210 },
   google_alerts: { label: "Google Alerts", short: "GA", hue: 230 },
   manual:        { label: "Manual",        short: "MN", hue: 280 },
+  threads:       { label: "Threads",       short: "TH", hue: 150 },
 };
 
 export function Dot({

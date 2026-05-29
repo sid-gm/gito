@@ -5,5 +5,6 @@ export async function GET() {
     hackernews: true,
     reddit: !!process.env.APIFY_TOKEN,
     twitter: !!process.env.TWITTER_BEARER_TOKEN,
+    threads: !!process.env.THREADS_ACCESS_TOKEN,
   });
 }

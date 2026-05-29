@@ -4,13 +4,16 @@ import { useEffect, useState } from "react";
 import { cx, Dot, PlatformChip, Sparkline } from "@/components/primitives";
 import { useCompany } from "@/components/CompanyContext";
 
-type EnvStatus = { hackernews: boolean; reddit: boolean; twitter: boolean };
+type EnvStatus = { hackernews: boolean; reddit: boolean; twitter: boolean; threads: boolean };
 
 type SourceStats = { today: number; sevenDays: number; lastPoll: string | null };
 type GAStats = SourceStats;
 type HNStats = SourceStats;
 type RedditStats = SourceStats;
 type TwitterStats = SourceStats;
+type ThreadsStats = SourceStats;
+
+type ThreadsFilter = { id: string; filterType: "keyword" | "user"; value: string };
 
 function relativeTime(iso: string | null): string {
   if (!iso) return "—";
@@ -58,6 +61,12 @@ const SOURCE_DEFS: SourceDef[] = [
     requiresEnv: [],
   },
   {
+    key: "threads",
+    name: "Threads",
+    desc: "Meta Threads Graph API. Track posts by keyword search or specific user accounts. Requires a long-lived user access token with threads_basic and threads_keyword_search scopes.",
+    requiresEnv: ["THREADS_ACCESS_TOKEN"],
+  },
+  {
     key: "manual",
     name: "Manual",
     desc: "Analyst submits articles directly via the Submit page. Always active — no configuration needed.",
@@ -90,8 +99,12 @@ export default function SourcesPage() {
   const [hnStats, setHnStats] = useState<HNStats | null>(null);
   const [redditStats, setRedditStats] = useState<RedditStats | null>(null);
   const [twitterStats, setTwitterStats] = useState<TwitterStats | null>(null);
+  const [threadsStats, setThreadsStats] = useState<ThreadsStats | null>(null);
   const [subreddits, setSubreddits] = useState<string[]>([]);
   const [subredditInput, setSubredditInput] = useState("");
+  const [threadsFilters, setThreadsFilters] = useState<ThreadsFilter[]>([]);
+  const [threadsInput, setThreadsInput] = useState("");
+  const [threadsFilterType, setThreadsFilterType] = useState<"keyword" | "user">("keyword");
   const [sourceSparklines, setSourceSparklines] = useState<Record<string, number[]>>({});
 
   useEffect(() => {
@@ -108,6 +121,9 @@ export default function SourcesPage() {
       .then((rows: { subredditName: string }[]) =>
         setSubreddits(rows.map((r) => r.subredditName))
       );
+    fetch(`/api/threads-filters?companyId=${activeCompanyId}`)
+      .then((r) => r.json())
+      .then((rows: ThreadsFilter[]) => setThreadsFilters(rows));
 
     const refreshStats = () => {
       const cq = `companyId=${activeCompanyId}`;
@@ -115,8 +131,9 @@ export default function SourcesPage() {
       fetch(`/api/sources/stats/hackernews?${cq}`).then((r) => r.json()).then(setHnStats);
       fetch(`/api/sources/stats/reddit?${cq}`).then((r) => r.json()).then(setRedditStats);
       fetch(`/api/sources/stats/twitter?${cq}`).then((r) => r.json()).then(setTwitterStats);
+      fetch(`/api/sources/stats/threads?${cq}`).then((r) => r.json()).then(setThreadsStats);
 
-      const platforms = ["hackernews", "reddit", "twitter", "google_alerts", "manual"];
+      const platforms = ["hackernews", "reddit", "twitter", "google_alerts", "manual", "threads"];
       Promise.all(
         platforms.map((p) =>
           fetch(`/api/items/timeseries?platform=${p}&groupBy=hour&days=1&${cq}`)
@@ -151,6 +168,27 @@ export default function SourcesPage() {
     setSubreddits((prev) => prev.filter((s) => s !== name));
   }
 
+  async function addThreadsFilter() {
+    const value = threadsInput.trim().replace(/^[@#]/, "");
+    if (!value || !activeCompanyId) return;
+    const res = await fetch("/api/threads-filters", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ filterType: threadsFilterType, value, companyId: activeCompanyId }),
+    });
+    if (res.ok) {
+      const row = await res.json() as ThreadsFilter;
+      setThreadsFilters((prev) => prev.some((f) => f.id === row.id) ? prev : [...prev, row]);
+      setThreadsInput("");
+    }
+  }
+
+  async function removeThreadsFilter(id: string) {
+    const cq = activeCompanyId ? `?companyId=${activeCompanyId}` : "";
+    await fetch(`/api/threads-filters/${id}${cq}`, { method: "DELETE" });
+    setThreadsFilters((prev) => prev.filter((f) => f.id !== id));
+  }
+
   const isConnected = (key: string) => {
     if (key === "hackernews" || key === "manual") return "active";
     if (key === "google_alerts") return alertCount > 0 ? "active" : "offline";
@@ -158,6 +196,10 @@ export default function SourcesPage() {
       return envStatus?.reddit ? (subreddits.length > 0 ? "active" : "degraded") : "offline";
     if (key === "twitter")
       return envStatus?.twitter ? "active" : "offline";
+    if (key === "threads") {
+      if (!envStatus?.threads) return "offline";
+      return threadsFilters.length > 0 ? "active" : "degraded";
+    }
     return "offline";
   };
 
@@ -167,6 +209,7 @@ export default function SourcesPage() {
       : key === "hackernews" ? "/api/sources/poll/hackernews"
       : key === "reddit" ? "/api/sources/poll/reddit"
       : key === "twitter" ? "/api/sources/poll/twitter"
+      : key === "threads" ? "/api/sources/poll/threads"
       : null;
     if (!endpoint) return;
 
@@ -216,18 +259,21 @@ export default function SourcesPage() {
               : s.key === "hackernews" ? (hnStats ? hnStats.today : "—")
               : s.key === "reddit" ? (redditStats ? redditStats.today : "—")
               : s.key === "twitter" ? (twitterStats ? twitterStats.today : "—")
+              : s.key === "threads" ? (threadsStats ? threadsStats.today : "—")
               : "—";
             const statsSevenDays =
               s.key === "google_alerts" ? (gaStats ? gaStats.sevenDays : "—")
               : s.key === "hackernews" ? (hnStats ? hnStats.sevenDays : "—")
               : s.key === "reddit" ? (redditStats ? redditStats.sevenDays : "—")
               : s.key === "twitter" ? (twitterStats ? twitterStats.sevenDays : "—")
+              : s.key === "threads" ? (threadsStats ? threadsStats.sevenDays : "—")
               : "—";
             const statsLastPoll =
               s.key === "google_alerts" ? relativeTime(gaStats?.lastPoll ?? null)
               : s.key === "hackernews" ? relativeTime(hnStats?.lastPoll ?? null)
               : s.key === "reddit" ? relativeTime(redditStats?.lastPoll ?? null)
               : s.key === "twitter" ? relativeTime(twitterStats?.lastPoll ?? null)
+              : s.key === "threads" ? relativeTime(threadsStats?.lastPoll ?? null)
               : "—";
 
             const ps = pollStatus[s.key] ?? "idle";
@@ -239,7 +285,7 @@ export default function SourcesPage() {
               : typeof ps === "object"
               ? ps.inserted > 0 ? `✓ ${ps.inserted} new` : "✓ Up to date"
               : "↻ Poll now";
-            const canPoll = s.key === "google_alerts" || s.key === "hackernews" || s.key === "reddit" || s.key === "twitter";
+            const canPoll = s.key === "google_alerts" || s.key === "hackernews" || s.key === "reddit" || s.key === "twitter" || s.key === "threads";
 
             return (
               <div key={s.key} className={cx("scard", `scard-${tone}`)}>
@@ -347,6 +393,63 @@ export default function SourcesPage() {
                         }}
                       />
                       <button className="btn btn-ghost btn-sm" onClick={addSubreddit}>
+                        Add
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {s.key === "threads" && (
+                  <div className="scard-env">
+                    <div className="scard-env-label">Tracked filters</div>
+                    <div style={{ display: "flex", gap: 4, marginBottom: 6 }}>
+                      {(["keyword", "user"] as const).map((type) => (
+                        <button
+                          key={type}
+                          className={cx("btn btn-ghost btn-sm", threadsFilterType === type && "btn-active")}
+                          onClick={() => setThreadsFilterType(type)}
+                          style={{ textTransform: "capitalize" }}
+                        >
+                          {type === "keyword" ? "# Keywords" : "@ Users"}
+                        </button>
+                      ))}
+                    </div>
+                    {threadsFilters.length > 0 && (
+                      <div className="scard-env-list" style={{ marginBottom: 6 }}>
+                        {threadsFilters
+                          .filter((f) => f.filterType === threadsFilterType)
+                          .map((f) => (
+                            <span key={f.id} className="codepill" style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                              {f.filterType === "user" ? "@" : "#"}{f.value}
+                              <button
+                                onClick={() => removeThreadsFilter(f.id)}
+                                style={{ background: "none", border: "none", cursor: "pointer", color: "var(--ink-40)", lineHeight: 1, padding: 0, fontSize: 12 }}
+                                aria-label={`Remove ${f.value}`}
+                              >
+                                ×
+                              </button>
+                            </span>
+                          ))}
+                      </div>
+                    )}
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <input
+                        type="text"
+                        value={threadsInput}
+                        onChange={(e) => setThreadsInput(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && addThreadsFilter()}
+                        placeholder={threadsFilterType === "user" ? "username (no @)" : "keyword or phrase"}
+                        style={{
+                          flex: 1,
+                          fontSize: 12,
+                          padding: "3px 8px",
+                          background: "var(--surface-1)",
+                          border: "1px solid var(--border)",
+                          borderRadius: 4,
+                          color: "var(--ink-100)",
+                        }}
+                      />
+                      <button className="btn btn-ghost btn-sm" onClick={addThreadsFilter}>
                         Add
                       </button>
                     </div>

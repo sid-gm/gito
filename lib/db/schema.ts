@@ -63,6 +63,7 @@ export const platformEnum = pgEnum("platform", [
   "twitter",
   "google_alerts",
   "manual",
+  "threads",
 ]);
 
 export const companies = pgTable("companies", {
@@ -194,6 +195,14 @@ export const redditSubreddits = pgTable("reddit_subreddits", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (t) => [unique("reddit_subreddits_company_subreddit_unique").on(t.companyId, t.subredditName)]);
 
+export const threadsFilters = pgTable("threads_filters", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  companyId: uuid("company_id").references(() => companies.id, { onDelete: "cascade" }),
+  filterType: text("filter_type").notNull(), // 'keyword' | 'user'
+  value: text("value").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => [unique("threads_filters_company_type_value_unique").on(t.companyId, t.filterType, t.value)]);
+
 export const clusterReports = pgTable("cluster_reports", {
   id: uuid("id").defaultRandom().primaryKey(),
   clusterId: uuid("cluster_id")
@@ -219,6 +228,7 @@ export type ClusterItem = typeof clusterItems.$inferSelect;
 export type ClusterPeriodNarrative = typeof clusterPeriodNarratives.$inferSelect;
 export type ClusterMerge = typeof clusterMerges.$inferSelect;
 export type RedditSubreddit = typeof redditSubreddits.$inferSelect;
+export type ThreadsFilter = typeof threadsFilters.$inferSelect;
 export type ClusterReport = typeof clusterReports.$inferSelect;
 
 export type ClusterClassification = "unclassified" | "narrative" | "noise";
