@@ -6,10 +6,11 @@ import { clusterItems, clusterMerges, clusterPeriodNarratives, ingestedItems } f
 
 const EXPAND_THRESHOLD = 0.70;
 
-function dedupeItems<T extends { url: string | null; title: string | null; similarity: number }>(items: T[]): T[] {
+function dedupeItems<T extends { externalId: string | null; url: string | null; title: string | null; similarity: number }>(items: T[]): T[] {
   const seen = new Map<string, T>();
   for (const item of items) {
-    const key = item.url ?? item.title ?? "";
+    // externalId is item-unique (e.g. thread comments share URL but differ by externalId)
+    const key = item.externalId ?? item.url ?? item.title ?? "";
     if (!key) continue;
     const prev = seen.get(key);
     if (!prev || item.similarity > prev.similarity) seen.set(key, item);
