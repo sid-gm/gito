@@ -9,15 +9,15 @@ type Entity = {
   label: string;
   queryString: string;
   entityType: "keyword" | "executive" | "product";
-  googleAlertsFeedUrl: string | null;
   createdAt: string;
 };
+
+type RssFeed = { id: string; entityId: string; label: string; feedUrl: string };
 
 const emptyForm = {
   label: "",
   queryString: "",
   entityType: "keyword" as Entity["entityType"],
-  googleAlertsFeedUrl: "",
 };
 
 function mergeTwitterHandle(queryString: string, handle: string): string {
@@ -52,6 +52,7 @@ const entityGlyph = (type: Entity["entityType"]) =>
 export default function TrackPage() {
   const { activeCompanyId } = useCompany();
   const [entities, setEntities] = useState<Entity[]>([]);
+  const [feedsByEntityId, setFeedsByEntityId] = useState<Record<string, RssFeed[]>>({});
   const [type, setType] = useState("all");
   const [query, setQuery] = useState("");
   const [adding, setAdding] = useState(false);
@@ -70,16 +71,32 @@ export default function TrackPage() {
     label: "",
     queryString: "",
     entityType: "keyword" as Entity["entityType"],
-    googleAlertsFeedUrl: "",
     twitterHandle: "",
   });
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState("");
   const [deleting, setDeleting] = useState(false);
 
+  // RSS feed manager state (inside modal)
+  const [addingFeed, setAddingFeed] = useState(false);
+  const [newFeedForm, setNewFeedForm] = useState({ label: "", feedUrl: "" });
+  const [savingFeed, setSavingFeed] = useState(false);
+  const [feedError, setFeedError] = useState("");
+
+  const loadRssFeeds = async (companyId: string) => {
+    const feeds: RssFeed[] = await fetch(`/api/rss-feeds?companyId=${companyId}`).then((r) => r.json());
+    const map: Record<string, RssFeed[]> = {};
+    for (const f of feeds) {
+      if (!map[f.entityId]) map[f.entityId] = [];
+      map[f.entityId].push(f);
+    }
+    setFeedsByEntityId(map);
+  };
+
   const load = () => {
     if (!activeCompanyId) return;
     fetch(`/api/entities?companyId=${activeCompanyId}`).then((r) => r.json()).then(setEntities);
+    loadRssFeeds(activeCompanyId);
   };
 
   useEffect(() => { load(); }, [activeCompanyId]);
@@ -102,22 +119,22 @@ export default function TrackPage() {
     });
   }, [entities]);
 
-  // Pre-fill edit form when modal opens
   useEffect(() => {
     if (!selectedEntity) return;
     setEditMode(false);
     setConfirmingDelete(false);
     setEditError("");
+    setAddingFeed(false);
+    setNewFeedForm({ label: "", feedUrl: "" });
+    setFeedError("");
     setEditForm({
       label: selectedEntity.label,
       queryString: selectedEntity.queryString,
       entityType: selectedEntity.entityType,
-      googleAlertsFeedUrl: selectedEntity.googleAlertsFeedUrl ?? "",
       twitterHandle: extractTwitterHandle(selectedEntity.queryString),
     });
   }, [selectedEntity]);
 
-  // Escape key closes modal
   useEffect(() => {
     if (!selectedEntity) return;
     const handler = (e: KeyboardEvent) => { if (e.key === "Escape") setSelectedEntity(null); };
@@ -176,7 +193,6 @@ export default function TrackPage() {
         label: editForm.label,
         queryString: finalQuery,
         entityType: editForm.entityType,
-        googleAlertsFeedUrl: editForm.googleAlertsFeedUrl,
       }),
     });
     if (res.ok) {
@@ -197,8 +213,34 @@ export default function TrackPage() {
     await load();
   };
 
+  const handleAddFeed = async () => {
+    if (!selectedEntity) return;
+    setSavingFeed(true);
+    setFeedError("");
+    const res = await fetch("/api/rss-feeds", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ entityId: selectedEntity.id, label: newFeedForm.label, feedUrl: newFeedForm.feedUrl }),
+    });
+    if (res.ok) {
+      setAddingFeed(false);
+      setNewFeedForm({ label: "", feedUrl: "" });
+      if (activeCompanyId) await loadRssFeeds(activeCompanyId);
+    } else {
+      const body = await res.json().catch(() => ({}));
+      setFeedError(body.error ?? "Failed to add feed.");
+    }
+    setSavingFeed(false);
+  };
+
+  const handleDeleteFeed = async (feedId: string) => {
+    await fetch(`/api/rss-feeds/${feedId}`, { method: "DELETE" });
+    if (activeCompanyId) await loadRssFeeds(activeCompanyId);
+  };
+
+  const modalFeeds = selectedEntity ? (feedsByEntityId[selectedEntity.id] ?? []) : [];
   const modalSources = selectedEntity
-    ? ["hackernews", "reddit", "twitter"].concat(selectedEntity.googleAlertsFeedUrl ? ["google_alerts"] : [])
+    ? ["hackernews", "reddit", "twitter"].concat(modalFeeds.length > 0 ? ["google_alerts"] : [])
     : [];
 
   return (
@@ -233,8 +275,8 @@ export default function TrackPage() {
           </div>
           <div className="sumstat">
             <div className="sumstat-label">With Google Alerts</div>
-            <div className="sumstat-value">{entities.filter((e) => e.googleAlertsFeedUrl).length}</div>
-            <div className="sumstat-hint">RSS feed configured</div>
+            <div className="sumstat-value">{entities.filter((e) => (feedsByEntityId[e.id]?.length ?? 0) > 0).length}</div>
+            <div className="sumstat-hint">RSS feeds configured</div>
           </div>
           <div className="sumstat sumstat-accent">
             <div className="sumstat-label">Keywords</div>
@@ -329,18 +371,6 @@ export default function TrackPage() {
                   required
                 />
               </Field>
-              <Field
-                label="Google Alerts RSS"
-                hint="Paste the feed URL from your Google Alert (optional)"
-                full
-              >
-                <input
-                  className="ipt mono"
-                  placeholder="https://www.google.com/alerts/feeds/…"
-                  value={form.googleAlertsFeedUrl}
-                  onChange={(e) => setForm((f) => ({ ...f, googleAlertsFeedUrl: e.target.value }))}
-                />
-              </Field>
             </div>
             <div className="addcard-foot">
               <div className="addcard-platforms">
@@ -348,7 +378,7 @@ export default function TrackPage() {
                 <PlatformChip platform="hackernews" />
                 <PlatformChip platform="reddit" />
                 <PlatformChip platform="twitter" />
-                {form.googleAlertsFeedUrl && <PlatformChip platform="google_alerts" />}
+                <span className="dim" style={{ fontSize: 11 }}>Add Google Alerts feeds via entity settings after creation.</span>
               </div>
               <div style={{ display: "flex", gap: 8 }}>
                 {error && <span style={{ color: "var(--err)", fontSize: 12 }}>{error}</span>}
@@ -379,7 +409,7 @@ export default function TrackPage() {
             <tbody>
               {filtered.map((e) => {
                 const sources = ["hackernews", "reddit", "twitter"].concat(
-                  e.googleAlertsFeedUrl ? ["google_alerts"] : []
+                  (feedsByEntityId[e.id]?.length ?? 0) > 0 ? ["google_alerts"] : []
                 );
                 const spark = sparklines[e.id] ?? [];
                 return (
@@ -466,15 +496,8 @@ export default function TrackPage() {
                     This will permanently remove <strong>{selectedEntity.label}</strong> and all linked clusters. Ingested items will be kept but unlinked.
                   </div>
                   <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-                    <button className="btn btn-ghost" onClick={() => setConfirmingDelete(false)} disabled={deleting}>
-                      Cancel
-                    </button>
-                    <button
-                      className="btn"
-                      style={{ background: "var(--err)", color: "#fff", border: "none" }}
-                      onClick={handleDelete}
-                      disabled={deleting}
-                    >
+                    <button className="btn btn-ghost" onClick={() => setConfirmingDelete(false)} disabled={deleting}>Cancel</button>
+                    <button className="btn" style={{ background: "var(--err)", color: "#fff", border: "none" }} onClick={handleDelete} disabled={deleting}>
                       {deleting ? "Deleting…" : "Confirm delete"}
                     </button>
                   </div>
@@ -482,55 +505,23 @@ export default function TrackPage() {
               ) : editMode ? (
                 <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                   <Field label="Label" hint="Display name used everywhere">
-                    <input
-                      className="ipt"
-                      value={editForm.label}
-                      onChange={(e) => setEditForm((f) => ({ ...f, label: e.target.value }))}
-                    />
+                    <input className="ipt" value={editForm.label} onChange={(e) => setEditForm((f) => ({ ...f, label: e.target.value }))} />
                   </Field>
                   <Field label="Type">
                     <div className="seg">
                       {(["keyword", "product", "executive"] as const).map((t) => (
-                        <button
-                          key={t}
-                          type="button"
-                          className={cx("seg-btn", editForm.entityType === t && "seg-btn-on")}
-                          onClick={() => setEditForm((f) => ({ ...f, entityType: t }))}
-                        >
+                        <button key={t} type="button" className={cx("seg-btn", editForm.entityType === t && "seg-btn-on")} onClick={() => setEditForm((f) => ({ ...f, entityType: t }))}>
                           <span className={`ebadge-glyph eg-${t}`}>{entityGlyph(t)}</span>
                           {t[0].toUpperCase() + t.slice(1)}
                         </button>
                       ))}
                     </div>
                   </Field>
-                  <Field
-                    label="Twitter / X account"
-                    hint="@handle of the account to track — automatically merged into the search query"
-                  >
-                    <input
-                      className="ipt mono"
-                      placeholder="@sama"
-                      value={editForm.twitterHandle}
-                      onChange={(e) => setEditForm((f) => ({ ...f, twitterHandle: e.target.value }))}
-                    />
+                  <Field label="Twitter / X account" hint="@handle — automatically merged into the search query">
+                    <input className="ipt mono" placeholder="@sama" value={editForm.twitterHandle} onChange={(e) => setEditForm((f) => ({ ...f, twitterHandle: e.target.value }))} />
                   </Field>
-                  <Field
-                    label="Search query"
-                    hint='Boolean operators: "exact phrase" OR term1 OR term2'
-                  >
-                    <input
-                      className="ipt mono"
-                      value={editForm.queryString}
-                      onChange={(e) => setEditForm((f) => ({ ...f, queryString: e.target.value }))}
-                    />
-                  </Field>
-                  <Field label="Google Alerts RSS" hint="RSS feed URL from your Google Alert (optional)">
-                    <input
-                      className="ipt mono"
-                      placeholder="https://www.google.com/alerts/feeds/…"
-                      value={editForm.googleAlertsFeedUrl}
-                      onChange={(e) => setEditForm((f) => ({ ...f, googleAlertsFeedUrl: e.target.value }))}
-                    />
+                  <Field label="Search query" hint='Boolean operators: "exact phrase" OR term1 OR term2'>
+                    <input className="ipt mono" value={editForm.queryString} onChange={(e) => setEditForm((f) => ({ ...f, queryString: e.target.value }))} />
                   </Field>
                   {editError && <span style={{ color: "var(--err)", fontSize: 12 }}>{editError}</span>}
                 </div>
@@ -542,17 +533,8 @@ export default function TrackPage() {
                       value: <code className="codepill" style={{ fontSize: 12, whiteSpace: "pre-wrap", wordBreak: "break-all" }}>{selectedEntity.queryString}</code>,
                     },
                     ...(extractTwitterHandle(selectedEntity.queryString)
-                      ? [{
-                          label: "Twitter / X account",
-                          value: <span className="mono" style={{ fontSize: 13 }}>@{extractTwitterHandle(selectedEntity.queryString)}</span>,
-                        }]
+                      ? [{ label: "Twitter / X", value: <span className="mono" style={{ fontSize: 13 }}>@{extractTwitterHandle(selectedEntity.queryString)}</span> }]
                       : []),
-                    {
-                      label: "Google Alerts",
-                      value: selectedEntity.googleAlertsFeedUrl
-                        ? <a href={selectedEntity.googleAlertsFeedUrl} target="_blank" rel="noreferrer" className="mono" style={{ fontSize: 11, color: "var(--accent)", wordBreak: "break-all" }}>{selectedEntity.googleAlertsFeedUrl}</a>
-                        : <span style={{ color: "var(--ink-40)", fontSize: 13 }}>—</span>,
-                    },
                     {
                       label: "Sources",
                       value: (
@@ -571,6 +553,63 @@ export default function TrackPage() {
                       <div style={{ flex: 1, minWidth: 0 }}>{value}</div>
                     </div>
                   ))}
+
+                  {/* RSS Feeds section */}
+                  <div style={{ padding: "12px 0 4px" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                      <span style={{ fontSize: 11.5, fontWeight: 500, color: "var(--ink-60)", fontFamily: "var(--font-mono)" }}>
+                        Google Alerts feeds
+                      </span>
+                      <button className="btn btn-ghost" style={{ fontSize: 11, padding: "2px 8px" }} onClick={() => { setAddingFeed(true); setFeedError(""); }}>
+                        + Add feed
+                      </button>
+                    </div>
+
+                    {modalFeeds.length === 0 && !addingFeed && (
+                      <div style={{ fontSize: 12, color: "var(--ink-40)", fontStyle: "italic" }}>No feeds yet — paste a Google Alerts RSS URL above.</div>
+                    )}
+
+                    {modalFeeds.map((feed) => (
+                      <div key={feed.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderBottom: "1px solid var(--border-soft)" }}>
+                        <PlatformChip platform="google_alerts" />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 12, fontWeight: 500 }}>{feed.label}</div>
+                          <div style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "var(--ink-40)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{feed.feedUrl}</div>
+                        </div>
+                        <button className="btn btn-ghost" style={{ fontSize: 11, padding: "2px 6px", color: "var(--err)", flexShrink: 0 }} onClick={() => handleDeleteFeed(feed.id)}>
+                          Remove
+                        </button>
+                      </div>
+                    ))}
+
+                    {addingFeed && (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "10px 0" }}>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <input
+                            className="ipt"
+                            placeholder="Label (e.g. Sam Altman)"
+                            value={newFeedForm.label}
+                            onChange={(e) => setNewFeedForm((f) => ({ ...f, label: e.target.value }))}
+                            style={{ flex: "0 0 150px" }}
+                          />
+                          <input
+                            className="ipt mono"
+                            placeholder="https://www.google.com/alerts/feeds/…"
+                            value={newFeedForm.feedUrl}
+                            onChange={(e) => setNewFeedForm((f) => ({ ...f, feedUrl: e.target.value }))}
+                            style={{ flex: 1 }}
+                          />
+                        </div>
+                        {feedError && <span style={{ color: "var(--err)", fontSize: 11 }}>{feedError}</span>}
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={() => { setAddingFeed(false); setFeedError(""); }}>Cancel</button>
+                          <button className="btn btn-primary" style={{ fontSize: 11 }} disabled={savingFeed || !newFeedForm.label || !newFeedForm.feedUrl} onClick={handleAddFeed}>
+                            {savingFeed ? "Saving…" : "Add feed"}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
@@ -590,16 +629,8 @@ export default function TrackPage() {
                   </>
                 ) : (
                   <>
-                    <button
-                      className="btn btn-ghost"
-                      style={{ color: "var(--err)" }}
-                      onClick={() => setConfirmingDelete(true)}
-                    >
-                      Delete…
-                    </button>
-                    <button className="btn btn-primary" onClick={() => setEditMode(true)}>
-                      Edit
-                    </button>
+                    <button className="btn btn-ghost" style={{ color: "var(--err)" }} onClick={() => setConfirmingDelete(true)}>Delete…</button>
+                    <button className="btn btn-primary" onClick={() => setEditMode(true)}>Edit</button>
                   </>
                 )}
               </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { cx, PlatformChip, Dot } from "@/components/primitives";
 import { VelocitySparkline } from "@/components/VelocitySparkline";
@@ -8,6 +8,9 @@ import { useCompany } from "@/components/CompanyContext";
 import { StagePill, StageKey } from "@/components/StagePill";
 import { AddItemDialog } from "@/components/AddItemDialog";
 import { ItemAnnotations } from "@/components/ItemAnnotations";
+import "./timeline.css";
+import { NewsTimeline } from "@/components/news-timeline/TimelineTrack";
+import type { HoverPopState, NtlTimelineData, WindowKey, NtlDay } from "@/components/news-timeline/timeline_core";
 
 type MergeInfo = {
   absorbedLabel: string | null;
@@ -214,6 +217,13 @@ export default function NarrativesPage() {
   const [savingLabel, setSavingLabel] = useState(false);
   const [addItemNarrativeId, setAddItemNarrativeId] = useState<string | null>(null);
 
+  const [ntlData, setNtlData] = useState<NtlTimelineData | null>(null);
+  const [ntlWin, setNtlWin] = useState<WindowKey>("30d");
+  const [ntlFeedFilter, setNtlFeedFilter] = useState("all");
+  const [ntlLoading, setNtlLoading] = useState(false);
+  const [ntlPop, setNtlPop] = useState<HoverPopState>(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+
   const generateReport = useCallback(async (clusterId: string) => {
     setReportingId(clusterId);
     try {
@@ -262,6 +272,28 @@ export default function NarrativesPage() {
   }, [activeCompanyId]);
 
   useEffect(() => { fetchNarratives(); }, [fetchNarratives]);
+
+  useEffect(() => {
+    if (!activeCompanyId) return;
+    setNtlLoading(true);
+    const params = new URLSearchParams({ companyId: activeCompanyId, window: "90d" });
+    if (entityId !== "all") params.set("entityId", entityId);
+    fetch(`/api/news-timeline?${params}`)
+      .then((r) => r.json())
+      .then((d) => { setNtlData(d); setNtlLoading(false); })
+      .catch(() => setNtlLoading(false));
+  }, [activeCompanyId, entityId]);
+
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollLeft = scrollRef.current.scrollWidth;
+  }, [ntlData, ntlWin]);
+
+  const onHover = useCallback((day: NtlDay, label: string, e: React.MouseEvent) => {
+    const rect = (e.target as HTMLElement).getBoundingClientRect();
+    setNtlPop({ day, feedLabel: label, x: rect.left + rect.width / 2, y: rect.top, below: rect.top < 200 });
+  }, []);
+
+  const onLeave = useCallback(() => setNtlPop(null), []);
 
   const loadItems = useCallback(async (narrativeId: string): Promise<ExpandedData> => {
     setExpandLoading((prev) => new Set(prev).add(narrativeId));
@@ -510,7 +542,55 @@ export default function NarrativesPage() {
               <option value="declining">Declining</option>
             </select>
           </div>
+          <div className="filter-group">
+            <span className="filter-label">Window</span>
+            <select className="select" value={ntlWin} onChange={(e) => setNtlWin(e.target.value as WindowKey)}>
+              <option value="7d">7 days</option>
+              <option value="30d">30 days</option>
+              <option value="90d">90 days</option>
+            </select>
+          </div>
+          <div className="filter-group">
+            <span className="filter-label">Feed</span>
+            <select className="select" value={ntlFeedFilter} onChange={(e) => setNtlFeedFilter(e.target.value)}>
+              <option value="all">All feeds</option>
+              {ntlData?.feeds.map((f) => <option key={f.feedId} value={f.feedId}>{f.feedLabel}</option>)}
+            </select>
+          </div>
         </div>
+
+        <section className="ntl-section">
+          <div className="ntl-bar">
+            <span className="ntl-bar-eyebrow"><span className="ntl-bar-glyph">◎</span> News Timeline</span>
+            <span className="ntl-bar-title">Google Alerts coverage</span>
+            <span className="ntl-bar-spacer" />
+            <span className="ntl-bar-meta">
+              {ntlLoading ? "loading…" : ntlData?.feeds.length ? `${ntlData.feeds.length} feed${ntlData.feeds.length !== 1 ? "s" : ""}` : "no feeds"}
+            </span>
+          </div>
+          {!ntlLoading && ntlData && ntlData.feeds.length > 0 && (
+            <div className="ntl-legend">
+              <span className="ntl-legend-item"><span className="ntl-legend-dot" style={{ background: "var(--nd-positive)" }} />positive</span>
+              <span className="ntl-legend-item"><span className="ntl-legend-dot" style={{ background: "var(--nd-negative)" }} />negative</span>
+              <span className="ntl-legend-item"><span className="ntl-legend-dot" style={{ background: "var(--nd-mixed)" }} />mixed</span>
+              <span className="ntl-legend-item"><span className="ntl-legend-dot" style={{ background: "var(--nd-neutral)" }} />neutral</span>
+              <span className="ntl-legend-note">Dot size = article count</span>
+            </div>
+          )}
+          <NewsTimeline
+            feeds={ntlData?.feeds ?? []}
+            win={ntlWin}
+            feedFilter={ntlFeedFilter}
+            style="trend"
+            arrangement="stacked"
+            density="recent"
+            showAvg={true}
+            pop={ntlPop}
+            scrollRef={scrollRef}
+            onHover={onHover}
+            onLeave={onLeave}
+          />
+        </section>
 
         <StageKey />
 
