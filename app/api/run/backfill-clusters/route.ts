@@ -22,6 +22,7 @@ export async function POST() {
         AND i.embedding IS NOT NULL
         AND c.centroid_embedding IS NOT NULL
         AND c.archived_at IS NULL
+        AND i.platform != 'google_alerts'
         AND (1 - (i.embedding <=> c.centroid_embedding)) >= ${SIMILARITY_THRESHOLD}
         AND NOT EXISTS (
           SELECT 1 FROM cluster_items ci
