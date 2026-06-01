@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { and, asc, eq, gt, isNull } from "drizzle-orm";
+import { and, asc, eq, gt, isNull, ne } from "drizzle-orm";
 import { generateText } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { db } from "@/lib/db";
@@ -41,7 +41,7 @@ export async function GET(req: Request) {
         .select({ title: ingestedItems.title, body: ingestedItems.body, ingestedAt: ingestedItems.createdAt })
         .from(clusterItems)
         .innerJoin(ingestedItems, eq(clusterItems.itemId, ingestedItems.id))
-        .where(eq(clusterItems.clusterId, cluster.id));
+        .where(and(eq(clusterItems.clusterId, cluster.id), ne(ingestedItems.platform, "google_alerts")));
 
       if (items.length === 0) continue;
 
