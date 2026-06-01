@@ -127,7 +127,7 @@
 
 /* Summary chip anchored above a day's dot */
 .ntl-chip {
-  position: absolute; bottom: 8px; transform: translateX(-50%);
+  position: absolute; transform: translateX(-50%);
   background: var(--paper); border: 1px solid var(--border);
   border-radius: var(--r-2); padding: 7px 9px;
   display: flex; flex-direction: column; gap: 5px;

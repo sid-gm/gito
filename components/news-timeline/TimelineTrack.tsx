@@ -151,7 +151,7 @@ function FeedRail({ feed, days, colW, win, density, style, onHover, onLeave }: {
             return (
               <React.Fragment key={d.date}>
                 <div className="ntl-chip-stem" style={{ left: cx0, top: laneH - 4, height: y + 4 }} />
-                <div className="ntl-chip" style={{ left: cx0, width: chipW }}
+                <div className="ntl-chip" style={{ left: cx0, width: chipW, bottom: NTL_BAND_H + 4 }}
                      onMouseEnter={(e) => onHover(d, feed.feedLabel, e)} onMouseLeave={onLeave}>
                   <div className="ntl-chip-head">
                     <span className="ntl-chip-date">{i === N - 1 ? "Today" : `${dm.mon} ${dm.day}`}</span>
