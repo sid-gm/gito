@@ -89,6 +89,19 @@ export const rssFeeds = pgTable("rss_feeds", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (t) => [unique("rss_feeds_entity_url_unique").on(t.entityId, t.feedUrl)]);
 
+export const newsTimelineDays = pgTable("news_timeline_days", {
+  id:             uuid("id").defaultRandom().primaryKey(),
+  rssFeedId:      uuid("rss_feed_id").references(() => rssFeeds.id, { onDelete: "cascade" }).notNull(),
+  periodDate:     text("period_date").notNull(),
+  aiSummary:      text("ai_summary"),
+  sentimentScore: real("sentiment_score"),
+  sentimentLabel: text("sentiment_label"),
+  itemCount:      integer("item_count").default(0).notNull(),
+  generatedAt:    timestamp("generated_at"),
+  createdAt:      timestamp("created_at").defaultNow().notNull(),
+  updatedAt:      timestamp("updated_at").defaultNow().notNull(),
+}, (t) => [unique("news_timeline_days_feed_date_unique").on(t.rssFeedId, t.periodDate)]);
+
 export const ingestedItems = pgTable(
   "ingested_items",
   {
@@ -239,6 +252,8 @@ export type ThreadsFilter = typeof threadsFilters.$inferSelect;
 export type ClusterReport = typeof clusterReports.$inferSelect;
 export type RssFeed = typeof rssFeeds.$inferSelect;
 export type NewRssFeed = typeof rssFeeds.$inferInsert;
+export type NewsTimelineDay = typeof newsTimelineDays.$inferSelect;
+export type NewNewsTimelineDay = typeof newsTimelineDays.$inferInsert;
 
 export type ClusterClassification = "unclassified" | "narrative" | "noise";
 export type NarrativeStage = "relaxed" | "emerging" | "developing" | "peaked" | "revival" | "declining";
