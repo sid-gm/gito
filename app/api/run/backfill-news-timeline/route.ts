@@ -131,6 +131,7 @@ export async function POST() {
   return NextResponse.json({ ok: true, processed, skipped, total });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ ok: false, error: msg }, { status: 500 });
+    const cause = err instanceof Error && err.cause instanceof Error ? err.cause.message : String((err as any)?.cause ?? "");
+    return NextResponse.json({ ok: false, error: msg, cause }, { status: 500 });
   }
 }
