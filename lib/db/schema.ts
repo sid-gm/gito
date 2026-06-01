@@ -78,9 +78,16 @@ export const trackedEntities = pgTable("tracked_entities", {
   label: text("label").notNull(),
   queryString: text("query_string").notNull(),
   entityType: entityTypeEnum("entity_type").notNull(),
-  googleAlertsFeedUrl: text("google_alerts_feed_url"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
+
+export const rssFeeds = pgTable("rss_feeds", {
+  id:        uuid("id").defaultRandom().primaryKey(),
+  entityId:  uuid("entity_id").references(() => trackedEntities.id, { onDelete: "cascade" }).notNull(),
+  label:     text("label").notNull(),
+  feedUrl:   text("feed_url").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => [unique("rss_feeds_entity_url_unique").on(t.entityId, t.feedUrl)]);
 
 export const ingestedItems = pgTable(
   "ingested_items",
@@ -230,6 +237,8 @@ export type ClusterMerge = typeof clusterMerges.$inferSelect;
 export type RedditSubreddit = typeof redditSubreddits.$inferSelect;
 export type ThreadsFilter = typeof threadsFilters.$inferSelect;
 export type ClusterReport = typeof clusterReports.$inferSelect;
+export type RssFeed = typeof rssFeeds.$inferSelect;
+export type NewRssFeed = typeof rssFeeds.$inferInsert;
 
 export type ClusterClassification = "unclassified" | "narrative" | "noise";
 export type NarrativeStage = "relaxed" | "emerging" | "developing" | "peaked" | "revival" | "declining";

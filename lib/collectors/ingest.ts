@@ -23,10 +23,7 @@ export async function getAllSubreddits() {
   return db.select().from(redditSubreddits).orderBy(redditSubreddits.createdAt);
 }
 
-export async function getEntitiesByType(type: "hackernews" | "reddit" | "twitter" | "google_alerts") {
-  // All entities are polled for all platforms — filter by googleAlertsFeedUrl only for google_alerts
-  if (type === "google_alerts") {
-    return (await getAllEntities()).filter((e) => e.googleAlertsFeedUrl);
-  }
+export async function getEntitiesByType(type: "hackernews" | "reddit" | "twitter") {
+  void type;
   return getAllEntities();
 }

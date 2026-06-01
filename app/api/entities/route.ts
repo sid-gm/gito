@@ -8,7 +8,6 @@ const createSchema = z.object({
   label: z.string().min(1),
   queryString: z.string().min(1),
   entityType: z.enum(["keyword", "executive", "product"]),
-  googleAlertsFeedUrl: z.string().url().optional().or(z.literal("")),
   companyId: z.string().uuid(),
 });
 
@@ -39,17 +38,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const { label, queryString, entityType, googleAlertsFeedUrl, companyId } = parsed.data;
+  const { label, queryString, entityType, companyId } = parsed.data;
   try {
     const [entity] = await db
       .insert(trackedEntities)
-      .values({
-        label,
-        queryString,
-        entityType,
-        googleAlertsFeedUrl: googleAlertsFeedUrl || null,
-        companyId,
-      })
+      .values({ label, queryString, entityType, companyId })
       .returning();
     return NextResponse.json(entity, { status: 201 });
   } catch (err) {

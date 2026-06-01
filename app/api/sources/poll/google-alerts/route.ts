@@ -1,18 +1,20 @@
 import { NextResponse } from "next/server";
-import { getAllEntities, upsertItems } from "@/lib/collectors/ingest";
+import { db } from "@/lib/db";
+import { rssFeeds } from "@/lib/db/schema";
+import { upsertItems } from "@/lib/collectors/ingest";
 import { collectGoogleAlerts } from "@/lib/collectors/google-alerts";
 
 export async function POST() {
-  const entities = (await getAllEntities()).filter((e) => e.googleAlertsFeedUrl);
+  const feeds = await db.select().from(rssFeeds);
   let total = 0;
 
-  for (const entity of entities) {
+  for (const feed of feeds) {
     try {
-      const items = await collectGoogleAlerts(entity);
+      const items = await collectGoogleAlerts(feed);
       const inserted = await upsertItems(items);
       total += inserted;
     } catch (err) {
-      console.error(`[GoogleAlerts:poll] entity ${entity.id}:`, err);
+      console.error(`[GoogleAlerts:poll] feed ${feed.id}:`, err);
     }
   }
 

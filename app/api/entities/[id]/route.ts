@@ -8,7 +8,6 @@ const patchSchema = z.object({
   label: z.string().min(1).optional(),
   queryString: z.string().min(1).optional(),
   entityType: z.enum(["keyword", "executive", "product"]).optional(),
-  googleAlertsFeedUrl: z.string().url().optional().or(z.literal("")),
 });
 
 export async function PATCH(
@@ -22,10 +21,7 @@ export async function PATCH(
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const updates = {
-    ...parsed.data,
-    googleAlertsFeedUrl: parsed.data.googleAlertsFeedUrl || null,
-  };
+  const updates = { ...parsed.data };
 
   const [updated] = await db
     .update(trackedEntities)

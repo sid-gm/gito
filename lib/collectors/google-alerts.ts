@@ -1,5 +1,5 @@
 import Parser from "rss-parser";
-import type { NewIngestedItem, TrackedEntity } from "@/lib/db/schema";
+import type { NewIngestedItem, RssFeed } from "@/lib/db/schema";
 
 const parser = new Parser();
 
@@ -18,16 +18,13 @@ function stripHtml(raw: string | null | undefined): string | null {
 }
 
 export async function collectGoogleAlerts(
-  entity: TrackedEntity
+  feed: RssFeed
 ): Promise<NewIngestedItem[]> {
-  if (!entity.googleAlertsFeedUrl) return [];
+  const parsed = await parser.parseURL(feed.feedUrl);
 
-  const feed = await parser.parseURL(entity.googleAlertsFeedUrl);
-
-  return (feed.items ?? []).map((item) => ({
-    entityId: entity.id,
+  return (parsed.items ?? []).map((item) => ({
+    entityId: feed.entityId,
     platform: "google_alerts" as const,
-    // Use the link as the external ID since Google Alerts items don't have stable IDs
     externalId: item.link ?? item.guid ?? null,
     url: item.link ?? null,
     title: stripHtml(item.title),
