@@ -40,6 +40,7 @@ function deriveAggregate(stories: Story[]) {
 }
 
 export async function POST() {
+  try {
   const feeds = await db
     .select({ feedId: rssFeeds.id, feedLabel: rssFeeds.label, entityLabel: trackedEntities.label, entityId: rssFeeds.entityId })
     .from(rssFeeds)
@@ -128,4 +129,8 @@ export async function POST() {
   }
 
   return NextResponse.json({ ok: true, processed, skipped, total });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ ok: false, error: msg }, { status: 500 });
+  }
 }
