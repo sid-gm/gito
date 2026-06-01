@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { and, eq, isNull, or } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { generateText } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { db } from "@/lib/db";
@@ -41,33 +41,35 @@ function deriveAggregate(stories: Story[]) {
 
 export async function POST() {
   try {
-  const feeds = await db
-    .select({ feedId: rssFeeds.id, feedLabel: rssFeeds.label, entityLabel: trackedEntities.label, entityId: rssFeeds.entityId })
-    .from(rssFeeds)
-    .innerJoin(trackedEntities, eq(rssFeeds.entityId, trackedEntities.id));
+  // Fetch all feeds and all google_alerts items in two flat queries, then join in memory.
+  // This avoids per-feed subqueries with complex OR conditions that fail on Neon's driver.
+  const [feeds, allItems] = await Promise.all([
+    db
+      .select({ feedId: rssFeeds.id, feedLabel: rssFeeds.label, entityLabel: trackedEntities.label, entityId: rssFeeds.entityId })
+      .from(rssFeeds)
+      .innerJoin(trackedEntities, eq(rssFeeds.entityId, trackedEntities.id)),
+    db
+      .select({ title: ingestedItems.title, createdAt: ingestedItems.createdAt, rssFeedId: ingestedItems.rssFeedId, entityId: ingestedItems.entityId })
+      .from(ingestedItems)
+      .where(eq(ingestedItems.platform, "google_alerts")),
+  ]);
 
   let processed = 0;
   let skipped = 0;
   let total = 0;
 
   if (feeds.length === 0) {
-    return NextResponse.json({ ok: false, error: "no_feeds", message: "rss_feeds table is empty — no feeds to process" });
+    return NextResponse.json({ ok: false, error: "no_feeds" });
   }
 
   for (const feed of feeds) {
-    const items = await db
-      .select({ title: ingestedItems.title, createdAt: ingestedItems.createdAt })
-      .from(ingestedItems)
-      .where(and(
-        eq(ingestedItems.platform, "google_alerts"),
-        or(
-          eq(ingestedItems.rssFeedId, feed.feedId),
-          and(isNull(ingestedItems.rssFeedId), eq(ingestedItems.entityId, feed.entityId))
-        )
-      ));
+    // Match items to this feed: either by rssFeedId or by entityId (pre-TICKET-04 items have null rssFeedId)
+    const feedItems = allItems.filter(
+      (item) => item.rssFeedId === feed.feedId || (item.rssFeedId === null && item.entityId === feed.entityId)
+    );
 
     const byDay = new Map<string, { titles: string[]; latestAt: Date }>();
-    for (const item of items) {
+    for (const item of feedItems) {
       const day = item.createdAt.toISOString().slice(0, 10);
       if (!byDay.has(day)) byDay.set(day, { titles: [], latestAt: item.createdAt });
       const entry = byDay.get(day)!;
