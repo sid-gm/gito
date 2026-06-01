@@ -221,21 +221,7 @@ export function Sidebar() {
           className={cx("nav-item nav-item-sub", path === "/narratives" && "nav-item-on")}
         >
           <span className="nav-glyph">◈</span>
-          <span className="nav-label">Narratives</span>
-        </Link>
-        <Link
-          href="/narratives/signal_watch"
-          className={cx("nav-item nav-item-subsub", path === "/narratives/signal_watch" && "nav-item-on")}
-        >
-          <span className="nav-glyph" style={{ fontSize: 9 }}>◆</span>
-          <span className="nav-label">Signal &amp; Watch</span>
-        </Link>
-        <Link
-          href="/narratives/noise"
-          className={cx("nav-item nav-item-subsub", path === "/narratives/noise" && "nav-item-on")}
-        >
-          <span className="nav-glyph" style={{ fontSize: 9 }}>◇</span>
-          <span className="nav-label">Noise</span>
+          <span className="nav-label">Global Narratives</span>
         </Link>
 
         <div className="nav-section" style={{ marginTop: 16 }}>Publish</div>
