@@ -1,4 +1,4 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, ne } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { ingestedItems, clusters, clusterItems, trackedEntities } from "@/lib/db/schema";
 import { matchToExistingClusters, groupNewItems } from "@/lib/ai/cluster";
@@ -20,7 +20,7 @@ export async function runClustering(limit: number): Promise<ClusterRunResult> {
     })
     .from(ingestedItems)
     .leftJoin(clusterItems, eq(clusterItems.itemId, ingestedItems.id))
-    .where(and(isNull(clusterItems.itemId)))
+    .where(and(isNull(clusterItems.itemId), ne(ingestedItems.platform, "google_alerts")))
     .limit(limit);
 
   const withTitle = unassigned.filter((i) => i.entityId && i.title?.trim());

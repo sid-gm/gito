@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, ne } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { ingestedItems } from "@/lib/db/schema";
 import { verifyCronSecret } from "@/lib/cron-auth";
@@ -18,7 +18,7 @@ export async function GET(req: Request) {
       body: ingestedItems.body,
     })
     .from(ingestedItems)
-    .where(isNull(ingestedItems.embedding))
+    .where(and(isNull(ingestedItems.embedding), ne(ingestedItems.platform, "google_alerts")))
     .limit(BATCH_SIZE);
 
   let embedded = 0;

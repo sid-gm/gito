@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, ne } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { ingestedItems } from "@/lib/db/schema";
 import { embedAll } from "@/lib/ai/embed";
@@ -10,7 +10,7 @@ export async function POST() {
   const pending = await db
     .select({ id: ingestedItems.id, title: ingestedItems.title, body: ingestedItems.body })
     .from(ingestedItems)
-    .where(isNull(ingestedItems.embedding));
+    .where(and(isNull(ingestedItems.embedding), ne(ingestedItems.platform, "google_alerts")));
 
   const embeddable = pending.filter((item) => {
     const text = [item.title, item.body].filter(Boolean).join(" ").trim();
