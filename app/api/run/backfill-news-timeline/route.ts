@@ -39,7 +39,11 @@ function deriveAggregate(stories: Story[]) {
   return { aiSummary: lead.summary, sentimentScore, sentimentLabel };
 }
 
-export async function POST() {
+export const maxDuration = 300;
+
+export async function POST(req: Request) {
+  const url = new URL(req.url);
+  const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "40", 10), 100);
   try {
   // Fetch all feeds and all google_alerts items in two flat queries, then join in memory.
   // This avoids per-feed subqueries with complex OR conditions that fail on Neon's driver.
@@ -78,6 +82,7 @@ export async function POST() {
     }
 
     for (const [day, { titles, latestAt }] of byDay) {
+      if (processed >= limit) { break; }
       total++;
       if (titles.length === 0) { skipped++; continue; }
 
@@ -130,7 +135,7 @@ export async function POST() {
     }
   }
 
-  return NextResponse.json({ ok: true, processed, skipped, total });
+  return NextResponse.json({ ok: true, processed, skipped, total, done: processed < limit });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     const cause = err instanceof Error && err.cause instanceof Error ? err.cause.message : String((err as any)?.cause ?? "");
