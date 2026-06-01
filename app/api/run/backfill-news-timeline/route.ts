@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull, or } from "drizzle-orm";
 import { generateText } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { db } from "@/lib/db";
@@ -41,7 +41,7 @@ function deriveAggregate(stories: Story[]) {
 
 export async function POST() {
   const feeds = await db
-    .select({ feedId: rssFeeds.id, feedLabel: rssFeeds.label, entityLabel: trackedEntities.label })
+    .select({ feedId: rssFeeds.id, feedLabel: rssFeeds.label, entityLabel: trackedEntities.label, entityId: rssFeeds.entityId })
     .from(rssFeeds)
     .innerJoin(trackedEntities, eq(rssFeeds.entityId, trackedEntities.id));
 
@@ -53,7 +53,13 @@ export async function POST() {
     const items = await db
       .select({ title: ingestedItems.title, createdAt: ingestedItems.createdAt })
       .from(ingestedItems)
-      .where(and(eq(ingestedItems.platform, "google_alerts"), eq(ingestedItems.rssFeedId, feed.feedId)));
+      .where(and(
+        eq(ingestedItems.platform, "google_alerts"),
+        or(
+          eq(ingestedItems.rssFeedId, feed.feedId),
+          and(isNull(ingestedItems.rssFeedId), eq(ingestedItems.entityId, feed.entityId))
+        )
+      ));
 
     const byDay = new Map<string, { titles: string[]; latestAt: Date }>();
     for (const item of items) {
