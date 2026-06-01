@@ -6,6 +6,7 @@ import {
   EntityBadge, Sparkline, Dot,
 } from "@/components/primitives";
 import { useCompany } from "@/components/CompanyContext";
+import ThreadIngestDialog from "@/components/ThreadIngestDialog";
 
 type FeedItem = {
   id: string;
@@ -64,6 +65,7 @@ export default function FeedPage() {
   const [embedResult, setEmbedResult] = useState<string | null>(null);
   const [clusterRunning, setClusterRunning] = useState(false);
   const [clusterResult, setClusterResult] = useState<string | null>(null);
+  const [threadDialogOpen, setThreadDialogOpen] = useState(false);
   const [platformCounts, setPlatformCounts] = useState<Record<string, number>>({ all: 0 });
   const [totalSpark, setTotalSpark] = useState<number[]>([]);
 
@@ -187,6 +189,7 @@ export default function FeedPage() {
               <span style={{ fontSize: 12, color: "var(--ink-40)", whiteSpace: "nowrap" }}>{clusterResult}</span>
             )}
           </div>
+          <button className="btn btn-ghost" onClick={() => setThreadDialogOpen(true)}>+ Ingest thread</button>
           <a href="/submit" className="btn btn-primary">+ Submit</a>
         </div>
       </header>
@@ -336,6 +339,15 @@ export default function FeedPage() {
           </div>
         )}
       </div>
+
+      {threadDialogOpen && activeCompanyId && (
+        <ThreadIngestDialog
+          companyId={activeCompanyId}
+          entities={entities}
+          onClose={() => setThreadDialogOpen(false)}
+          onInserted={() => { setThreadDialogOpen(false); fetchItems(); }}
+        />
+      )}
     </>
   );
 }

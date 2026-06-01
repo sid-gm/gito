@@ -8,6 +8,7 @@ import { useCompany } from "@/components/CompanyContext";
 import { StagePill, StageKey } from "@/components/StagePill";
 import { AddItemDialog } from "@/components/AddItemDialog";
 import { ItemAnnotations } from "@/components/ItemAnnotations";
+import ThreadIngestDialog from "@/components/ThreadIngestDialog";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -314,6 +315,8 @@ export default function ClustersPage() {
   const [editingLabelId, setEditingLabelId] = useState<string | null>(null);
   const [editingLabelDraft, setEditingLabelDraft] = useState("");
   const [savingLabel, setSavingLabel] = useState(false);
+
+  const [threadDialogOpen, setThreadDialogOpen] = useState(false);
 
   // Merge mode
   const [mergeMode, setMergeMode] = useState(false);
@@ -667,6 +670,7 @@ export default function ClustersPage() {
         </div>
         <div className="topbar-actions">
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <button className="btn-ghost btn" onClick={() => setThreadDialogOpen(true)}>+ Ingest thread</button>
             <button className="btn-ghost btn" onClick={toggleMergeMode} style={mergeMode ? { borderColor: "var(--accent)", color: "var(--accent)" } : {}}>
               {mergeMode ? "Exit Merge Mode" : "Select to Merge"}
             </button>
@@ -901,6 +905,15 @@ export default function ClustersPage() {
           </div>
         )}
       </div>
+
+      {threadDialogOpen && activeCompanyId && (
+        <ThreadIngestDialog
+          companyId={activeCompanyId}
+          entities={entities}
+          onClose={() => setThreadDialogOpen(false)}
+          onInserted={() => { setThreadDialogOpen(false); fetchClusters(); }}
+        />
+      )}
 
       {/* Floating merge action bar */}
       {mergeMode && selectedIds.size >= 2 && (

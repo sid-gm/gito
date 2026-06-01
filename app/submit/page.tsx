@@ -2,8 +2,54 @@
 
 import { useEffect, useState } from "react";
 import { PlatformChip, EntityBadge, Field } from "@/components/primitives";
+import { useCompany } from "@/components/CompanyContext";
 
 type Entity = { id: string; label: string; entityType: string };
+
+type ParsedComment = {
+  author: string;
+  body: string;
+  score: number | null;
+  timestamp: string | null;
+};
+
+type RedditChild = {
+  kind: string;
+  data: {
+    author?: string;
+    body?: string;
+    score?: number;
+    created_utc?: number;
+    replies?: { data?: { children?: RedditChild[] } } | string;
+  };
+};
+
+function isRedditUrl(url: string): boolean {
+  return /^https?:\/\/(www\.)?reddit\.com\/r\//i.test(url);
+}
+
+function toRedditJsonUrl(url: string): string {
+  return url.replace(/\/?$/, ".json") + "?limit=500&depth=3";
+}
+
+function flattenRedditComments(children: RedditChild[]): ParsedComment[] {
+  const results: ParsedComment[] = [];
+  for (const child of children) {
+    if (child.kind !== "t1") continue;
+    const d = child.data;
+    if (!d.body || d.body === "[deleted]" || d.body === "[removed]") continue;
+    results.push({
+      author: d.author ?? "[deleted]",
+      body: d.body,
+      score: d.score ?? null,
+      timestamp: d.created_utc ? new Date(d.created_utc * 1000).toISOString() : null,
+    });
+    if (d.replies && typeof d.replies !== "string" && d.replies.data?.children) {
+      results.push(...flattenRedditComments(d.replies.data.children));
+    }
+  }
+  return results;
+}
 
 const emptyForm = {
   url: "",
@@ -15,15 +61,38 @@ const emptyForm = {
 };
 
 export default function SubmitPage() {
+  const { activeCompanyId } = useCompany();
   const [entities, setEntities] = useState<Entity[]>([]);
   const [form, setForm] = useState(emptyForm);
   const [fetchingMeta, setFetchingMeta] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [done, setDone] = useState(false);
+  const [done, setDone] = useState<{ clusterId?: string } | boolean>(false);
   const [error, setError] = useState("");
+
+  // Reddit comment panel state
+  const [redditComments, setRedditComments] = useState<ParsedComment[]>([]);
+  const [selectedIdxs, setSelectedIdxs] = useState<Set<number>>(new Set());
+  const [fetchingComments, setFetchingComments] = useState(false);
+  const [fetchCommentError, setFetchCommentError] = useState("");
+  const [pasteMode, setPasteMode] = useState(false);
+  const [pasteText, setPasteText] = useState("");
+  const [parsingPaste, setParsingPaste] = useState(false);
 
   const set = (k: keyof typeof form, v: string) =>
     setForm((f) => ({ ...f, [k]: v }));
+
+  const isReddit = isRedditUrl(form.url);
+
+  // Clear Reddit panel when URL stops being Reddit
+  useEffect(() => {
+    if (!isReddit) {
+      setRedditComments([]);
+      setSelectedIdxs(new Set());
+      setFetchCommentError("");
+      setPasteMode(false);
+      setPasteText("");
+    }
+  }, [isReddit]);
 
   useEffect(() => {
     fetch("/api/entities").then((r) => r.json()).then(setEntities);
@@ -46,23 +115,120 @@ export default function SubmitPage() {
     setFetchingMeta(false);
   };
 
+  const fetchRedditComments = async () => {
+    setFetchCommentError("");
+    setFetchingComments(true);
+    setRedditComments([]);
+    setSelectedIdxs(new Set());
+    try {
+      const jsonUrl = toRedditJsonUrl(form.url.trim());
+      const res = await fetch(jsonUrl, { headers: { Accept: "application/json" }, credentials: "include" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const children: RedditChild[] = data?.[1]?.data?.children ?? [];
+      const parsed = flattenRedditComments(children);
+      if (parsed.length === 0) throw new Error("No comments found — try paste mode");
+      setRedditComments(parsed);
+      setSelectedIdxs(new Set(parsed.map((_, i) => i)));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setFetchCommentError(msg + " — try paste mode below");
+      setPasteMode(true);
+    } finally {
+      setFetchingComments(false);
+    }
+  };
+
+  const parsePaste = async () => {
+    if (!pasteText.trim()) return;
+    setParsingPaste(true);
+    setRedditComments([]);
+    setSelectedIdxs(new Set());
+    try {
+      const res = await fetch("/api/items/manual/parse-reddit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: pasteText }),
+      });
+      const data = await res.json();
+      const parsed: ParsedComment[] = data.comments ?? [];
+      setRedditComments(parsed);
+      setSelectedIdxs(new Set(parsed.map((_, i) => i)));
+    } finally {
+      setParsingPaste(false);
+    }
+  };
+
+  function toggleAll() {
+    setSelectedIdxs(redditComments.length === selectedIdxs.size
+      ? new Set()
+      : new Set(redditComments.map((_, i) => i)));
+  }
+
+  function toggleIdx(i: number) {
+    setSelectedIdxs((s) => {
+      const next = new Set(s);
+      next.has(i) ? next.delete(i) : next.add(i);
+      return next;
+    });
+  }
+
+  const selectedComments = redditComments.filter((_, i) => selectedIdxs.has(i));
+  const useThreadFlow = isReddit && selectedComments.length > 0;
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
     setError("");
-    const res = await fetch("/api/items/manual", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ...form,
-        entityId: form.entityId === "none" ? undefined : form.entityId,
-      }),
-    });
-    if (res.ok) {
-      setDone(true);
-      setForm(emptyForm);
+
+    if (useThreadFlow) {
+      // Reddit thread + comments → create cluster automatically
+      const res = await fetch("/api/items/manual/reddit-thread", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          threadUrl: form.url,
+          title: form.title,
+          body: form.body || undefined,
+          author: form.author || undefined,
+          publishedAt: form.publishedAt || undefined,
+          entityId: form.entityId !== "none" ? form.entityId : undefined,
+          companyId: activeCompanyId ?? undefined,
+          comments: selectedComments.map((c) => ({
+            author: c.author,
+            body: c.body,
+            score: c.score ?? undefined,
+            timestamp: c.timestamp ?? undefined,
+          })),
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setDone({ clusterId: data.clusterId });
+        setForm(emptyForm);
+        setRedditComments([]);
+        setSelectedIdxs(new Set());
+        setPasteText("");
+        setPasteMode(false);
+      } else {
+        setError("Failed to submit. Check required fields.");
+      }
     } else {
-      setError("Failed to submit. Check required fields.");
+      // Standard single-item submission
+      const res = await fetch("/api/items/manual", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...form,
+          entityId: form.entityId === "none" ? undefined : form.entityId,
+        }),
+      });
+      if (res.ok) {
+        setDone(true);
+        setForm(emptyForm);
+      } else {
+        setError("Failed to submit. Check required fields.");
+      }
     }
     setSaving(false);
   };
@@ -106,6 +272,128 @@ export default function SubmitPage() {
                   </button>
                 </div>
               </Field>
+
+              {/* Reddit thread comment panel */}
+              {isReddit && (
+                <div style={{ border: "1px solid var(--border)", borderRadius: 8, padding: "14px 14px 10px", background: "var(--surface-1)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 2 }}>Reddit thread detected</div>
+                      <div style={{ fontSize: 12, color: "var(--ink-60)" }}>
+                        Load comments to create a tracked cluster with sentiment analysis.
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      {redditComments.length === 0 && (
+                        <>
+                          <button
+                            type="button"
+                            className="btn btn-primary btn-sm"
+                            onClick={fetchRedditComments}
+                            disabled={fetchingComments}
+                          >
+                            {fetchingComments ? "Fetching…" : "Load comments"}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm"
+                            onClick={() => setPasteMode((v) => !v)}
+                          >
+                            Paste text
+                          </button>
+                        </>
+                      )}
+                      {redditComments.length > 0 && (
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm"
+                          onClick={() => { setRedditComments([]); setSelectedIdxs(new Set()); setPasteMode(false); setPasteText(""); }}
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {fetchCommentError && (
+                    <p style={{ fontSize: 12, color: "var(--err)", marginBottom: 8 }}>{fetchCommentError}</p>
+                  )}
+
+                  {pasteMode && redditComments.length === 0 && (
+                    <div style={{ marginBottom: 8 }}>
+                      <textarea
+                        value={pasteText}
+                        onChange={(e) => setPasteText(e.target.value)}
+                        rows={6}
+                        placeholder="Paste the Reddit thread comments here…"
+                        style={{ width: "100%", boxSizing: "border-box", fontSize: 12, padding: "8px 10px", background: "var(--surface-0, var(--paper))", border: "1px solid var(--border)", borderRadius: 6, color: "var(--ink-100)", resize: "vertical", fontFamily: "inherit" }}
+                      />
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        onClick={parsePaste}
+                        disabled={parsingPaste || !pasteText.trim()}
+                        style={{ marginTop: 6 }}
+                      >
+                        {parsingPaste ? "Parsing…" : "Parse comments"}
+                      </button>
+                    </div>
+                  )}
+
+                  {redditComments.length > 0 && (
+                    <>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                        <div style={{ fontSize: 12, color: "var(--ink-60)" }}>
+                          {selectedIdxs.size} of {redditComments.length} comment{redditComments.length !== 1 ? "s" : ""} selected
+                        </div>
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={toggleAll}>
+                          {selectedIdxs.size === redditComments.length ? "Deselect all" : "Select all"}
+                        </button>
+                      </div>
+                      <div style={{ maxHeight: 260, overflowY: "auto", border: "1px solid var(--border)", borderRadius: 6 }}>
+                        {redditComments.map((c, i) => (
+                          <div
+                            key={i}
+                            onClick={() => toggleIdx(i)}
+                            style={{
+                              display: "flex",
+                              gap: 10,
+                              padding: "9px 12px",
+                              cursor: "pointer",
+                              borderBottom: i < redditComments.length - 1 ? "1px solid var(--border)" : "none",
+                              background: selectedIdxs.has(i) ? "var(--surface-2)" : "transparent",
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selectedIdxs.has(i)}
+                              onChange={() => toggleIdx(i)}
+                              onClick={(e) => e.stopPropagation()}
+                              style={{ marginTop: 2, flexShrink: 0 }}
+                            />
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ display: "flex", gap: 8, marginBottom: 2 }}>
+                                <span style={{ fontWeight: 600, fontSize: 12 }}>u/{c.author}</span>
+                                {c.score !== null && (
+                                  <span style={{ fontSize: 11, color: "var(--ink-40)" }}>↑ {c.score}</span>
+                                )}
+                              </div>
+                              <p style={{ margin: 0, fontSize: 12, color: "var(--ink-80)", overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
+                                {c.body}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      {selectedComments.length > 0 && (
+                        <div style={{ marginTop: 8, fontSize: 12, color: "var(--ink-60)" }}>
+                          Submitting will create a cluster with {selectedComments.length} comment{selectedComments.length !== 1 ? "s" : ""} and run sentiment analysis.
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
 
               <Field
                 label="Title"
@@ -174,23 +462,45 @@ export default function SubmitPage() {
               <div className="form-foot">
                 <div className="form-foot-meta">
                   <PlatformChip platform="manual" />
-                  <span className="dim">Will appear in feed tagged Manual</span>
+                  <span className="dim">
+                    {useThreadFlow
+                      ? `Will create cluster with ${selectedComments.length} comment${selectedComments.length !== 1 ? "s" : ""}`
+                      : "Will appear in feed tagged Manual"}
+                  </span>
                 </div>
                 <div style={{ display: "flex", gap: 8 }}>
                   <button
                     type="button"
                     className="btn btn-ghost"
-                    onClick={() => { setForm(emptyForm); setDone(false); }}
+                    onClick={() => {
+                      setForm(emptyForm);
+                      setDone(false);
+                      setRedditComments([]);
+                      setSelectedIdxs(new Set());
+                      setPasteText("");
+                      setPasteMode(false);
+                    }}
                   >
                     Clear
                   </button>
                   <button type="submit" className="btn btn-primary" disabled={saving}>
-                    {saving ? "Submitting…" : "Submit to feed"}
+                    {saving
+                      ? "Submitting…"
+                      : useThreadFlow
+                        ? `Submit + create cluster`
+                        : "Submit to feed"}
                   </button>
                 </div>
               </div>
 
-              {done && (
+              {done && typeof done === "object" && done.clusterId && (
+                <div className="banner banner-ok">
+                  <span style={{ fontSize: 12 }}>✓</span>
+                  Saved and cluster created.{" "}
+                  <a href="/clusters" className="ulink">View in clusters →</a>
+                </div>
+              )}
+              {done === true && (
                 <div className="banner banner-ok">
                   <span style={{ fontSize: 12 }}>✓</span>
                   Saved.{" "}
@@ -209,7 +519,7 @@ export default function SubmitPage() {
             <div className="side-card">
               <div className="side-card-title">When to submit manually</div>
               <ul className="side-list">
-                <li>An article behind a paywall the crawler can't reach.</li>
+                <li>An article behind a paywall the crawler can&apos;t reach.</li>
                 <li>A LinkedIn post — no LinkedIn collector yet.</li>
                 <li>A podcast episode, conference talk, or video.</li>
                 <li>Anything sent to you directly (email, DM) worth tracking.</li>
