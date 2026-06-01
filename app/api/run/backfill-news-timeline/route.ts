@@ -49,6 +49,10 @@ export async function POST() {
   let skipped = 0;
   let total = 0;
 
+  if (feeds.length === 0) {
+    return NextResponse.json({ ok: false, error: "no_feeds", message: "rss_feeds table is empty — no feeds to process" });
+  }
+
   for (const feed of feeds) {
     const items = await db
       .select({ title: ingestedItems.title, createdAt: ingestedItems.createdAt })
