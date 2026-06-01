@@ -109,6 +109,7 @@ export const ingestedItems = pgTable(
     entityId: uuid("entity_id").references(() => trackedEntities.id, {
       onDelete: "set null",
     }),
+    rssFeedId: uuid("rss_feed_id").references(() => rssFeeds.id, { onDelete: "set null" }),
     platform: platformEnum("platform").notNull(),
     externalId: text("external_id"),
     url: text("url"),

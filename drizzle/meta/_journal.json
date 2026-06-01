@@ -29,6 +29,13 @@
       "when": 1748836800000,
       "tag": "0003_news_timeline_days",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1748923200000,
+      "tag": "0004_ingested_items_rss_feed_id",
+      "breakpoints": true
     }
   ]
 }
