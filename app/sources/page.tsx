@@ -3,17 +3,18 @@
 import { useEffect, useState } from "react";
 import { cx, Dot, PlatformChip, Sparkline } from "@/components/primitives";
 import { useCompany } from "@/components/CompanyContext";
+import ThreadIngestDialog from "@/components/ThreadIngestDialog";
 
-type EnvStatus = { hackernews: boolean; reddit: boolean; twitter: boolean; threads: boolean };
+type EnvStatus = { hackernews: boolean; twitter: boolean; threads: boolean };
 
 type SourceStats = { today: number; sevenDays: number; lastPoll: string | null };
 type GAStats = SourceStats;
 type HNStats = SourceStats;
-type RedditStats = SourceStats;
 type TwitterStats = SourceStats;
 type ThreadsStats = SourceStats;
 
 type ThreadsFilter = { id: string; filterType: "keyword" | "user"; value: string };
+type Entity = { id: string; label: string };
 
 function relativeTime(iso: string | null): string {
   if (!iso) return "—";
@@ -39,12 +40,6 @@ const SOURCE_DEFS: SourceDef[] = [
     key: "hackernews",
     name: "HackerNews",
     desc: "Algolia HN search API — free, no credentials required. Searches stories and comments across all of HN.",
-    requiresEnv: [],
-  },
-  {
-    key: "reddit",
-    name: "Reddit",
-    desc: "OAuth2 client credentials flow. Fetches new posts from configured subreddits and matches against tracked entity keywords.",
     requiresEnv: [],
   },
   {
@@ -97,15 +92,14 @@ export default function SourcesPage() {
   const [pollStatus, setPollStatus] = useState<Record<string, "idle" | "polling" | { inserted: number } | "error">>({});
   const [gaStats, setGaStats] = useState<GAStats | null>(null);
   const [hnStats, setHnStats] = useState<HNStats | null>(null);
-  const [redditStats, setRedditStats] = useState<RedditStats | null>(null);
   const [twitterStats, setTwitterStats] = useState<TwitterStats | null>(null);
   const [threadsStats, setThreadsStats] = useState<ThreadsStats | null>(null);
-  const [subreddits, setSubreddits] = useState<string[]>([]);
-  const [subredditInput, setSubredditInput] = useState("");
   const [threadsFilters, setThreadsFilters] = useState<ThreadsFilter[]>([]);
   const [threadsInput, setThreadsInput] = useState("");
   const [threadsFilterType, setThreadsFilterType] = useState<"keyword" | "user">("keyword");
   const [sourceSparklines, setSourceSparklines] = useState<Record<string, number[]>>({});
+  const [entities, setEntities] = useState<Entity[]>([]);
+  const [threadDialogOpen, setThreadDialogOpen] = useState(false);
 
   useEffect(() => {
     if (!activeCompanyId) return;
@@ -113,14 +107,10 @@ export default function SourcesPage() {
     fetch("/api/sources/status").then((r) => r.json()).then(setEnvStatus);
     fetch(`/api/entities?companyId=${activeCompanyId}`)
       .then((r) => r.json())
-      .then((entities: { googleAlertsFeedUrl: string | null }[]) =>
-        setAlertCount(entities.filter((e) => e.googleAlertsFeedUrl).length)
-      );
-    fetch(`/api/subreddits?companyId=${activeCompanyId}`)
-      .then((r) => r.json())
-      .then((rows: { subredditName: string }[]) =>
-        setSubreddits(rows.map((r) => r.subredditName))
-      );
+      .then((rows: { id: string; label: string; googleAlertsFeedUrl: string | null }[]) => {
+        setAlertCount(rows.filter((e) => e.googleAlertsFeedUrl).length);
+        setEntities(rows.map((e) => ({ id: e.id, label: e.label })));
+      });
     fetch(`/api/threads-filters?companyId=${activeCompanyId}`)
       .then((r) => r.json())
       .then((rows: ThreadsFilter[]) => setThreadsFilters(rows));
@@ -129,11 +119,10 @@ export default function SourcesPage() {
       const cq = `companyId=${activeCompanyId}`;
       fetch(`/api/sources/stats/google-alerts?${cq}`).then((r) => r.json()).then(setGaStats);
       fetch(`/api/sources/stats/hackernews?${cq}`).then((r) => r.json()).then(setHnStats);
-      fetch(`/api/sources/stats/reddit?${cq}`).then((r) => r.json()).then(setRedditStats);
       fetch(`/api/sources/stats/twitter?${cq}`).then((r) => r.json()).then(setTwitterStats);
       fetch(`/api/sources/stats/threads?${cq}`).then((r) => r.json()).then(setThreadsStats);
 
-      const platforms = ["hackernews", "reddit", "twitter", "google_alerts", "manual", "threads"];
+      const platforms = ["hackernews", "twitter", "google_alerts", "manual", "threads"];
       Promise.all(
         platforms.map((p) =>
           fetch(`/api/items/timeseries?platform=${p}&groupBy=hour&days=1&${cq}`)
@@ -147,26 +136,6 @@ export default function SourcesPage() {
     const interval = setInterval(refreshStats, 60_000);
     return () => clearInterval(interval);
   }, [activeCompanyId]);
-
-  async function addSubreddit() {
-    const name = subredditInput.trim().replace(/^r\//i, "");
-    if (!name || !activeCompanyId) return;
-    const res = await fetch("/api/subreddits", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ subredditName: name, companyId: activeCompanyId }),
-    });
-    if (res.ok) {
-      setSubreddits((prev) => (prev.includes(name) ? prev : [...prev, name]));
-      setSubredditInput("");
-    }
-  }
-
-  async function removeSubreddit(name: string) {
-    const cq = activeCompanyId ? `?companyId=${activeCompanyId}` : "";
-    await fetch(`/api/subreddits/${name}${cq}`, { method: "DELETE" });
-    setSubreddits((prev) => prev.filter((s) => s !== name));
-  }
 
   async function addThreadsFilter() {
     const value = threadsInput.trim().replace(/^[@#]/, "");
@@ -192,10 +161,7 @@ export default function SourcesPage() {
   const isConnected = (key: string) => {
     if (key === "hackernews" || key === "manual") return "active";
     if (key === "google_alerts") return alertCount > 0 ? "active" : "offline";
-    if (key === "reddit")
-      return envStatus?.reddit ? (subreddits.length > 0 ? "active" : "degraded") : "offline";
-    if (key === "twitter")
-      return envStatus?.twitter ? "active" : "offline";
+    if (key === "twitter") return envStatus?.twitter ? "active" : "offline";
     if (key === "threads") {
       if (!envStatus?.threads) return "offline";
       return threadsFilters.length > 0 ? "active" : "degraded";
@@ -207,7 +173,6 @@ export default function SourcesPage() {
     const endpoint =
       key === "google_alerts" ? "/api/sources/poll/google-alerts"
       : key === "hackernews" ? "/api/sources/poll/hackernews"
-      : key === "reddit" ? "/api/sources/poll/reddit"
       : key === "twitter" ? "/api/sources/poll/twitter"
       : key === "threads" ? "/api/sources/poll/threads"
       : null;
@@ -220,7 +185,6 @@ export default function SourcesPage() {
       setPollStatus((s) => ({ ...s, [key]: { inserted: data.inserted ?? 0 } }));
       const cq = activeCompanyId ? `?companyId=${activeCompanyId}` : "";
       if (key === "hackernews") fetch(`/api/sources/stats/hackernews${cq}`).then((r) => r.json()).then(setHnStats);
-      if (key === "reddit") fetch(`/api/sources/stats/reddit${cq}`).then((r) => r.json()).then(setRedditStats);
       if (key === "twitter") fetch(`/api/sources/stats/twitter${cq}`).then((r) => r.json()).then(setTwitterStats);
     } catch {
       setPollStatus((s) => ({ ...s, [key]: "error" }));
@@ -239,6 +203,12 @@ export default function SourcesPage() {
           <p className="page-desc">Platform health, polling cadence and credentials.</p>
         </div>
         <div className="topbar-actions">
+          <button
+            className="btn btn-primary btn-sm"
+            onClick={() => setThreadDialogOpen(true)}
+          >
+            + Ingest thread
+          </button>
           <div className="seg">
             {["1h", "24h", "7d"].map((r) => (
               <button key={r} className="seg-btn">{r}</button>
@@ -249,7 +219,7 @@ export default function SourcesPage() {
 
       <div className="page">
         <div className="src-grid">
-          {SOURCE_DEFS.map((s, idx) => {
+          {SOURCE_DEFS.map((s) => {
             const status = isConnected(s.key) as "active" | "degraded" | "offline";
             const tone = status === "active" ? "ok" : status === "degraded" ? "warn" : "err";
             const spark = sourceSparklines[s.key] ?? [];
@@ -257,21 +227,18 @@ export default function SourcesPage() {
             const statsToday =
               s.key === "google_alerts" ? (gaStats ? gaStats.today : "—")
               : s.key === "hackernews" ? (hnStats ? hnStats.today : "—")
-              : s.key === "reddit" ? (redditStats ? redditStats.today : "—")
               : s.key === "twitter" ? (twitterStats ? twitterStats.today : "—")
               : s.key === "threads" ? (threadsStats ? threadsStats.today : "—")
               : "—";
             const statsSevenDays =
               s.key === "google_alerts" ? (gaStats ? gaStats.sevenDays : "—")
               : s.key === "hackernews" ? (hnStats ? hnStats.sevenDays : "—")
-              : s.key === "reddit" ? (redditStats ? redditStats.sevenDays : "—")
               : s.key === "twitter" ? (twitterStats ? twitterStats.sevenDays : "—")
               : s.key === "threads" ? (threadsStats ? threadsStats.sevenDays : "—")
               : "—";
             const statsLastPoll =
               s.key === "google_alerts" ? relativeTime(gaStats?.lastPoll ?? null)
               : s.key === "hackernews" ? relativeTime(hnStats?.lastPoll ?? null)
-              : s.key === "reddit" ? relativeTime(redditStats?.lastPoll ?? null)
               : s.key === "twitter" ? relativeTime(twitterStats?.lastPoll ?? null)
               : s.key === "threads" ? relativeTime(threadsStats?.lastPoll ?? null)
               : "—";
@@ -285,7 +252,7 @@ export default function SourcesPage() {
               : typeof ps === "object"
               ? ps.inserted > 0 ? `✓ ${ps.inserted} new` : "✓ Up to date"
               : "↻ Poll now";
-            const canPoll = s.key === "google_alerts" || s.key === "hackernews" || s.key === "reddit" || s.key === "twitter" || s.key === "threads";
+            const canPoll = s.key === "google_alerts" || s.key === "hackernews" || s.key === "twitter" || s.key === "threads";
 
             return (
               <div key={s.key} className={cx("scard", `scard-${tone}`)}>
@@ -352,49 +319,6 @@ export default function SourcesPage() {
                       ) : (
                         <span className="dim">None — add a feed URL to a tracked entity</span>
                       )}
-                    </div>
-                  </div>
-                )}
-
-                {s.key === "reddit" && (
-                  <div className="scard-env">
-                    <div className="scard-env-label">Subreddits</div>
-                    {subreddits.length > 0 && (
-                      <div className="scard-env-list" style={{ marginBottom: 6 }}>
-                        {subreddits.map((name) => (
-                          <span key={name} className="codepill" style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                            r/{name}
-                            <button
-                              onClick={() => removeSubreddit(name)}
-                              style={{ background: "none", border: "none", cursor: "pointer", color: "var(--ink-40)", lineHeight: 1, padding: 0, fontSize: 12 }}
-                              aria-label={`Remove r/${name}`}
-                            >
-                              ×
-                            </button>
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                    <div style={{ display: "flex", gap: 6 }}>
-                      <input
-                        type="text"
-                        value={subredditInput}
-                        onChange={(e) => setSubredditInput(e.target.value)}
-                        onKeyDown={(e) => e.key === "Enter" && addSubreddit()}
-                        placeholder="subreddit name"
-                        style={{
-                          flex: 1,
-                          fontSize: 12,
-                          padding: "3px 8px",
-                          background: "var(--surface-1)",
-                          border: "1px solid var(--border)",
-                          borderRadius: 4,
-                          color: "var(--ink-100)",
-                        }}
-                      />
-                      <button className="btn btn-ghost btn-sm" onClick={addSubreddit}>
-                        Add
-                      </button>
                     </div>
                   </div>
                 )}
@@ -520,6 +444,15 @@ export default function SourcesPage() {
           </div>
         </div>
       </div>
+
+      {threadDialogOpen && activeCompanyId && (
+        <ThreadIngestDialog
+          companyId={activeCompanyId}
+          entities={entities}
+          onClose={() => setThreadDialogOpen(false)}
+          onInserted={() => setThreadDialogOpen(false)}
+        />
+      )}
     </>
   );
 }

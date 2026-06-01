@@ -240,7 +240,7 @@ export default function TrackPage() {
 
   const modalFeeds = selectedEntity ? (feedsByEntityId[selectedEntity.id] ?? []) : [];
   const modalSources = selectedEntity
-    ? ["hackernews", "reddit", "twitter"].concat(modalFeeds.length > 0 ? ["google_alerts"] : [])
+    ? ["hackernews", "twitter"].concat(modalFeeds.length > 0 ? ["google_alerts"] : [])
     : [];
 
   return (
@@ -376,7 +376,6 @@ export default function TrackPage() {
               <div className="addcard-platforms">
                 <span className="dim">Will be polled on:</span>
                 <PlatformChip platform="hackernews" />
-                <PlatformChip platform="reddit" />
                 <PlatformChip platform="twitter" />
                 <span className="dim" style={{ fontSize: 11 }}>Add Google Alerts feeds via entity settings after creation.</span>
               </div>
@@ -408,7 +407,7 @@ export default function TrackPage() {
             </thead>
             <tbody>
               {filtered.map((e) => {
-                const sources = ["hackernews", "reddit", "twitter"].concat(
+                const sources = ["hackernews", "twitter"].concat(
                   (feedsByEntityId[e.id]?.length ?? 0) > 0 ? ["google_alerts"] : []
                 );
                 const spark = sparklines[e.id] ?? [];
