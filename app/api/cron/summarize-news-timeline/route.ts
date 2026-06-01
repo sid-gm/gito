@@ -8,20 +8,49 @@ import { verifyCronSecret } from "@/lib/cron-auth";
 
 const PAIR_LIMIT = 30;
 
+type Story = {
+  label: string;
+  summary: string;
+  sentiment: "positive" | "negative" | "neutral" | "mixed";
+  score: number;
+  count: number;
+};
+
+const VALID_SENTIMENTS = ["positive", "negative", "neutral", "mixed"] as const;
+
+function deriveAggregate(stories: Story[]) {
+  if (stories.length === 0) return { aiSummary: null, sentimentScore: null, sentimentLabel: null };
+
+  const totalCount = stories.reduce((sum, s) => sum + s.count, 0) || 1;
+  const weightedScore = stories.reduce((sum, s) => sum + s.score * s.count, 0) / totalCount;
+  const sentimentScore = Math.max(-1, Math.min(1, weightedScore));
+
+  const hasPositive = stories.some((s) => s.score > 0.15);
+  const hasNegative = stories.some((s) => s.score < -0.15);
+  let sentimentLabel: string;
+  if (hasPositive && hasNegative) {
+    sentimentLabel = "mixed";
+  } else if (sentimentScore > 0.15) {
+    sentimentLabel = "positive";
+  } else if (sentimentScore < -0.15) {
+    sentimentLabel = "negative";
+  } else {
+    sentimentLabel = "neutral";
+  }
+
+  const lead = [...stories].sort((a, b) => b.count - a.count)[0];
+  return { aiSummary: lead.summary, sentimentScore, sentimentLabel };
+}
+
 export async function GET(req: Request) {
   const authError = verifyCronSecret(req);
   if (authError) return authError;
 
   const feeds = await db
-    .select({
-      feedId: rssFeeds.id,
-      feedLabel: rssFeeds.label,
-      entityLabel: trackedEntities.label,
-    })
+    .select({ feedId: rssFeeds.id, feedLabel: rssFeeds.label, entityLabel: trackedEntities.label })
     .from(rssFeeds)
     .innerJoin(trackedEntities, eq(rssFeeds.entityId, trackedEntities.id));
 
-  // Collect (feed, day) pairs up to PAIR_LIMIT
   type Pair = {
     feedId: string;
     feedLabel: string;
@@ -38,12 +67,7 @@ export async function GET(req: Request) {
     const items = await db
       .select({ title: ingestedItems.title, createdAt: ingestedItems.createdAt })
       .from(ingestedItems)
-      .where(
-        and(
-          eq(ingestedItems.platform, "google_alerts"),
-          eq(ingestedItems.rssFeedId, feed.feedId)
-        )
-      );
+      .where(and(eq(ingestedItems.platform, "google_alerts"), eq(ingestedItems.rssFeedId, feed.feedId)));
 
     const byDay = new Map<string, { titles: string[]; latestAt: Date }>();
     for (const item of items) {
@@ -67,53 +91,40 @@ export async function GET(req: Request) {
     if (pair.titles.length === 0) continue;
 
     const [existing] = await db
-      .select({ generatedAt: newsTimelineDays.generatedAt })
+      .select({ generatedAt: newsTimelineDays.generatedAt, stories: newsTimelineDays.stories })
       .from(newsTimelineDays)
       .where(and(eq(newsTimelineDays.rssFeedId, pair.feedId), eq(newsTimelineDays.periodDate, pair.day)))
       .limit(1);
 
-    if (existing?.generatedAt && existing.generatedAt >= pair.latestItemAt) continue;
+    if (existing?.stories != null && existing.generatedAt && existing.generatedAt >= pair.latestItemAt) continue;
 
     try {
-      const titleList = pair.titles.slice(0, 8).map((t, i) => `${i + 1}. ${t}`).join("\n");
+      const titleList = pair.titles.slice(0, 12).map((t, i) => `${i + 1}. ${t}`).join("\n");
 
-      const { text: summaryText } = await generateText({
+      const { text } = await generateText({
         model: openai("gpt-4o-mini"),
-        prompt: `These are Google Alerts headlines about "${pair.feedLabel}" (tracked for ${pair.entityLabel}) from ${pair.day}:\n\n${titleList}\n\nWrite 1-2 sentences summarizing the key news on this date. Be concise and factual.`,
-        maxOutputTokens: 80,
+        prompt: `These are Google Alerts headlines about "${pair.feedLabel}" (tracked for ${pair.entityLabel}) from ${pair.day}:\n\n${titleList}\n\nGroup them into distinct stories. For each story provide a label, 1-2 sentence summary, sentiment (positive|negative|neutral|mixed), score (-1.0 to 1.0), and count of how many titles belong to it.\nReturn JSON only:\n{"stories":[{"label":"...","summary":"...","sentiment":"positive","score":0.0,"count":1}]}`,
+        maxOutputTokens: 400,
       });
 
-      const { text: sentimentText } = await generateText({
-        model: openai("gpt-4o-mini"),
-        prompt: `Rate the overall sentiment of these headlines about "${pair.feedLabel}" from ${pair.day}:\n\n${titleList}\n\nRespond with JSON only: {"sentiment":"positive"|"negative"|"neutral"|"mixed","score":<float -1.0 to 1.0>}`,
-        maxOutputTokens: 60,
-      });
+      const raw = text.trim().replace(/^```json\s*/m, "").replace(/```$/m, "").trim();
+      const parsed = JSON.parse(raw) as { stories: Story[] };
+      const stories: Story[] = (parsed.stories ?? []).map((s) => ({
+        label: String(s.label ?? ""),
+        summary: String(s.summary ?? ""),
+        sentiment: (VALID_SENTIMENTS as readonly string[]).includes(s.sentiment) ? s.sentiment as Story["sentiment"] : "neutral",
+        score: typeof s.score === "number" ? Math.max(-1, Math.min(1, s.score)) : 0,
+        count: typeof s.count === "number" ? s.count : 1,
+      }));
 
-      let sentimentScore: number | null = null;
-      let sentimentLabel: string | null = null;
-      try {
-        const raw = sentimentText.trim().replace(/^```json\s*/, "").replace(/```$/, "").trim();
-        const parsed = JSON.parse(raw) as { sentiment: string; score: number };
-        const valid = ["positive", "negative", "neutral", "mixed"];
-        sentimentLabel = valid.includes(parsed.sentiment) ? parsed.sentiment : null;
-        sentimentScore = typeof parsed.score === "number" ? Math.max(-1, Math.min(1, parsed.score)) : null;
-      } catch { /* leave null */ }
-
-      const row = {
-        aiSummary: summaryText.trim() || null,
-        sentimentScore,
-        sentimentLabel,
-        itemCount: pair.titles.length,
-        generatedAt: now,
-        updatedAt: now,
-      };
+      const { aiSummary, sentimentScore, sentimentLabel } = deriveAggregate(stories);
 
       await db
         .insert(newsTimelineDays)
-        .values({ rssFeedId: pair.feedId, periodDate: pair.day, ...row })
+        .values({ rssFeedId: pair.feedId, periodDate: pair.day, stories, aiSummary, sentimentScore, sentimentLabel, itemCount: pair.titles.length, generatedAt: now, updatedAt: now })
         .onConflictDoUpdate({
           target: [newsTimelineDays.rssFeedId, newsTimelineDays.periodDate],
-          set: row,
+          set: { stories, aiSummary, sentimentScore, sentimentLabel, itemCount: pair.titles.length, generatedAt: now, updatedAt: now },
         });
 
       processed++;

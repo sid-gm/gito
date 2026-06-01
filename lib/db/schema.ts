@@ -97,6 +97,7 @@ export const newsTimelineDays = pgTable("news_timeline_days", {
   sentimentScore: real("sentiment_score"),
   sentimentLabel: text("sentiment_label"),
   itemCount:      integer("item_count").default(0).notNull(),
+  stories:        jsonb("stories").$type<Array<{ label: string; summary: string; sentiment: string; score: number; count: number }>>(),
   generatedAt:    timestamp("generated_at"),
   createdAt:      timestamp("created_at").defaultNow().notNull(),
   updatedAt:      timestamp("updated_at").defaultNow().notNull(),
