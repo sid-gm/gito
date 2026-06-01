@@ -94,7 +94,9 @@ function parseRedditPaste(text: string): ParsedComment[] {
 
       const cleanBody = bodyLines.filter((l) => !/^\d+$/.test(l) && !isBoilerplate(l)).join("\n").trim();
       if (cleanBody.length > 0) {
-        comments.push({ author, body: cleanBody, score, timestamp });
+        // Relative timestamps like "2h ago" aren't usable as ISO dates — discard them
+        const isoTimestamp = timestamp && /^\d{4}/.test(timestamp) ? timestamp : null;
+        comments.push({ author, body: cleanBody, score, timestamp: isoTimestamp });
       }
       continue;
     }

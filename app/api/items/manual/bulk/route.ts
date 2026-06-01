@@ -44,6 +44,12 @@ export async function POST(req: Request) {
   }
 
   const now = new Date();
+  const safeDate = (s: string | undefined): Date => {
+    if (!s) return now;
+    const d = new Date(s);
+    return isNaN(d.getTime()) ? now : d;
+  };
+
   const toInsert: NewIngestedItem[] = items.map((item) => {
     // Keyword-match against entities if no explicit entityId
     let matchedEntityId: string | null = entityId ?? null;
@@ -63,7 +69,7 @@ export async function POST(req: Request) {
       title: item.title,
       body: item.body ?? null,
       author: item.author ?? null,
-      publishedAt: item.publishedAt ? new Date(item.publishedAt) : now,
+      publishedAt: safeDate(item.publishedAt),
       entityId: matchedEntityId,
       subtype: item.subtype ?? "thread_comment",
       rawJson: item.score !== undefined ? { score: item.score } : null,
