@@ -24,6 +24,7 @@ export async function collectGoogleAlerts(
 
   return (parsed.items ?? []).map((item) => ({
     entityId: feed.entityId,
+    rssFeedId: feed.id,
     platform: "google_alerts" as const,
     externalId: item.link ?? item.guid ?? null,
     url: item.link ?? null,
