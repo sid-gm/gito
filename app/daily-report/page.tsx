@@ -448,7 +448,26 @@ export default function DailyReportPage() {
     );
   }
 
-  if (!data || clusters.length === 0) {
+  if (!data) {
+    return (
+      <>
+        <header className="topbar">
+          <div>
+            <div className="eyebrow">Part 6 · Publish</div>
+            <h1 className="page-title">Daily report</h1>
+          </div>
+        </header>
+        <div className="dr-page">
+          <div className="empty">
+            <div className="empty-mark">◐</div>
+            <div className="empty-title">Could not load report</div>
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  if (clusters.length === 0) {
     return (
       <>
         <header className="topbar">
@@ -459,9 +478,31 @@ export default function DailyReportPage() {
           </div>
         </header>
         <div className="dr-page">
+          <div className="dr-datebar">
+            <div className="dr-date-nav">
+              <button
+                className="dr-date-step"
+                title="Previous day"
+                onClick={() => setViewDate(shiftDate(data.dateKey, -1))}
+              >←</button>
+              <div className="dr-date-title">
+                {data.date}
+                <span className="dr-date-tz">{data.day.toUpperCase()} · {data.tz}</span>
+              </div>
+              <button
+                className="dr-date-step"
+                title={data.dateKey >= data.todayKey ? "Tomorrow — not yet polled" : "Next day"}
+                disabled={data.dateKey >= data.todayKey}
+                onClick={() => {
+                  const next = shiftDate(data.dateKey, 1);
+                  setViewDate(next >= data.todayKey ? null : next);
+                }}
+              >→</button>
+            </div>
+          </div>
           <div className="empty">
             <div className="empty-mark">◐</div>
-            <div className="empty-title">No clusters yet today</div>
+            <div className="empty-title">No clusters on this day</div>
             <div className="empty-sub">Clusters will appear here as items are ingested and grouped.</div>
           </div>
         </div>
