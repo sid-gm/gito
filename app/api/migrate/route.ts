@@ -64,6 +64,14 @@ export async function POST() {
       ADD COLUMN IF NOT EXISTS keyword_filters text[] NOT NULL DEFAULT '{}'
     `);
 
+    await db.execute(sql`
+      ALTER TABLE ingested_items DROP COLUMN IF EXISTS embedding
+    `);
+
+    await db.execute(sql`
+      ALTER TABLE clusters DROP COLUMN IF EXISTS centroid_embedding
+    `);
+
     return NextResponse.json({ ok: true, message: "Migration applied" });
   } catch (err) {
     console.error("[POST /api/migrate]", err);

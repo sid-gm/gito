@@ -14,7 +14,6 @@ export async function runClustering(limit: number): Promise<ClusterRunResult> {
   // Pre-pass: group Reddit posts + their comments into clusters by thread URL
   await groupRedditThreadsIntoClusters();
 
-  // Items without a cluster assignment — no embedding required
   const unassigned = await db
     .select({
       id: ingestedItems.id,
