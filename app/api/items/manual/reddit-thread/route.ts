@@ -60,7 +60,7 @@ export async function POST(req: Request) {
 
   // Insert thread post item
   const threadItem: NewIngestedItem = {
-    platform: "manual",
+    platform: "reddit",
     externalId: threadUrl,
     url: threadUrl,
     title,
@@ -90,7 +90,7 @@ export async function POST(req: Request) {
 
   // Insert comment items
   const commentItems: NewIngestedItem[] = comments.map((c, i) => ({
-    platform: "manual",
+    platform: "reddit",
     externalId: `${threadUrl}#comment-${i}-${c.author}`,
     url: threadUrl,
     title: `${c.author}: ${c.body.slice(0, 80)}${c.body.length > 80 ? "…" : ""}`,
