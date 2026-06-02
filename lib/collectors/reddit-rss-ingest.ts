@@ -4,6 +4,7 @@ import type { NewIngestedItem } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { collectSubredditRss } from "./reddit-rss";
 import { upsertItems } from "./ingest";
+import { groupRedditThreadsIntoClusters } from "@/lib/ai/reddit-thread-cluster";
 
 export async function collectAndIngestRedditRss(companyId: string): Promise<number> {
   const subreddits = await db
@@ -49,6 +50,10 @@ export async function collectAndIngestRedditRss(companyId: string): Promise<numb
     } catch (err) {
       console.error(`[Reddit RSS] r/${sub.subredditName} (company ${companyId}):`, err);
     }
+  }
+
+  if (total > 0) {
+    await groupRedditThreadsIntoClusters();
   }
 
   return total;

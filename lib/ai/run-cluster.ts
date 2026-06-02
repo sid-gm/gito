@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { ingestedItems, clusters, clusterItems, trackedEntities } from "@/lib/db/schema";
 import { matchToExistingClusters, groupNewItems } from "@/lib/ai/cluster";
 import { updateVelocityAndStage } from "@/lib/ai/cluster-velocity";
+import { groupRedditThreadsIntoClusters } from "@/lib/ai/reddit-thread-cluster";
 
 export type ClusterRunResult = {
   assigned: number;
@@ -10,6 +11,9 @@ export type ClusterRunResult = {
 };
 
 export async function runClustering(limit: number): Promise<ClusterRunResult> {
+  // Pre-pass: group Reddit posts + their comments into clusters by thread URL
+  await groupRedditThreadsIntoClusters();
+
   // Items without a cluster assignment — no embedding required
   const unassigned = await db
     .select({
