@@ -5,8 +5,9 @@ import { cx } from "@/components/primitives";
 import { useCompany } from "@/components/CompanyContext";
 import "./timeline.css";
 import { NewsTimeline } from "@/components/news-timeline/TimelineTrack";
+import { DayDetailDrawer } from "@/components/news-timeline/DayDetailDrawer";
 import { NTL_WINDOWS } from "@/components/news-timeline/timeline_core";
-import type { HoverPopState, NtlTimelineData, WindowKey, NtlDay } from "@/components/news-timeline/timeline_core";
+import type { HoverPopState, NtlTimelineData, WindowKey, NtlDay, NtlFeed, SelectedDayState } from "@/components/news-timeline/timeline_core";
 
 const WIN_OPTS: { key: WindowKey; label: string }[] = [
   { key: "7d",  label: "7 days" },
@@ -22,6 +23,7 @@ export default function NarrativesPage() {
   const [ntlFeedFilter, setNtlFeedFilter] = useState("all");
   const [ntlLoading, setNtlLoading] = useState(false);
   const [ntlPop, setNtlPop] = useState<HoverPopState>(null);
+  const [selectedDay, setSelectedDay] = useState<SelectedDayState>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -44,6 +46,19 @@ export default function NarrativesPage() {
   }, []);
 
   const onLeave = useCallback(() => setNtlPop(null), []);
+
+  const onDayClick = useCallback((feed: NtlFeed, day: NtlDay) => {
+    setNtlPop(null);
+    setSelectedDay((prev) =>
+      prev?.day.date === day.date && prev.feed.feedId === feed.feedId ? null : { feed, day }
+    );
+  }, []);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") setSelectedDay(null); };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
 
   const allFeeds = ntlData?.feeds ?? [];
   const filteredFeeds = ntlFeedFilter === "all" ? allFeeds : allFeeds.filter((f) => f.feedId === ntlFeedFilter);
@@ -123,13 +138,17 @@ export default function NarrativesPage() {
             scrollRef={scrollRef}
             onHover={onHover}
             onLeave={onLeave}
+            onDayClick={onDayClick}
+            selectedDay={selectedDay ? { feedId: selectedDay.feed.feedId, date: selectedDay.day.date } : null}
           />
         </section>
 
         <p className="t-meta" style={{ color: "var(--ink-50)", marginTop: 14, fontSize: 12 }}>
-          Hover any day for its full summary, sentiment score, and item count. This is read-only news context — no clustering or signal/noise marking is applied to Google Alerts.
+          Hover any day for a quick summary. Click any day for the full breakdown including topic segments and source articles.
         </p>
       </div>
+
+      <DayDetailDrawer selected={selectedDay} onClose={() => setSelectedDay(null)} />
     </>
   );
 }

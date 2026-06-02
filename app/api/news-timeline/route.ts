@@ -43,6 +43,7 @@ export async function GET(req: Request) {
           sentimentScore: newsTimelineDays.sentimentScore,
           sentimentLabel: newsTimelineDays.sentimentLabel,
           itemCount: newsTimelineDays.itemCount,
+          stories: newsTimelineDays.stories,
         })
         .from(newsTimelineDays)
         .where(

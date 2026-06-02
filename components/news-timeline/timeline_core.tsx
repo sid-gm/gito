@@ -4,12 +4,30 @@ import React from "react";
 import { cx } from "@/components/primitives";
 
 // ── Types ──────────────────────────────────────────────────────────────────
+export type NtlStory = {
+  label: string;
+  summary: string;
+  sentiment: string;
+  score: number;
+  count: number;
+};
+
+export type NtlDayItem = {
+  id: string;
+  title: string | null;
+  body: string | null;
+  url: string | null;
+  publishedAt: string | null;
+  author: string | null;
+};
+
 export type NtlDay = {
   date: string;
   aiSummary: string | null;
   sentimentScore: number | null;
   sentimentLabel: string | null;
   itemCount: number;
+  stories?: NtlStory[] | null;
 };
 
 export type NtlFeed = {
@@ -25,6 +43,7 @@ export type NtlFeed = {
 };
 
 export type NtlTimelineData = { feeds: NtlFeed[] };
+export type SelectedDayState = { feed: NtlFeed; day: NtlDay } | null;
 export type WindowKey = "7d" | "30d" | "90d";
 export type StyleKey = "trend" | "rail" | "vertical";
 export type ArrangementKey = "stacked" | "combined" | "tabs";

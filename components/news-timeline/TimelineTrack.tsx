@@ -62,7 +62,7 @@ function FeedHeader({ feed, stats, showAvg }: {
 }
 
 // ── Feed rail (chip lane + chart band + dots) ─────────────────────────────
-function FeedRail({ feed, days, colW, win, density, style, onHover, onLeave }: {
+function FeedRail({ feed, days, colW, win, density, style, onHover, onLeave, onDayClick, selectedDay }: {
   feed: NtlFeed;
   days: NtlDay[];
   colW: number;
@@ -71,6 +71,8 @@ function FeedRail({ feed, days, colW, win, density, style, onHover, onLeave }: {
   style: StyleKey;
   onHover: (day: NtlDay, label: string, e: React.MouseEvent) => void;
   onLeave: () => void;
+  onDayClick: (feed: NtlFeed, day: NtlDay) => void;
+  selectedDay: { feedId: string; date: string } | null;
 }) {
   const N = days.length;
   const expCount = expandedCount(win, density);
@@ -128,13 +130,15 @@ function FeedRail({ feed, days, colW, win, density, style, onHover, onLeave }: {
               const y = flat ? NTL_BAND_H / 2 : scoreToY(d.sentimentScore);
               const r = dotRadius(d.itemCount);
               const isToday = i === N - 1;
+              const isSelected = selectedDay?.feedId === feed.feedId && selectedDay?.date === d.date;
               return (
                 <div
                   key={d.date}
-                  className={cx("ntl-dot", `ntl-dot-${slug}`, isToday && "ntl-dot-recent")}
+                  className={cx("ntl-dot", `ntl-dot-${slug}`, isToday && "ntl-dot-recent", isSelected && "ntl-dot-active")}
                   style={{ left: cx0, top: y, width: r * 2, height: r * 2 }}
                   onMouseEnter={(e) => onHover(d, feed.feedLabel, e)}
                   onMouseLeave={onLeave}
+                  onClick={(e) => { e.stopPropagation(); onDayClick(feed, d); }}
                 />
               );
             })}
@@ -148,11 +152,17 @@ function FeedRail({ feed, days, colW, win, density, style, onHover, onLeave }: {
             const slug = sentSlug(d.sentimentLabel);
             const dm = fmtDayMon(d.date);
             const y = flat ? NTL_BAND_H / 2 : scoreToY(d.sentimentScore);
+            const isSelected = selectedDay?.feedId === feed.feedId && selectedDay?.date === d.date;
             return (
               <React.Fragment key={d.date}>
                 <div className="ntl-chip-stem" style={{ left: cx0, top: laneH - 4, height: y + 4 }} />
-                <div className="ntl-chip" style={{ left: cx0, width: chipW, bottom: NTL_BAND_H + 4 }}
-                     onMouseEnter={(e) => onHover(d, feed.feedLabel, e)} onMouseLeave={onLeave}>
+                <div
+                  className={cx("ntl-chip", isSelected && "ntl-chip-active")}
+                  style={{ left: cx0, width: chipW, bottom: NTL_BAND_H + 4 }}
+                  onMouseEnter={(e) => onHover(d, feed.feedLabel, e)}
+                  onMouseLeave={onLeave}
+                  onClick={() => onDayClick(feed, d)}
+                >
                   <div className="ntl-chip-head">
                     <span className="ntl-chip-date">{i === N - 1 ? "Today" : `${dm.mon} ${dm.day}`}</span>
                     <span className={cx("ntl-chip-score", `nd-text-${slug}`)}>{fmtScore(d.sentimentScore)}</span>
@@ -169,12 +179,14 @@ function FeedRail({ feed, days, colW, win, density, style, onHover, onLeave }: {
 }
 
 // ── Combined overlay — all feeds in one band ───────────────────────────────
-function CombinedTimeline({ feeds, colW, win, onHover, onLeave }: {
+function CombinedTimeline({ feeds, colW, win, onHover, onLeave, onDayClick, selectedDay }: {
   feeds: NtlFeed[];
   colW: number;
   win: WindowKey;
   onHover: (day: NtlDay, label: string, e: React.MouseEvent) => void;
   onLeave: () => void;
+  onDayClick: (feed: NtlFeed, day: NtlDay) => void;
+  selectedDay: { feedId: string; date: string } | null;
 }) {
   const N = NTL_WINDOWS[win];
   const railW = N * colW;
@@ -213,11 +225,15 @@ function CombinedTimeline({ feeds, colW, win, onHover, onLeave }: {
             {feeds.map((f, fi) =>
               windowSlice(f, win).map((d, i) => {
                 if (d.sentimentScore == null) return null;
+                const isSelected = selectedDay?.feedId === f.feedId && selectedDay?.date === d.date;
                 return (
                   <div key={f.feedId + d.date}
-                    className="ntl-dot"
+                    className={cx("ntl-dot", isSelected && "ntl-dot-active")}
                     style={{ left: (i + 0.5) * colW, top: yOf(d.sentimentScore), width: 9, height: 9, background: getFeedColor(fi) }}
-                    onMouseEnter={(e) => onHover(d, f.feedLabel, e)} onMouseLeave={onLeave} />
+                    onMouseEnter={(e) => onHover(d, f.feedLabel, e)}
+                    onMouseLeave={onLeave}
+                    onClick={(e) => { e.stopPropagation(); onDayClick(f, d); }}
+                  />
                 );
               })
             )}
@@ -229,12 +245,14 @@ function CombinedTimeline({ feeds, colW, win, onHover, onLeave }: {
 }
 
 // ── Vertical rail — one focused feed, newest first ─────────────────────────
-function VerticalView({ feeds, focusId, onFocus, win, density }: {
+function VerticalView({ feeds, focusId, onFocus, win, density, onDayClick, selectedDay }: {
   feeds: NtlFeed[];
   focusId: string;
   onFocus: (id: string) => void;
   win: WindowKey;
   density: DensityKey;
+  onDayClick: (feed: NtlFeed, day: NtlDay) => void;
+  selectedDay: { feedId: string; date: string } | null;
 }) {
   const feed = feeds.find((f) => f.feedId === focusId) ?? feeds[0];
   const days = windowSlice(feed, win).slice().reverse();
@@ -255,8 +273,9 @@ function VerticalView({ feeds, focusId, onFocus, win, density }: {
           const expanded = idx < expCount;
           const color = present ? `var(--nd-${slug})` : "var(--ink-30)";
           const dm = fmtDayMon(d.date);
+          const isSelected = selectedDay?.feedId === feed.feedId && selectedDay?.date === d.date;
           return (
-            <div key={d.date} className={cx("ntl-vrow", !present && "ntl-vrow-null")}>
+            <div key={d.date} className={cx("ntl-vrow", !present && "ntl-vrow-null", isSelected && "ntl-vrow-active")} onClick={() => present && onDayClick(feed, d)} style={present ? { cursor: "pointer" } : undefined}>
               <div className="ntl-vrow-date">{idx === 0 ? "Today" : `${dm.mon} ${dm.day}`}</div>
               <div className="ntl-vrow-spine" />
               <div className="ntl-vrow-node" style={{ background: color, top: 15, width: present ? 11 : 8, height: present ? 11 : 8 }} />
@@ -279,7 +298,7 @@ function VerticalView({ feeds, focusId, onFocus, win, density }: {
 }
 
 // ── NewsTimeline section ───────────────────────────────────────────────────
-export function NewsTimeline({ feeds, win, feedFilter, style, arrangement, density, showAvg, pop, scrollRef, onHover, onLeave }: {
+export function NewsTimeline({ feeds, win, feedFilter, style, arrangement, density, showAvg, pop, scrollRef, onHover, onLeave, onDayClick, selectedDay }: {
   feeds: NtlFeed[];
   win: WindowKey;
   feedFilter: string;
@@ -291,6 +310,8 @@ export function NewsTimeline({ feeds, win, feedFilter, style, arrangement, densi
   scrollRef: React.RefObject<HTMLDivElement | null>;
   onHover: (day: NtlDay, label: string, e: React.MouseEvent) => void;
   onLeave: () => void;
+  onDayClick?: (feed: NtlFeed, day: NtlDay) => void;
+  selectedDay?: { feedId: string; date: string } | null;
 }) {
   const colW = NTL_COLW[win];
   const filtered = feedFilter === "all" ? feeds : feeds.filter((f) => f.feedId === feedFilter);
@@ -315,10 +336,14 @@ export function NewsTimeline({ feeds, win, feedFilter, style, arrangement, densi
     );
   }
 
+  const noop = () => {};
+  const clickHandler = onDayClick ?? noop;
+  const selDay = selectedDay ?? null;
+
   return (
     <>
       {isVertical ? (
-        <VerticalView feeds={viewFeeds} focusId={focusId} onFocus={setFocusId} win={win} density={density} />
+        <VerticalView feeds={viewFeeds} focusId={focusId} onFocus={setFocusId} win={win} density={density} onDayClick={clickHandler} selectedDay={selDay} />
       ) : (
         <>
           {isTabs && (
@@ -332,10 +357,10 @@ export function NewsTimeline({ feeds, win, feedFilter, style, arrangement, densi
             <div className="ntl-inner">
               {axisRef && <TimelineAxis days={axisRef._wdays ?? []} colW={colW} win={win} />}
               {isCombined ? (
-                <CombinedTimeline feeds={viewFeeds} colW={colW} win={win} onHover={onHover} onLeave={onLeave} />
+                <CombinedTimeline feeds={viewFeeds} colW={colW} win={win} onHover={onHover} onLeave={onLeave} onDayClick={clickHandler} selectedDay={selDay} />
               ) : (
                 tabFeeds.map((f) => (
-                  <FeedRail key={f.feedId} feed={f} days={f._wdays ?? []} colW={colW} win={win} density={density} style={style} onHover={onHover} onLeave={onLeave} />
+                  <FeedRail key={f.feedId} feed={f} days={f._wdays ?? []} colW={colW} win={win} density={density} style={style} onHover={onHover} onLeave={onLeave} onDayClick={clickHandler} selectedDay={selDay} />
                 ))
               )}
             </div>
