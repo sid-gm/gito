@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { ingestedItems, trackedEntities } from "@/lib/db/schema";
+import { ingestedItems, trackedEntities, clusterItems, clusters } from "@/lib/db/schema";
 import { desc, eq, and, inArray, SQL } from "drizzle-orm";
 
 export async function GET(req: Request) {
@@ -60,13 +60,42 @@ export async function GET(req: Request) {
     }
   }
 
-  const result = items.map((i) => ({
-    ...i,
-    threadIngested:
-      i.platform === "reddit" && i.subtype === "reddit_post"
-        ? ingestedThreadUrlSet.has(i.url ?? "")
-        : false,
-  }));
+  // Bulk-check which items belong to a cluster
+  const itemIds = items.map((i) => i.id);
+  const itemClusterMap = new Map<string, string>();
+  if (itemIds.length > 0) {
+    const clusterRows = await db
+      .select({ itemId: clusterItems.itemId, clusterId: clusterItems.clusterId })
+      .from(clusterItems)
+      .where(inArray(clusterItems.itemId, itemIds))
+      .orderBy(desc(clusterItems.similarity));
+    for (const r of clusterRows) {
+      if (!itemClusterMap.has(r.itemId)) itemClusterMap.set(r.itemId, r.clusterId);
+    }
+  }
+
+  const clusterIds = [...new Set(itemClusterMap.values())];
+  const clusterLabelMap = new Map<string, string | null>();
+  if (clusterIds.length > 0) {
+    const clusterRows = await db
+      .select({ id: clusters.id, label: clusters.label })
+      .from(clusters)
+      .where(inArray(clusters.id, clusterIds));
+    for (const r of clusterRows) clusterLabelMap.set(r.id, r.label);
+  }
+
+  const result = items.map((i) => {
+    const clusterId = itemClusterMap.get(i.id) ?? null;
+    return {
+      ...i,
+      threadIngested:
+        i.platform === "reddit" && i.subtype === "reddit_post"
+          ? ingestedThreadUrlSet.has(i.url ?? "")
+          : false,
+      clusterId,
+      clusterLabel: clusterId ? (clusterLabelMap.get(clusterId) ?? null) : null,
+    };
+  });
 
   return NextResponse.json(result);
 }

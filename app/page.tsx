@@ -22,6 +22,8 @@ type FeedItem = {
   subtype: string | null;
   createdAt: string;
   threadIngested?: boolean;
+  clusterId?: string | null;
+  clusterLabel?: string | null;
 };
 
 type Entity = { id: string; label: string; entityType: string };
@@ -433,6 +435,16 @@ function FeedRow({ item, entities, onIngestThread }: { item: FeedItem; entities:
         </div>
       </div>
       <div className="feedrow-actions">
+        {item.clusterId && (
+          <a
+            href="/clusters"
+            className="btn btn-ghost btn-sm"
+            style={{ fontSize: 11 }}
+            title={item.clusterLabel ? `Cluster: ${item.clusterLabel}` : "View cluster"}
+          >
+            → cluster
+          </a>
+        )}
         {isRedditPost && item.url && (
           <button
             className={cx("btn btn-ghost btn-sm", alreadyIngested && "btn-muted")}
