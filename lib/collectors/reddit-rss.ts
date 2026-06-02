@@ -2,18 +2,26 @@ import Parser from "rss-parser";
 
 const parser = new Parser();
 
-function buildRssUrl(subredditName: string, keywordFilters: string[]): string {
+function buildRssUrls(subredditName: string, keywordFilters: string[]): string[] {
+  const sorts = ["new", "hot"];
+
   if (subredditName === "all") {
-    const q = keywordFilters.join(" OR ");
-    const params = new URLSearchParams({ q, sort: "new", type: "link" });
-    return `https://www.reddit.com/search.rss?${params}`;
+    return sorts.map((sort) => {
+      const q = keywordFilters.join(" OR ");
+      const params = new URLSearchParams({ q, sort, type: "link" });
+      return `https://www.reddit.com/search.rss?${params}`;
+    });
   }
+
   if (keywordFilters.length === 0) {
-    return `https://www.reddit.com/r/${subredditName}/new/.rss`;
+    return sorts.map((sort) => `https://www.reddit.com/r/${subredditName}/${sort}/.rss`);
   }
+
   const q = keywordFilters.join(" OR ");
-  const params = new URLSearchParams({ q, restrict_sr: "1", sort: "new" });
-  return `https://www.reddit.com/r/${subredditName}/search.rss?${params}`;
+  return sorts.map((sort) => {
+    const params = new URLSearchParams({ q, restrict_sr: "1", sort });
+    return `https://www.reddit.com/r/${subredditName}/search.rss?${params}`;
+  });
 }
 
 function stripHtml(raw: string | null | undefined): string {
@@ -39,13 +47,13 @@ export interface RedditRssPost {
   body: string | null;
 }
 
-export async function collectSubredditRss(
-  subredditName: string,
-  keywordFilters: string[]
-): Promise<RedditRssPost[]> {
-  const url = buildRssUrl(subredditName, keywordFilters);
+async function fetchRssFeed(url: string, subredditName: string): Promise<RedditRssPost[]> {
+  const proxyBase = process.env.REDDIT_PROXY_URL;
+  const fetchUrl = proxyBase
+    ? `${proxyBase}?url=${encodeURIComponent(url)}`
+    : url;
 
-  const res = await fetch(url, {
+  const res = await fetch(fetchUrl, {
     headers: { "User-Agent": "GitoSMA/1.0" },
   });
 
@@ -84,4 +92,36 @@ export async function collectSubredditRss(
       body,
     };
   });
+}
+
+export async function collectSubredditRss(
+  subredditName: string,
+  keywordFilters: string[]
+): Promise<RedditRssPost[]> {
+  const urls = buildRssUrls(subredditName, keywordFilters);
+
+  const results = await Promise.allSettled(urls.map((url) => fetchRssFeed(url, subredditName)));
+
+  const seen = new Set<string>();
+  const posts: RedditRssPost[] = [];
+
+  for (const result of results) {
+    if (result.status === "rejected") {
+      console.warn(`[Reddit RSS] Feed fetch failed for r/${subredditName}:`, result.reason);
+      continue;
+    }
+    for (const post of result.value) {
+      if (!seen.has(post.post_id)) {
+        seen.add(post.post_id);
+        posts.push(post);
+      }
+    }
+  }
+
+  // If all feeds failed, surface the error from the first one
+  if (posts.length === 0 && results.every((r) => r.status === "rejected")) {
+    throw (results[0] as PromiseRejectedResult).reason;
+  }
+
+  return posts;
 }
