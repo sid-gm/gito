@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { ingestedItems, trackedEntities } from "@/lib/db/schema";
+import { companies, ingestedItems, trackedEntities } from "@/lib/db/schema";
 import type { NewIngestedItem } from "@/lib/db/schema";
 
 export async function upsertItems(items: NewIngestedItem[]): Promise<number> {
@@ -16,4 +16,8 @@ export async function upsertItems(items: NewIngestedItem[]): Promise<number> {
 
 export async function getAllEntities() {
   return db.select().from(trackedEntities).orderBy(trackedEntities.createdAt);
+}
+
+export async function getAllCompanies() {
+  return db.select().from(companies).orderBy(companies.createdAt);
 }
