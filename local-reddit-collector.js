@@ -71,7 +71,7 @@ const USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " +
   "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
 
-const INTERVAL_MS = 10 * 60 * 1000;
+const INTERVAL_MS = 20 * 60 * 1000;
 
 // ── Helpers (mirrored from lib/collectors/reddit-rss.ts) ─────────────────────
 
@@ -133,9 +133,8 @@ async function runOnce() {
         const res = await fetch(url, { headers: { "User-Agent": USER_AGENT } });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const feed = await rssParser.parseString(await res.text());
-
         posts = feed.items.map((item) => {
-          const guid = item.guid ?? "";
+          const guid = item.id ?? item.guid ?? "";
           const post_id = guid.replace(/^t\d+_/, "") || guid;
           const rawBody = stripHtml(item.content ?? item.contentSnippet);
           const rawAuthor = item.creator ?? item.author ?? "";
@@ -182,8 +181,8 @@ async function runOnce() {
             RETURNING id
           `;
           if (rows.length > 0) inserted++;
-        } catch {
-          // silently skip individual insert errors (type mismatches, etc.)
+        } catch (err) {
+          console.error(`[${now()}] r/${name} insert error (${post.post_id}): ${err.message}`);
         }
       }
 
@@ -196,7 +195,7 @@ async function runOnce() {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
-console.log(`[${now()}] Reddit collector starting — polling every ${INTERVAL_MS / 60000} min`);
+console.log(`[${now()}] Reddit collector starting — polling every ${INTERVAL_MS / 60000}min`);
 console.log(`[${now()}] DB: ${DB_URL.replace(/:([^@]+)@/, ":***@")}`);
 
 runOnce().catch((e) => console.error(`[${now()}] Run error:`, e.message));
