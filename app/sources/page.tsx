@@ -5,13 +5,16 @@ import { cx, Dot, PlatformChip, Sparkline } from "@/components/primitives";
 import { useCompany } from "@/components/CompanyContext";
 import ThreadIngestDialog from "@/components/ThreadIngestDialog";
 
-type EnvStatus = { hackernews: boolean; twitter: boolean; threads: boolean };
+type EnvStatus = { hackernews: boolean; twitter: boolean; threads: boolean; reddit: boolean };
 
 type SourceStats = { today: number; sevenDays: number; lastPoll: string | null };
 type GAStats = SourceStats;
 type HNStats = SourceStats;
 type TwitterStats = SourceStats;
 type ThreadsStats = SourceStats;
+type RedditStats = SourceStats;
+
+type RedditSubreddit = { id: string; subredditName: string; keywordFilters: string[]; createdAt: string };
 
 type ThreadsFilter = { id: string; filterType: "keyword" | "user"; value: string };
 type Entity = { id: string; label: string };
@@ -62,6 +65,12 @@ const SOURCE_DEFS: SourceDef[] = [
     requiresEnv: ["THREADS_ACCESS_TOKEN"],
   },
   {
+    key: "reddit",
+    name: "Reddit RSS",
+    desc: "Tracks new posts from configured subreddits via public RSS feeds. No credentials required.",
+    requiresEnv: [],
+  },
+  {
     key: "manual",
     name: "Manual",
     desc: "Analyst submits articles directly via the Submit page. Always active — no configuration needed.",
@@ -100,6 +109,12 @@ export default function SourcesPage() {
   const [sourceSparklines, setSourceSparklines] = useState<Record<string, number[]>>({});
   const [entities, setEntities] = useState<Entity[]>([]);
   const [threadDialogOpen, setThreadDialogOpen] = useState(false);
+  const [redditStats, setRedditStats] = useState<RedditStats | null>(null);
+  const [redditSubreddits, setRedditSubreddits] = useState<RedditSubreddit[]>([]);
+  const [redditInput, setRedditInput] = useState("");
+  const [redditKeywordInput, setRedditKeywordInput] = useState("");
+  const [redditEditingId, setRedditEditingId] = useState<string | null>(null);
+  const [redditEditKeywords, setRedditEditKeywords] = useState("");
 
   useEffect(() => {
     if (!activeCompanyId) return;
@@ -114,6 +129,9 @@ export default function SourcesPage() {
     fetch(`/api/threads-filters?companyId=${activeCompanyId}`)
       .then((r) => r.json())
       .then((rows: ThreadsFilter[]) => setThreadsFilters(rows));
+    fetch(`/api/reddit-subreddits?companyId=${activeCompanyId}`)
+      .then((r) => r.json())
+      .then((rows: RedditSubreddit[]) => setRedditSubreddits(rows));
 
     const refreshStats = () => {
       const cq = `companyId=${activeCompanyId}`;
@@ -121,8 +139,9 @@ export default function SourcesPage() {
       fetch(`/api/sources/stats/hackernews?${cq}`).then((r) => r.json()).then(setHnStats);
       fetch(`/api/sources/stats/twitter?${cq}`).then((r) => r.json()).then(setTwitterStats);
       fetch(`/api/sources/stats/threads?${cq}`).then((r) => r.json()).then(setThreadsStats);
+      fetch(`/api/sources/stats/reddit?${cq}`).then((r) => r.json()).then(setRedditStats);
 
-      const platforms = ["hackernews", "twitter", "google_alerts", "manual", "threads"];
+      const platforms = ["hackernews", "twitter", "google_alerts", "manual", "threads", "reddit"];
       Promise.all(
         platforms.map((p) =>
           fetch(`/api/items/timeseries?platform=${p}&groupBy=hour&days=1&${cq}`)
@@ -152,6 +171,48 @@ export default function SourcesPage() {
     }
   }
 
+  async function addRedditSubreddit() {
+    const name = redditInput.trim().replace(/^r\//, "").toLowerCase();
+    if (!name || !activeCompanyId) return;
+    const keywords = redditKeywordInput
+      .split(",")
+      .map((k) => k.trim())
+      .filter(Boolean);
+    const res = await fetch("/api/reddit-subreddits", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ subredditName: name, keywordFilters: keywords, companyId: activeCompanyId }),
+    });
+    if (res.ok) {
+      const row = await res.json() as RedditSubreddit;
+      setRedditSubreddits((prev) => prev.some((r) => r.id === row.id) ? prev : [...prev, row]);
+      setRedditInput("");
+      setRedditKeywordInput("");
+    }
+  }
+
+  async function removeRedditSubreddit(id: string) {
+    const cq = activeCompanyId ? `?companyId=${activeCompanyId}` : "";
+    await fetch(`/api/reddit-subreddits/${id}${cq}`, { method: "DELETE" });
+    setRedditSubreddits((prev) => prev.filter((r) => r.id !== id));
+  }
+
+  async function saveRedditKeywords(id: string) {
+    const keywords = redditEditKeywords.split(",").map((k) => k.trim()).filter(Boolean);
+    const cq = activeCompanyId ? `?companyId=${activeCompanyId}` : "";
+    const res = await fetch(`/api/reddit-subreddits/${id}${cq}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ keywordFilters: keywords }),
+    });
+    if (res.ok) {
+      const row = await res.json() as RedditSubreddit;
+      setRedditSubreddits((prev) => prev.map((r) => r.id === id ? row : r));
+      setRedditEditingId(null);
+      setRedditEditKeywords("");
+    }
+  }
+
   async function removeThreadsFilter(id: string) {
     const cq = activeCompanyId ? `?companyId=${activeCompanyId}` : "";
     await fetch(`/api/threads-filters/${id}${cq}`, { method: "DELETE" });
@@ -162,6 +223,7 @@ export default function SourcesPage() {
     if (key === "hackernews" || key === "manual") return "active";
     if (key === "google_alerts") return alertCount > 0 ? "active" : "offline";
     if (key === "twitter") return envStatus?.twitter ? "active" : "offline";
+    if (key === "reddit") return redditSubreddits.length > 0 ? "active" : "degraded";
     if (key === "threads") {
       if (!envStatus?.threads) return "offline";
       return threadsFilters.length > 0 ? "active" : "degraded";
@@ -229,18 +291,21 @@ export default function SourcesPage() {
               : s.key === "hackernews" ? (hnStats ? hnStats.today : "—")
               : s.key === "twitter" ? (twitterStats ? twitterStats.today : "—")
               : s.key === "threads" ? (threadsStats ? threadsStats.today : "—")
+              : s.key === "reddit" ? (redditStats ? redditStats.today : "—")
               : "—";
             const statsSevenDays =
               s.key === "google_alerts" ? (gaStats ? gaStats.sevenDays : "—")
               : s.key === "hackernews" ? (hnStats ? hnStats.sevenDays : "—")
               : s.key === "twitter" ? (twitterStats ? twitterStats.sevenDays : "—")
               : s.key === "threads" ? (threadsStats ? threadsStats.sevenDays : "—")
+              : s.key === "reddit" ? (redditStats ? redditStats.sevenDays : "—")
               : "—";
             const statsLastPoll =
               s.key === "google_alerts" ? relativeTime(gaStats?.lastPoll ?? null)
               : s.key === "hackernews" ? relativeTime(hnStats?.lastPoll ?? null)
               : s.key === "twitter" ? relativeTime(twitterStats?.lastPoll ?? null)
               : s.key === "threads" ? relativeTime(threadsStats?.lastPoll ?? null)
+              : s.key === "reddit" ? relativeTime(redditStats?.lastPoll ?? null)
               : "—";
 
             const ps = pollStatus[s.key] ?? "idle";
@@ -376,6 +441,106 @@ export default function SourcesPage() {
                       <button className="btn btn-ghost btn-sm" onClick={addThreadsFilter}>
                         Add
                       </button>
+                    </div>
+                  </div>
+                )}
+
+                {s.key === "reddit" && (
+                  <div className="scard-env">
+                    <div className="scard-env-label">Tracked subreddits</div>
+                    {redditSubreddits.length > 0 && (
+                      <div style={{ marginBottom: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+                        {redditSubreddits.map((sub) => (
+                          <div key={sub.id} style={{ fontSize: 12 }}>
+                            {redditEditingId === sub.id ? (
+                              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                                <div style={{ fontWeight: 600, color: "var(--ink-80)" }}>r/{sub.subredditName}</div>
+                                <input
+                                  type="text"
+                                  value={redditEditKeywords}
+                                  onChange={(e) => setRedditEditKeywords(e.target.value)}
+                                  onKeyDown={(e) => e.key === "Enter" && saveRedditKeywords(sub.id)}
+                                  placeholder="keyword1, keyword2 (empty = all posts)"
+                                  style={{
+                                    fontSize: 12,
+                                    padding: "3px 8px",
+                                    background: "var(--surface-1)",
+                                    border: "1px solid var(--border)",
+                                    borderRadius: 4,
+                                    color: "var(--ink-100)",
+                                  }}
+                                />
+                                <div style={{ display: "flex", gap: 4 }}>
+                                  <button className="btn btn-ghost btn-sm" onClick={() => saveRedditKeywords(sub.id)}>Save</button>
+                                  <button className="btn btn-ghost btn-sm" onClick={() => { setRedditEditingId(null); setRedditEditKeywords(""); }}>Cancel</button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                                <span style={{ fontWeight: 600, color: "var(--ink-80)", flexShrink: 0 }}>r/{sub.subredditName}</span>
+                                {sub.keywordFilters.length === 0 ? (
+                                  <span className="codepill" style={{ color: "var(--ink-40)" }}>All posts</span>
+                                ) : (
+                                  sub.keywordFilters.map((kw) => (
+                                    <span key={kw} className="codepill">{kw}</span>
+                                  ))
+                                )}
+                                <button
+                                  onClick={() => { setRedditEditingId(sub.id); setRedditEditKeywords(sub.keywordFilters.join(", ")); }}
+                                  style={{ background: "none", border: "none", cursor: "pointer", color: "var(--ink-40)", fontSize: 11, padding: "1px 4px" }}
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  onClick={() => removeRedditSubreddit(sub.id)}
+                                  style={{ background: "none", border: "none", cursor: "pointer", color: "var(--ink-40)", fontSize: 12, padding: 0, lineHeight: 1 }}
+                                  aria-label={`Remove r/${sub.subredditName}`}
+                                >
+                                  ×
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      <input
+                        type="text"
+                        value={redditInput}
+                        onChange={(e) => setRedditInput(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && addRedditSubreddit()}
+                        placeholder="subreddit name (e.g. sanfrancisco)"
+                        style={{
+                          fontSize: 12,
+                          padding: "3px 8px",
+                          background: "var(--surface-1)",
+                          border: "1px solid var(--border)",
+                          borderRadius: 4,
+                          color: "var(--ink-100)",
+                        }}
+                      />
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <input
+                          type="text"
+                          value={redditKeywordInput}
+                          onChange={(e) => setRedditKeywordInput(e.target.value)}
+                          onKeyDown={(e) => e.key === "Enter" && addRedditSubreddit()}
+                          placeholder="keywords (optional, comma-separated)"
+                          style={{
+                            flex: 1,
+                            fontSize: 12,
+                            padding: "3px 8px",
+                            background: "var(--surface-1)",
+                            border: "1px solid var(--border)",
+                            borderRadius: 4,
+                            color: "var(--ink-100)",
+                          }}
+                        />
+                        <button className="btn btn-ghost btn-sm" onClick={addRedditSubreddit}>
+                          Add
+                        </button>
+                      </div>
                     </div>
                   </div>
                 )}
