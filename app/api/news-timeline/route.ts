@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { and, asc, desc, eq, gte, SQL } from "drizzle-orm";
+import { and, asc, eq, gte, SQL } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { rssFeeds, trackedEntities, newsTimelineDays } from "@/lib/db/schema";
 
@@ -51,7 +51,7 @@ export async function GET(req: Request) {
             gte(newsTimelineDays.periodDate, cutoff)
           )
         )
-        .orderBy(desc(newsTimelineDays.periodDate));
+        .orderBy(asc(newsTimelineDays.periodDate));
 
       return { ...feed, days };
     })
