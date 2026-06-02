@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { cx } from "@/components/primitives";
 
 type ParsedComment = {
@@ -17,6 +17,7 @@ interface Props {
   entities: Entity[];
   onClose: () => void;
   onInserted: (count: number) => void;
+  defaultUrl?: string;
 }
 
 function isRedditUrl(url: string): boolean {
@@ -58,8 +59,8 @@ function flattenRedditComments(children: RedditChild[]): ParsedComment[] {
   return results;
 }
 
-export default function ThreadIngestDialog({ companyId, entities, onClose, onInserted }: Props) {
-  const [url, setUrl] = useState("");
+export default function ThreadIngestDialog({ companyId, entities, onClose, onInserted, defaultUrl }: Props) {
+  const [url, setUrl] = useState(defaultUrl ?? "");
   const [comments, setComments] = useState<ParsedComment[]>([]);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [entityId, setEntityId] = useState("");
@@ -70,6 +71,13 @@ export default function ThreadIngestDialog({ companyId, entities, onClose, onIns
   const [parsing, setParsing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (defaultUrl && isRedditUrl(defaultUrl)) {
+      fetchRedditComments();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function fetchRedditComments() {
     setFetchError("");

@@ -21,6 +21,7 @@ type FeedItem = {
   publishedAt: string | null;
   subtype: string | null;
   createdAt: string;
+  threadIngested?: boolean;
 };
 
 type Entity = { id: string; label: string; entityType: string };
@@ -66,6 +67,8 @@ export default function FeedPage() {
   const [clusterRunning, setClusterRunning] = useState(false);
   const [clusterResult, setClusterResult] = useState<string | null>(null);
   const [threadDialogOpen, setThreadDialogOpen] = useState(false);
+  const [threadDialogUrl, setThreadDialogUrl] = useState<string | null>(null);
+  const [sessionIngestedUrls, setSessionIngestedUrls] = useState<Set<string>>(new Set());
   const [platformCounts, setPlatformCounts] = useState<Record<string, number>>({ all: 0 });
   const [totalSpark, setTotalSpark] = useState<number[]>([]);
 
@@ -153,6 +156,15 @@ export default function FeedPage() {
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const safePage = Math.min(page, totalPages);
   const paginated = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
+
+  const displayItems = useMemo(
+    () =>
+      paginated.map((item) => ({
+        ...item,
+        threadIngested: item.threadIngested || sessionIngestedUrls.has(item.url ?? ""),
+      })),
+    [paginated, sessionIngestedUrls]
+  );
 
 
   return (
@@ -312,9 +324,9 @@ export default function FeedPage() {
             <div className="empty-title">Loading feed</div>
           </div>
         ) : view === "list" ? (
-          <FeedList items={paginated} entities={entities} />
+          <FeedList items={displayItems} entities={entities} onIngestThread={(url) => setThreadDialogUrl(url)} />
         ) : (
-          <FeedTable items={paginated} entities={entities} />
+          <FeedTable items={displayItems} entities={entities} />
         )}
 
         {!loading && filtered.length > 0 && (
@@ -340,24 +352,32 @@ export default function FeedPage() {
         )}
       </div>
 
-      {threadDialogOpen && activeCompanyId && (
+      {(threadDialogOpen || threadDialogUrl !== null) && activeCompanyId && (
         <ThreadIngestDialog
           companyId={activeCompanyId}
           entities={entities}
-          onClose={() => setThreadDialogOpen(false)}
-          onInserted={() => { setThreadDialogOpen(false); fetchItems(); }}
+          defaultUrl={threadDialogUrl ?? ""}
+          onClose={() => { setThreadDialogOpen(false); setThreadDialogUrl(null); }}
+          onInserted={() => {
+            if (threadDialogUrl) {
+              setSessionIngestedUrls((prev) => new Set([...prev, threadDialogUrl]));
+            }
+            setThreadDialogOpen(false);
+            setThreadDialogUrl(null);
+            fetchItems();
+          }}
         />
       )}
     </>
   );
 }
 
-function FeedList({ items, entities }: { items: FeedItem[]; entities: Entity[] }) {
+function FeedList({ items, entities, onIngestThread }: { items: FeedItem[]; entities: Entity[]; onIngestThread?: (url: string) => void }) {
   if (items.length === 0) return <Empty />;
   return (
     <div className="feedlist">
       {items.map((item) => (
-        <FeedRow key={item.id} item={item} entities={entities} />
+        <FeedRow key={item.id} item={item} entities={entities} onIngestThread={onIngestThread} />
       ))}
     </div>
   );
@@ -369,9 +389,11 @@ function hnHref(item: FeedItem): string | null {
   return item.url;
 }
 
-function FeedRow({ item, entities }: { item: FeedItem; entities: Entity[] }) {
+function FeedRow({ item, entities, onIngestThread }: { item: FeedItem; entities: Entity[]; onIngestThread?: (url: string) => void }) {
   const ent = entities.find((e) => e.id === item.entityId);
   const sentiment = 0;
+  const isRedditPost = item.platform === "reddit" && item.subtype === "reddit_post";
+  const alreadyIngested = item.threadIngested ?? false;
   return (
     <article className="feedrow feedrow-low">
       <div className="feedrow-rail" />
@@ -411,6 +433,17 @@ function FeedRow({ item, entities }: { item: FeedItem; entities: Entity[] }) {
         </div>
       </div>
       <div className="feedrow-actions">
+        {isRedditPost && item.url && (
+          <button
+            className={cx("btn btn-ghost btn-sm", alreadyIngested && "btn-muted")}
+            disabled={alreadyIngested}
+            onClick={() => !alreadyIngested && onIngestThread?.(item.url!)}
+            title={alreadyIngested ? "Thread already ingested" : "Ingest thread comments"}
+            style={{ fontSize: 11, opacity: alreadyIngested ? 0.45 : 1 }}
+          >
+            {alreadyIngested ? "Thread ingested" : "≡ Ingest thread"}
+          </button>
+        )}
         <button className="iconbtn" title="Star">☆</button>
         {hnHref(item) && (
           <a className="iconbtn" href={hnHref(item)!} target="_blank" rel="noopener noreferrer" title="Open">↗</a>

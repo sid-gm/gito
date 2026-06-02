@@ -44,5 +44,29 @@ export async function GET(req: Request) {
     .limit(limit)
     .offset(offset);
 
-  return NextResponse.json(items);
+  // Bulk-check which reddit_post URLs already have ingested comments
+  const redditPostUrls = items
+    .filter((i) => i.platform === "reddit" && i.subtype === "reddit_post" && i.url)
+    .map((i) => i.url as string);
+
+  const ingestedThreadUrlSet = new Set<string>();
+  if (redditPostUrls.length > 0) {
+    const rows = await db
+      .selectDistinct({ url: ingestedItems.url })
+      .from(ingestedItems)
+      .where(and(eq(ingestedItems.subtype, "reddit_comment"), inArray(ingestedItems.url, redditPostUrls)));
+    for (const r of rows) {
+      if (r.url) ingestedThreadUrlSet.add(r.url);
+    }
+  }
+
+  const result = items.map((i) => ({
+    ...i,
+    threadIngested:
+      i.platform === "reddit" && i.subtype === "reddit_post"
+        ? ingestedThreadUrlSet.has(i.url ?? "")
+        : false,
+  }));
+
+  return NextResponse.json(result);
 }
