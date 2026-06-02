@@ -260,17 +260,25 @@ export default function SourcesPage() {
       : key === "hackernews" ? "/api/sources/poll/hackernews"
       : key === "twitter" ? "/api/sources/poll/twitter"
       : key === "threads" ? "/api/sources/poll/threads"
+      : key === "reddit" ? "/api/sources/poll/reddit-rss"
       : null;
     if (!endpoint) return;
 
     setPollStatus((s) => ({ ...s, [key]: "polling" }));
     try {
-      const res = await fetch(endpoint, { method: "POST" });
+      const needsBody = key === "reddit";
+      const res = await fetch(endpoint, {
+        method: "POST",
+        ...(needsBody && activeCompanyId
+          ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify({ companyId: activeCompanyId }) }
+          : {}),
+      });
       const data = await res.json();
       setPollStatus((s) => ({ ...s, [key]: { inserted: data.inserted ?? 0 } }));
       const cq = activeCompanyId ? `?companyId=${activeCompanyId}` : "";
       if (key === "hackernews") fetch(`/api/sources/stats/hackernews${cq}`).then((r) => r.json()).then(setHnStats);
       if (key === "twitter") fetch(`/api/sources/stats/twitter${cq}`).then((r) => r.json()).then(setTwitterStats);
+      if (key === "reddit") fetch(`/api/sources/stats/reddit${cq}`).then((r) => r.json()).then(setRedditStats);
     } catch {
       setPollStatus((s) => ({ ...s, [key]: "error" }));
     }
@@ -340,7 +348,7 @@ export default function SourcesPage() {
               : typeof ps === "object"
               ? ps.inserted > 0 ? `✓ ${ps.inserted} new` : "✓ Up to date"
               : "↻ Poll now";
-            const canPoll = s.key === "google_alerts" || s.key === "hackernews" || s.key === "twitter" || s.key === "threads";
+            const canPoll = s.key === "google_alerts" || s.key === "hackernews" || s.key === "twitter" || s.key === "threads" || s.key === "reddit";
 
             return (
               <div key={s.key} className={cx("scard", `scard-${tone}`)}>

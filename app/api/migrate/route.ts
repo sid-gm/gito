@@ -59,6 +59,11 @@ export async function POST() {
       ADD COLUMN IF NOT EXISTS suggested_keywords JSONB
     `);
 
+    await db.execute(sql`
+      ALTER TABLE reddit_subreddits
+      ADD COLUMN IF NOT EXISTS keyword_filters text[] NOT NULL DEFAULT '{}'
+    `);
+
     return NextResponse.json({ ok: true, message: "Migration applied" });
   } catch (err) {
     console.error("[POST /api/migrate]", err);
