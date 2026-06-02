@@ -9,25 +9,7 @@ import {
   integer,
   real,
   primaryKey,
-  customType,
 } from "drizzle-orm/pg-core";
-
-const vector = customType<{
-  data: number[];
-  driverData: string;
-  config: { dimensions: number };
-}>({
-  dataType(config) {
-    return `vector(${config?.dimensions ?? 1536})`;
-  },
-  toDriver(value: number[]): string {
-    return `[${value.join(",")}]`;
-  },
-  fromDriver(value: string): number[] {
-    if (typeof value !== "string") return value as unknown as number[];
-    return value.slice(1, -1).split(",").map(Number);
-  },
-});
 
 export const entityTypeEnum = pgEnum("entity_type", [
   "keyword",
@@ -120,7 +102,6 @@ export const ingestedItems = pgTable(
     publishedAt: timestamp("published_at"),
     rawJson: jsonb("raw_json"),
     subtype: text("subtype"),
-    embedding: vector("embedding", { dimensions: 1536 }),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (t) => [unique("platform_external_id_unique").on(t.platform, t.externalId)]
@@ -130,7 +111,6 @@ export const clusters = pgTable("clusters", {
   id: uuid("id").defaultRandom().primaryKey(),
   entityId: uuid("entity_id").references(() => trackedEntities.id, { onDelete: "cascade" }),
   label: text("label"),
-  centroidEmbedding: vector("centroid_embedding", { dimensions: 1536 }),
   itemCount: integer("item_count").default(1).notNull(),
   firstSeenAt: timestamp("first_seen_at").notNull(),
   lastSeenAt: timestamp("last_seen_at").notNull(),

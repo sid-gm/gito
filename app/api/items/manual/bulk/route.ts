@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { ingestedItems, trackedEntities } from "@/lib/db/schema";
+import { trackedEntities } from "@/lib/db/schema";
 import type { NewIngestedItem } from "@/lib/db/schema";
 import { upsertItems } from "@/lib/collectors/ingest";
-import { embedText } from "@/lib/ai/embed";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 
@@ -78,33 +77,5 @@ export async function POST(req: Request) {
 
   const inserted = await upsertItems(toInsert);
 
-  // Embed items async (non-blocking — fire and forget)
-  void embedInserted(toInsert);
-
   return NextResponse.json({ inserted });
-}
-
-async function embedInserted(items: NewIngestedItem[]) {
-  for (const item of items) {
-    try {
-      const text = [item.title, item.body].filter(Boolean).join("\n");
-      if (!text.trim()) continue;
-      const vec = await embedText(text);
-      // Find the item by platform + externalId (or platform + title as fallback)
-      const where = item.externalId
-        ? { platform: item.platform, externalId: item.externalId }
-        : null;
-      if (!where) continue;
-      const rows = await db
-        .select({ id: ingestedItems.id })
-        .from(ingestedItems)
-        .where(eq(ingestedItems.externalId, item.externalId!))
-        .limit(1);
-      if (rows[0]) {
-        await db.update(ingestedItems).set({ embedding: vec }).where(eq(ingestedItems.id, rows[0].id));
-      }
-    } catch {
-      // embedding failure is non-fatal
-    }
-  }
 }

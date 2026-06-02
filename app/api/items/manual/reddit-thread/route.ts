@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { ingestedItems, clusters, clusterItems, trackedEntities } from "@/lib/db/schema";
 import type { NewIngestedItem } from "@/lib/db/schema";
-import { embedText } from "@/lib/ai/embed";
 import { analyzeEntitySentiment } from "@/lib/ai/sentiment";
 import { eq, inArray } from "drizzle-orm";
 import { z } from "zod";
@@ -186,29 +185,5 @@ export async function POST(req: Request) {
     }
   }
 
-  // Embed async (fire and forget)
-  void embedAllItems([threadItem, ...commentItems]);
-
   return NextResponse.json({ clusterId, inserted: allItemIds.length, sentimentLabel, sentimentScore });
-}
-
-async function embedAllItems(items: NewIngestedItem[]) {
-  for (const item of items) {
-    try {
-      if (!item.externalId) continue;
-      const text = [item.title, item.body].filter(Boolean).join("\n");
-      if (!text.trim()) continue;
-      const vec = await embedText(text);
-      const [row] = await db
-        .select({ id: ingestedItems.id })
-        .from(ingestedItems)
-        .where(eq(ingestedItems.externalId, item.externalId))
-        .limit(1);
-      if (row) {
-        await db.update(ingestedItems).set({ embedding: vec }).where(eq(ingestedItems.id, row.id));
-      }
-    } catch {
-      // Non-fatal
-    }
-  }
 }

@@ -1,10 +1,8 @@
 import { NextResponse } from "next/server";
-import { desc, eq, sql } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { clusterItems, clusterMerges, clusterPeriodNarratives, ingestedItems } from "@/lib/db/schema";
-
-const EXPAND_THRESHOLD = 0.70;
 
 function dedupeItems<T extends { externalId: string | null; url: string | null; title: string | null; similarity: number }>(items: T[]): T[] {
   const seen = new Map<string, T>();
@@ -125,46 +123,5 @@ export async function POST(
     itemSignal: "unclassified",
   }).onConflictDoNothing();
 
-  // Auto-expand: find items similar to the newly added story and pull them in too
-  let expandedBy = 0;
-  try {
-    const [source] = await db
-      .select({ embedding: ingestedItems.embedding, entityId: ingestedItems.entityId })
-      .from(ingestedItems)
-      .where(eq(ingestedItems.id, itemId));
-
-    if (source?.embedding && source?.entityId) {
-      const vecStr = `[${source.embedding.join(",")}]`;
-      const similar = await db.execute<{ item_id: string; similarity: number }>(
-        sql`
-          SELECT i.id AS item_id,
-                 (1 - (i.embedding <=> ${vecStr}::vector))::float AS similarity
-          FROM ingested_items i
-          WHERE i.entity_id = ${source.entityId}
-            AND i.embedding IS NOT NULL
-            AND i.id != ${itemId}
-            AND (1 - (i.embedding <=> ${vecStr}::vector)) >= ${EXPAND_THRESHOLD}
-            AND NOT EXISTS (
-              SELECT 1 FROM cluster_items ci
-              WHERE ci.item_id = i.id AND ci.cluster_id = ${id}
-            )
-        `
-      );
-
-      if (similar.rows.length > 0) {
-        const values = similar.rows.map((r) => ({
-          clusterId: id,
-          itemId: r.item_id,
-          similarity: r.similarity,
-          itemSignal: "unclassified" as const,
-        }));
-        const inserted = await db.insert(clusterItems).values(values).onConflictDoNothing().returning();
-        expandedBy = inserted.length;
-      }
-    }
-  } catch (err) {
-    console.error("[clusters/items] auto-expand failed:", err);
-  }
-
-  return NextResponse.json({ ok: true, expandedBy }, { status: 201 });
+  return NextResponse.json({ ok: true }, { status: 201 });
 }
