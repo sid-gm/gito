@@ -33,7 +33,10 @@ const addSchema = z.object({
     .transform((v) => v.toLowerCase().replace(/^r\//, "")),
   keywordFilters: z.array(z.string().min(1).max(100)).optional().default([]),
   companyId: z.string().uuid().optional(),
-});
+}).refine(
+  (data) => data.subredditName !== "all" || data.keywordFilters.length > 0,
+  { message: "Keywords are required when tracking all of Reddit", path: ["keywordFilters"] }
+);
 
 export async function POST(req: Request) {
   const body = await req.json();

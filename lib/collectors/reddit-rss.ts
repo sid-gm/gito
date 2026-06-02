@@ -3,6 +3,11 @@ import Parser from "rss-parser";
 const parser = new Parser();
 
 function buildRssUrl(subredditName: string, keywordFilters: string[]): string {
+  if (subredditName === "all") {
+    const q = keywordFilters.join(" OR ");
+    const params = new URLSearchParams({ q, sort: "new", type: "link" });
+    return `https://www.reddit.com/search.rss?${params}`;
+  }
   if (keywordFilters.length === 0) {
     return `https://www.reddit.com/r/${subredditName}/new/.rss`;
   }

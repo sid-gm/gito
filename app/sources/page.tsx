@@ -172,17 +172,40 @@ export default function SourcesPage() {
   }
 
   async function addRedditSubreddit() {
+    if (!activeCompanyId) return;
     const name = redditInput.trim().replace(/^r\//, "").toLowerCase();
-    if (!name || !activeCompanyId) return;
     const keywords = redditKeywordInput
       .split(",")
       .map((k) => k.trim())
       .filter(Boolean);
+    // Need at least a subreddit name or some keywords to track
+    if (!name && keywords.length === 0) return;
+    const subredditName = name || "all";
     const res = await fetch("/api/reddit-subreddits", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ subredditName: name, keywordFilters: keywords, companyId: activeCompanyId }),
+      body: JSON.stringify({ subredditName, keywordFilters: keywords, companyId: activeCompanyId }),
     });
+    if (res.status === 409 && subredditName === "all") {
+      // Merge new keywords into the existing "all" entry
+      const existing = redditSubreddits.find((r) => r.subredditName === "all");
+      if (existing) {
+        const merged = [...new Set([...existing.keywordFilters, ...keywords])];
+        const cq = `?companyId=${activeCompanyId}`;
+        const patchRes = await fetch(`/api/reddit-subreddits/${existing.id}${cq}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ keywordFilters: merged }),
+        });
+        if (patchRes.ok) {
+          const row = await patchRes.json() as RedditSubreddit;
+          setRedditSubreddits((prev) => prev.map((r) => (r.id === existing.id ? row : r)));
+          setRedditInput("");
+          setRedditKeywordInput("");
+        }
+      }
+      return;
+    }
     if (res.ok) {
       const row = await res.json() as RedditSubreddit;
       setRedditSubreddits((prev) => prev.some((r) => r.id === row.id) ? prev : [...prev, row]);
@@ -454,7 +477,9 @@ export default function SourcesPage() {
                           <div key={sub.id} style={{ fontSize: 12 }}>
                             {redditEditingId === sub.id ? (
                               <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                                <div style={{ fontWeight: 600, color: "var(--ink-80)" }}>r/{sub.subredditName}</div>
+                                <div style={{ fontWeight: 600, color: "var(--ink-80)" }}>
+                                  {sub.subredditName === "all" ? "All of Reddit" : `r/${sub.subredditName}`}
+                                </div>
                                 <input
                                   type="text"
                                   value={redditEditKeywords}
@@ -477,7 +502,9 @@ export default function SourcesPage() {
                               </div>
                             ) : (
                               <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                                <span style={{ fontWeight: 600, color: "var(--ink-80)", flexShrink: 0 }}>r/{sub.subredditName}</span>
+                                <span style={{ fontWeight: 600, color: "var(--ink-80)", flexShrink: 0 }}>
+                                  {sub.subredditName === "all" ? "All of Reddit" : `r/${sub.subredditName}`}
+                                </span>
                                 {sub.keywordFilters.length === 0 ? (
                                   <span className="codepill" style={{ color: "var(--ink-40)" }}>All posts</span>
                                 ) : (
@@ -510,7 +537,7 @@ export default function SourcesPage() {
                         value={redditInput}
                         onChange={(e) => setRedditInput(e.target.value)}
                         onKeyDown={(e) => e.key === "Enter" && addRedditSubreddit()}
-                        placeholder="subreddit name (e.g. sanfrancisco)"
+                        placeholder="subreddit (optional — blank tracks all of Reddit)"
                         style={{
                           fontSize: 12,
                           padding: "3px 8px",
