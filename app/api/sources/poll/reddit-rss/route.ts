@@ -8,6 +8,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "companyId required" }, { status: 400 });
   }
 
+  console.log(`[poll/reddit-rss] manual poll companyId=${body.companyId}`);
   const inserted = await collectAndIngestRedditRss(body.companyId);
+  console.log(`[poll/reddit-rss] inserted=${inserted}`);
   return NextResponse.json({ ok: true, inserted });
 }

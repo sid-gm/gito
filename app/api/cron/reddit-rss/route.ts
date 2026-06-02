@@ -9,13 +9,15 @@ export async function GET(req: Request) {
 
   const companies = await getAllCompanies();
   let total = 0;
+  console.log(`[cron/reddit-rss] polling ${companies.length} companies`);
 
   for (const company of companies) {
     try {
       const inserted = await collectAndIngestRedditRss(company.id);
+      console.log(`[cron/reddit-rss] company=${company.id} inserted=${inserted}`);
       total += inserted;
     } catch (err) {
-      console.error(`[Reddit RSS] company ${company.id}:`, err);
+      console.error(`[cron/reddit-rss] company=${company.id} error:`, err);
     }
   }
 
