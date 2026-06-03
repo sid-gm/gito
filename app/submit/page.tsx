@@ -95,8 +95,16 @@ export default function SubmitPage() {
   }, [isReddit]);
 
   useEffect(() => {
-    fetch("/api/entities").then((r) => r.json()).then(setEntities);
-  }, []);
+    const url = activeCompanyId
+      ? `/api/entities?companyId=${activeCompanyId}`
+      : "/api/entities";
+    fetch(url).then((r) => r.json()).then((data: Entity[]) => {
+      setEntities(data);
+      if (data.length === 1) {
+        setForm((f) => ({ ...f, entityId: data[0].id }));
+      }
+    });
+  }, [activeCompanyId]);
 
   const handleFetch = async () => {
     if (!form.url) return;

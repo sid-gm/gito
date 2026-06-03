@@ -63,7 +63,7 @@ export default function ThreadIngestDialog({ companyId, entities, onClose, onIns
   const [url, setUrl] = useState(defaultUrl ?? "");
   const [comments, setComments] = useState<ParsedComment[]>([]);
   const [selected, setSelected] = useState<Set<number>>(new Set());
-  const [entityId, setEntityId] = useState("");
+  const [entityId, setEntityId] = useState(() => entities.length === 1 ? entities[0].id : "");
   const [fetching, setFetching] = useState(false);
   const [fetchError, setFetchError] = useState("");
   const [pasteMode, setPasteMode] = useState(false);
@@ -318,24 +318,36 @@ export default function ThreadIngestDialog({ companyId, entities, onClose, onIns
 
         {/* Entity selector + submit */}
         {comments.length > 0 && (
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <select
-              value={entityId}
-              onChange={(e) => setEntityId(e.target.value)}
-              style={{ flex: 1, fontSize: 12, padding: "6px 8px", background: "var(--surface-1)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--ink-100)" }}
-            >
-              <option value="">Auto-match entity by keyword</option>
-              {entities.map((e) => (
-                <option key={e.id} value={e.id}>{e.label}</option>
-              ))}
-            </select>
-            <button
-              className="btn btn-primary"
-              onClick={submit}
-              disabled={submitting || selected.size === 0}
-            >
-              {submitting ? "Saving…" : `Ingest ${selected.size} comment${selected.size !== 1 ? "s" : ""}`}
-            </button>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {entities.length > 0 && (
+              <div>
+                <div style={{ fontSize: 11, color: "var(--ink-60)", marginBottom: 4 }}>
+                  Track under entity <span style={{ color: "var(--err)" }}>*</span>
+                </div>
+                <select
+                  value={entityId}
+                  onChange={(e) => setEntityId(e.target.value)}
+                  style={{ width: "100%", fontSize: 12, padding: "6px 8px", background: "var(--surface-1)", border: entityId ? "1px solid var(--border)" : "1px solid var(--err)", borderRadius: 6, color: "var(--ink-100)" }}
+                >
+                  <option value="">— Select entity —</option>
+                  {entities.map((e) => (
+                    <option key={e.id} value={e.id}>{e.label}</option>
+                  ))}
+                </select>
+                {!entityId && (
+                  <div style={{ fontSize: 11, color: "var(--err)", marginTop: 3 }}>Required — select which entity this thread is about.</div>
+                )}
+              </div>
+            )}
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <button
+                className="btn btn-primary"
+                onClick={submit}
+                disabled={submitting || selected.size === 0 || (entities.length > 0 && !entityId)}
+              >
+                {submitting ? "Saving…" : `Ingest ${selected.size} comment${selected.size !== 1 ? "s" : ""}`}
+              </button>
+            </div>
           </div>
         )}
       </div>
