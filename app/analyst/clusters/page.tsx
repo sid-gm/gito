@@ -810,21 +810,28 @@ export default function ClustersPage() {
                       >
                         {reportingId === cluster.id ? "Generating…" : "◉ Report"}
                       </button>
-                      {cluster.platforms.includes("twitter") && (
-                        <button
-                          className="btn-ghost btn"
-                          style={{ fontSize: 10, padding: "2px 8px", fontFamily: "var(--font-mono)", letterSpacing: "0.04em" }}
-                          onClick={() => {
-                            const twitterItem = cluster.topItems.find((i) => i.platform === "twitter");
-                            setXReplyClusterId(cluster.id);
-                            setXReplyThreadUrl(twitterItem?.url ?? twitterItem?.externalId ?? "");
-                            setXReplyEntityId(cluster.entityId);
-                          }}
-                          title="Add X replies to this cluster"
-                        >
-                          ↩ Replies
-                        </button>
-                      )}
+                      {(() => {
+                        const isXUrl = (u: string | null) => /^https?:\/\/(x\.com|twitter\.com)\//i.test(u ?? "");
+                        const xItem = cluster.topItems.find((i) =>
+                          i.platform === "twitter" ||
+                          (i.platform === "manual" && isXUrl(i.url))
+                        );
+                        if (!xItem) return null;
+                        return (
+                          <button
+                            className="btn-ghost btn"
+                            style={{ fontSize: 10, padding: "2px 8px", fontFamily: "var(--font-mono)", letterSpacing: "0.04em" }}
+                            onClick={() => {
+                              setXReplyClusterId(cluster.id);
+                              setXReplyThreadUrl(xItem.url ?? xItem.externalId ?? "");
+                              setXReplyEntityId(cluster.entityId);
+                            }}
+                            title="Add X replies to this cluster"
+                          >
+                            ↩ Replies
+                          </button>
+                        );
+                      })()}
                     </div>
                   </div>
                   {cluster.trackedEntities?.length > 0 && (
