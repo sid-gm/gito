@@ -205,18 +205,30 @@ export async function POST(req: Request) {
 
       if (!lines) continue;
 
+      const needsLabel = !cluster.label;
+
       const { text } = await generateText({
         model: openai("gpt-4o-mini"),
-        prompt: `These are items in the cluster "${cluster.label ?? "Unnamed"}":\n\n${lines}\n\nWrite a 1-2 sentence summary of what this cluster is about. Return only the summary text, no labels or JSON.`,
-        maxOutputTokens: 120,
+        prompt: `These are items in a cluster:\n\n${lines}\n\nReturn JSON only:\n{"label":"<3-6 word topic label>","summary":"<1-2 sentence summary of what this cluster is about and its significance>"}`,
+        maxOutputTokens: 150,
       });
 
-      const summary = text.trim();
+      let label: string | null = cluster.label ?? null;
+      let summary: string | null = null;
+      try {
+        const raw = text.trim().replace(/^```json\s*/m, "").replace(/```$/m, "").trim();
+        const parsed = JSON.parse(raw) as { label?: string; summary?: string };
+        if (needsLabel && parsed.label) label = String(parsed.label).slice(0, 80);
+        if (parsed.summary) summary = String(parsed.summary);
+      } catch {
+        summary = text.trim() || null;
+      }
+
       if (!summary) continue;
 
       await db
         .update(clusters)
-        .set({ narrativeSummary: summary })
+        .set({ narrativeSummary: summary, ...(needsLabel && label ? { label } : {}) })
         .where(eq(clusters.id, cluster.id));
 
       socialProcessed++;

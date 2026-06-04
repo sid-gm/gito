@@ -92,7 +92,7 @@ export async function GET(req: Request) {
       // Build full date range, day by day
       const days: {
         date: string;
-        aiSummary: null;
+        aiSummary: string | null;
         sentimentScore: number | null;
         sentimentLabel: string | null;
         itemCount: number;
@@ -115,9 +115,13 @@ export async function GET(req: Request) {
             count: Number(s.count),
           }));
 
+        // Use the top cluster's narrative as the chip summary
+        const topStory = [...stories].sort((a, b) => b.count - a.count)[0] ?? null;
+        const aiSummary = topStory?.summary || null;
+
         days.push({
           date: dateStr,
-          aiSummary: null,
+          aiSummary,
           sentimentScore: avgScore,
           sentimentLabel: scoreToLabel(avgScore),
           itemCount: row ? Number(row.itemCount) : 0,
