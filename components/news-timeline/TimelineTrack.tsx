@@ -124,6 +124,22 @@ function FeedRail({ feed, days, colW, win, density, style, onHover, onLeave, onD
             {days.map((d, i) => {
               const cx0 = (i + 0.5) * colW;
               if (d.sentimentScore == null) {
+                // Manual-only day: render a neutral clickable dot if items exist
+                if ((d.itemCount ?? 0) > 0) {
+                  const r = dotRadius(d.itemCount);
+                  const isToday = i === N - 1;
+                  const isSelected = selectedDay?.feedId === feed.feedId && selectedDay?.date === d.date;
+                  return (
+                    <div
+                      key={d.date}
+                      className={cx("ntl-dot ntl-dot-neutral", isToday && "ntl-dot-recent", isSelected && "ntl-dot-active")}
+                      style={{ left: cx0, top: NTL_BAND_H / 2, width: r * 2, height: r * 2 }}
+                      onMouseEnter={(e) => onHover(d, feed.feedLabel, e)}
+                      onMouseLeave={onLeave}
+                      onClick={(e) => { e.stopPropagation(); onDayClick(feed, d); }}
+                    />
+                  );
+                }
                 return <div key={d.date} className="ntl-null" style={{ left: cx0, top: NTL_BAND_H / 2 }} />;
               }
               const slug = sentSlug(d.sentimentLabel);
