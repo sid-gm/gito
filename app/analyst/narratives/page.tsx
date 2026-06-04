@@ -3,7 +3,6 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import { cx } from "@/components/primitives";
 import { useCompany } from "@/components/CompanyContext";
-import "./timeline.css";
 import { NewsTimeline } from "@/components/news-timeline/TimelineTrack";
 import { DayDetailDrawer } from "@/components/news-timeline/DayDetailDrawer";
 import { NTL_WINDOWS } from "@/components/news-timeline/timeline_core";
