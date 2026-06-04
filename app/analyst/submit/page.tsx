@@ -13,6 +13,15 @@ type ParsedComment = {
   timestamp: string | null;
 };
 
+type ParsedTweet = {
+  author: string;
+  displayName: string;
+  body: string;
+  tweetUrl: string | null;
+  timestamp: string | null;
+  isOriginalPost: boolean;
+};
+
 type RedditChild = {
   kind: string;
   data: {
@@ -26,6 +35,10 @@ type RedditChild = {
 
 function isRedditUrl(url: string): boolean {
   return /^https?:\/\/(www\.)?reddit\.com\/r\//i.test(url);
+}
+
+function isXUrl(url: string): boolean {
+  return /^https?:\/\/(x\.com|twitter\.com)\//i.test(url);
 }
 
 function toRedditJsonUrl(url: string): string {
@@ -78,10 +91,17 @@ export default function SubmitPage() {
   const [pasteText, setPasteText] = useState("");
   const [parsingPaste, setParsingPaste] = useState(false);
 
+  // X thread panel state
+  const [xTweets, setXTweets] = useState<ParsedTweet[]>([]);
+  const [selectedTweetIdxs, setSelectedTweetIdxs] = useState<Set<number>>(new Set());
+  const [xPasteText, setXPasteText] = useState("");
+  const [parsingXPaste, setParsingXPaste] = useState(false);
+
   const set = (k: keyof typeof form, v: string) =>
     setForm((f) => ({ ...f, [k]: v }));
 
   const isReddit = isRedditUrl(form.url);
+  const isX = isXUrl(form.url) && !isReddit;
 
   // Clear Reddit panel when URL stops being Reddit
   useEffect(() => {
@@ -93,6 +113,24 @@ export default function SubmitPage() {
       setPasteText("");
     }
   }, [isReddit]);
+
+  // Clear X panel when URL stops being an X URL
+  useEffect(() => {
+    if (!isX) {
+      setXTweets([]);
+      setSelectedTweetIdxs(new Set());
+      setXPasteText("");
+    }
+  }, [isX]);
+
+  // Auto-fill author from X/Twitter status URL
+  useEffect(() => {
+    if (!form.url) return;
+    const match = form.url.match(/^https?:\/\/(?:x|twitter)\.com\/([^/]+)\/status\//i);
+    if (match && !form.author) {
+      set("author", `@${match[1]}`);
+    }
+  }, [form.url]);
 
   useEffect(() => {
     const url = activeCompanyId
@@ -181,15 +219,77 @@ export default function SubmitPage() {
     });
   }
 
+  const parseXPaste = async () => {
+    if (!xPasteText.trim()) return;
+    setParsingXPaste(true);
+    setXTweets([]);
+    setSelectedTweetIdxs(new Set());
+    try {
+      const res = await fetch("/api/items/manual/parse-x-thread", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: xPasteText }),
+      });
+      const data = await res.json();
+      const parsed: ParsedTweet[] = data.tweets ?? [];
+      setXTweets(parsed);
+      setSelectedTweetIdxs(new Set(parsed.map((_, i) => i)));
+    } finally {
+      setParsingXPaste(false);
+    }
+  };
+
+  function toggleAllTweets() {
+    setSelectedTweetIdxs(xTweets.length === selectedTweetIdxs.size
+      ? new Set()
+      : new Set(xTweets.map((_, i) => i)));
+  }
+
+  function toggleTweetIdx(i: number) {
+    setSelectedTweetIdxs((s) => {
+      const next = new Set(s);
+      next.has(i) ? next.delete(i) : next.add(i);
+      return next;
+    });
+  }
+
   const selectedComments = redditComments.filter((_, i) => selectedIdxs.has(i));
-  const useThreadFlow = isReddit && selectedComments.length > 0;
+  const selectedTweets = xTweets.filter((_, i) => selectedTweetIdxs.has(i));
+  const useThreadFlow = (isReddit && selectedComments.length > 0) || (isX && selectedTweets.length > 0);
+  const useXThreadFlow = isX && selectedTweets.length > 0;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
     setError("");
 
-    if (useThreadFlow) {
+    if (useXThreadFlow) {
+      // X thread → create cluster automatically
+      const res = await fetch("/api/items/manual/x-thread", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          threadUrl: form.url,
+          title: form.title,
+          body: form.body || undefined,
+          author: form.author || undefined,
+          publishedAt: form.publishedAt || undefined,
+          entityId: form.entityId !== "none" ? form.entityId : undefined,
+          companyId: activeCompanyId ?? undefined,
+          tweets: selectedTweets,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setDone({ clusterId: data.clusterId });
+        setForm(emptyForm);
+        setXTweets([]);
+        setSelectedTweetIdxs(new Set());
+        setXPasteText("");
+      } else {
+        setError("Failed to submit. Check required fields.");
+      }
+    } else if (useThreadFlow) {
       // Reddit thread + comments → create cluster automatically
       const res = await fetch("/api/items/manual/reddit-thread", {
         method: "POST",
@@ -257,6 +357,13 @@ export default function SubmitPage() {
         <div className="submit-grid">
           <form className="submit-form" onSubmit={handleSubmit}>
             <div className="form-stack">
+              {entities.length === 0 && (
+                <div className="banner" style={{ background: "oklch(0.97 0.04 80)", borderColor: "var(--warn, oklch(0.75 0.15 80))" }}>
+                  <strong>No entities configured.</strong> You need at least one tracked entity before
+                  submitting. <a href="/analyst/track" className="ulink">Create an entity →</a>
+                </div>
+              )}
+
               <Field
                 label="URL"
                 hint="Paste an article URL — we'll try to auto-fetch the title and author."
@@ -403,6 +510,106 @@ export default function SubmitPage() {
                 </div>
               )}
 
+              {/* X thread panel */}
+              {isX && (
+                <div style={{ border: "1px solid var(--border)", borderRadius: 8, padding: "14px 14px 10px", background: "var(--surface-1)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 2 }}>X thread detected</div>
+                      <div style={{ fontSize: 12, color: "var(--ink-60)" }}>
+                        Paste the thread to create a tracked cluster with sentiment analysis.
+                      </div>
+                    </div>
+                    {xTweets.length > 0 && (
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => { setXTweets([]); setSelectedTweetIdxs(new Set()); setXPasteText(""); }}
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+
+                  {xTweets.length === 0 && (
+                    <div style={{ marginBottom: 8 }}>
+                      <textarea
+                        value={xPasteText}
+                        onChange={(e) => setXPasteText(e.target.value)}
+                        rows={6}
+                        placeholder="Copy the thread from X and paste here — select all content including replies"
+                        style={{ width: "100%", boxSizing: "border-box", fontSize: 12, padding: "8px 10px", background: "var(--surface-0, var(--paper))", border: "1px solid var(--border)", borderRadius: 6, color: "var(--ink-100)", resize: "vertical", fontFamily: "inherit" }}
+                      />
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        onClick={parseXPaste}
+                        disabled={parsingXPaste || !xPasteText.trim()}
+                        style={{ marginTop: 6 }}
+                      >
+                        {parsingXPaste ? "Parsing…" : "Parse thread"}
+                      </button>
+                    </div>
+                  )}
+
+                  {xTweets.length > 0 && (
+                    <>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                        <div style={{ fontSize: 12, color: "var(--ink-60)" }}>
+                          {selectedTweetIdxs.size} of {xTweets.length} tweet{xTweets.length !== 1 ? "s" : ""} selected
+                        </div>
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={toggleAllTweets}>
+                          {selectedTweetIdxs.size === xTweets.length ? "Deselect all" : "Select all"}
+                        </button>
+                      </div>
+                      <div style={{ maxHeight: 260, overflowY: "auto", border: "1px solid var(--border)", borderRadius: 6 }}>
+                        {xTweets.map((t, i) => (
+                          <div
+                            key={i}
+                            onClick={() => toggleTweetIdx(i)}
+                            style={{
+                              display: "flex",
+                              gap: 10,
+                              padding: "9px 12px",
+                              cursor: "pointer",
+                              borderBottom: i < xTweets.length - 1 ? "1px solid var(--border)" : "none",
+                              background: selectedTweetIdxs.has(i) ? "var(--surface-2)" : "transparent",
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selectedTweetIdxs.has(i)}
+                              onChange={() => toggleTweetIdx(i)}
+                              onClick={(e) => e.stopPropagation()}
+                              style={{ marginTop: 2, flexShrink: 0 }}
+                            />
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ display: "flex", gap: 8, marginBottom: 2 }}>
+                                <span style={{ fontWeight: 600, fontSize: 12 }}>@{t.author}</span>
+                                {t.isOriginalPost && (
+                                  <span style={{ fontSize: 11, color: "var(--ink-40)" }}>OP</span>
+                                )}
+                                {t.timestamp && (
+                                  <span style={{ fontSize: 11, color: "var(--ink-40)" }}>{t.timestamp}</span>
+                                )}
+                              </div>
+                              <p style={{ margin: 0, fontSize: 12, color: "var(--ink-80)", overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
+                                {t.body}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      {selectedTweets.length > 0 && (
+                        <div style={{ marginTop: 8, fontSize: 12, color: "var(--ink-60)" }}>
+                          Submitting will create a cluster with {selectedTweets.length} tweet{selectedTweets.length !== 1 ? "s" : ""} and run sentiment analysis.
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+
               <Field
                 label="Title"
                 hint="Required. The headline you'd file this under."
@@ -452,15 +659,16 @@ export default function SubmitPage() {
 
               <Field
                 label="Link to tracked entity"
-                hint="Routes this item into that entity's stream. Optional but recommended."
+                hint="Required. Routes this item into that entity's stream."
                 full
               >
                 <select
                   className="ipt"
                   value={form.entityId}
                   onChange={(e) => set("entityId", e.target.value)}
+                  style={form.entityId === "none" ? { borderColor: "var(--err)" } : undefined}
                 >
-                  <option value="none">— None —</option>
+                  <option value="none">— Select entity (required) —</option>
                   {entities.map((e) => (
                     <option key={e.id} value={e.id}>{e.label}</option>
                   ))}
@@ -471,9 +679,11 @@ export default function SubmitPage() {
                 <div className="form-foot-meta">
                   <PlatformChip platform="manual" />
                   <span className="dim">
-                    {useThreadFlow
-                      ? `Will create cluster with ${selectedComments.length} comment${selectedComments.length !== 1 ? "s" : ""}`
-                      : "Will appear in feed tagged Manual"}
+                    {useXThreadFlow
+                      ? `Will create cluster with ${selectedTweets.length} tweet${selectedTweets.length !== 1 ? "s" : ""}`
+                      : useThreadFlow
+                        ? `Will create cluster with ${selectedComments.length} comment${selectedComments.length !== 1 ? "s" : ""}`
+                        : "Will appear in feed tagged Manual"}
                   </span>
                 </div>
                 <div style={{ display: "flex", gap: 8 }}>
@@ -487,15 +697,18 @@ export default function SubmitPage() {
                       setSelectedIdxs(new Set());
                       setPasteText("");
                       setPasteMode(false);
+                      setXTweets([]);
+                      setSelectedTweetIdxs(new Set());
+                      setXPasteText("");
                     }}
                   >
                     Clear
                   </button>
-                  <button type="submit" className="btn btn-primary" disabled={saving}>
+                  <button type="submit" className="btn btn-primary" disabled={saving || entities.length === 0 || form.entityId === "none"}>
                     {saving
                       ? "Submitting…"
-                      : useThreadFlow
-                        ? `Submit + create cluster`
+                      : useThreadFlow || useXThreadFlow
+                        ? "Submit + create cluster"
                         : "Submit to feed"}
                   </button>
                 </div>
@@ -505,14 +718,14 @@ export default function SubmitPage() {
                 <div className="banner banner-ok">
                   <span style={{ fontSize: 12 }}>✓</span>
                   Saved and cluster created.{" "}
-                  <a href="/clusters" className="ulink">View in clusters →</a>
+                  <a href="/analyst/clusters" className="ulink">View in clusters →</a>
                 </div>
               )}
               {done === true && (
                 <div className="banner banner-ok">
                   <span style={{ fontSize: 12 }}>✓</span>
                   Saved.{" "}
-                  <a href="/" className="ulink">View in feed →</a>
+                  <a href="/analyst" className="ulink">View in feed →</a>
                 </div>
               )}
               {error && (

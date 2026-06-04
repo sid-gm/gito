@@ -204,7 +204,7 @@ export default function FeedPage() {
             )}
           </div>
           <button className="btn btn-ghost" onClick={() => setThreadDialogOpen(true)}>+ Ingest thread</button>
-          <a href="/submit" className="btn btn-primary">+ Submit</a>
+          <a href="/analyst/submit" className="btn btn-primary">+ Submit</a>
         </div>
       </header>
 
@@ -437,7 +437,7 @@ function FeedRow({ item, entities, onIngestThread }: { item: FeedItem; entities:
       <div className="feedrow-actions">
         {item.clusterId && (
           <a
-            href="/clusters"
+            href="/analyst/clusters"
             className="btn btn-ghost btn-sm"
             style={{ fontSize: 11 }}
             title={item.clusterLabel ? `Cluster: ${item.clusterLabel}` : "View cluster"}
@@ -522,9 +522,9 @@ function Empty() {
       <div className="empty-title">Nothing here yet</div>
       <div className="empty-sub">
         Add entities in{" "}
-        <a href="/track" className="ulink">Track</a>, configure sources in{" "}
-        <a href="/sources" className="ulink">Sources</a>, or{" "}
-        <a href="/submit" className="ulink">submit manually</a>.
+        <a href="/analyst/track" className="ulink">Track</a>, configure sources in{" "}
+        <a href="/analyst/sources" className="ulink">Sources</a>, or{" "}
+        <a href="/analyst/submit" className="ulink">submit manually</a>.
       </div>
     </div>
   );

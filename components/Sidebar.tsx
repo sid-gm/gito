@@ -8,10 +8,10 @@ import { cx, Dot } from "@/components/primitives";
 import { useCompany } from "@/components/CompanyContext";
 
 const SOURCES_NAV = [
-  { href: "/",        label: "Feed",    glyph: "≡" },
-  { href: "/track",   label: "Track",   glyph: "◆" },
-  { href: "/sources", label: "Sources", glyph: "◴" },
-  { href: "/submit",  label: "Manual",  glyph: "✎" },
+  { href: "/analyst",        label: "Feed",    glyph: "≡" },
+  { href: "/analyst/track",  label: "Track",   glyph: "◆" },
+  { href: "/analyst/sources",label: "Sources", glyph: "◴" },
+  { href: "/analyst/submit", label: "Manual",  glyph: "✎" },
 ];
 
 
@@ -195,7 +195,7 @@ export function Sidebar() {
       <nav className="nav">
         <div className="nav-section">Sources Tracker</div>
         {SOURCES_NAV.map((n) => {
-          const active = n.href === "/" ? path === "/" : path.startsWith(n.href);
+          const active = n.href === "/analyst" ? path === "/analyst" : path.startsWith(n.href);
           return (
             <Link
               key={n.href}
@@ -210,15 +210,15 @@ export function Sidebar() {
 
         <div className="nav-section" style={{ marginTop: 16 }}>Classify</div>
         <Link
-          href="/clusters"
-          className={cx("nav-item nav-item-sub", path === "/clusters" && "nav-item-on")}
+          href="/analyst/clusters"
+          className={cx("nav-item nav-item-sub", path === "/analyst/clusters" && "nav-item-on")}
         >
           <span className="nav-glyph">◎</span>
           <span className="nav-label">Cluster Review</span>
         </Link>
         <Link
-          href="/narratives"
-          className={cx("nav-item nav-item-sub", path === "/narratives" && "nav-item-on")}
+          href="/analyst/narratives"
+          className={cx("nav-item nav-item-sub", path === "/analyst/narratives" && "nav-item-on")}
         >
           <span className="nav-glyph">◈</span>
           <span className="nav-label">Global Narratives</span>
@@ -226,15 +226,15 @@ export function Sidebar() {
 
         <div className="nav-section" style={{ marginTop: 16 }}>Publish</div>
         <Link
-          href="/daily-report"
-          className={cx("nav-item nav-item-sub", path === "/daily-report" && "nav-item-on")}
+          href="/analyst/daily-report"
+          className={cx("nav-item nav-item-sub", path === "/analyst/daily-report" && "nav-item-on")}
         >
           <span className="nav-glyph">◐</span>
           <span className="nav-label">Daily reports</span>
         </Link>
         <Link
-          href="/report"
-          className={cx("nav-item nav-item-sub", path.startsWith("/report") && "nav-item-on")}
+          href="/analyst/report"
+          className={cx("nav-item nav-item-sub", path.startsWith("/analyst/report") && "nav-item-on")}
         >
           <span className="nav-glyph">◉</span>
           <span className="nav-label">Signal briefs</span>
