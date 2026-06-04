@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { cx, PlatformChip, Dot } from "@/components/primitives";
+import { cx, PlatformChip } from "@/components/primitives";
 import { VelocitySparkline } from "@/components/VelocitySparkline";
 import { useCompany } from "@/components/CompanyContext";
 import { StageKey } from "@/components/StagePill";
@@ -90,12 +90,6 @@ function cleanTitle(raw: string | null): string | null {
     .trim() || null;
 }
 
-function simColor(sim: number) {
-  if (sim >= 0.92) return "var(--ok)";
-  if (sim >= 0.86) return "var(--accent)";
-  return "var(--ink-20)";
-}
-
 function relativeTime(iso: string | null) {
   if (!iso) return "—";
   const diff = Date.now() - new Date(iso).getTime();
@@ -144,11 +138,6 @@ function SentimentPill({ label }: { label: string }) {
       {s.glyph} {label}
     </span>
   );
-}
-
-function SignalDot({ signal }: { signal: string }) {
-  const color = signal === "signal" ? "var(--ok)" : signal === "watch" ? "var(--accent)" : signal === "noise" ? "var(--ink-20)" : "var(--ink-10)";
-  return <Dot color={color} size={7} />;
 }
 
 function WaveHeader({ label, isFirst }: { label: string; isFirst: boolean }) {
@@ -547,7 +536,6 @@ export default function ClustersPage() {
   }
 
   function renderItemRow(item: ClusterItem, i: number, clusterId: string) {
-    const effectiveSignal = item.analystSignal ?? item.itemSignal;
     const href = item.platform === "hackernews" && item.externalId
       ? `https://news.ycombinator.com/item?id=${item.externalId}`
       : item.url;
@@ -576,8 +564,6 @@ export default function ClustersPage() {
             });
           }}
         />
-        <SignalDot signal={effectiveSignal} />
-        <Dot color={simColor(item.similarity)} size={7} />
       </div>
     );
   }
