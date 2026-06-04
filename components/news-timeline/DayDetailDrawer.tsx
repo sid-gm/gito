@@ -87,9 +87,10 @@ function ClusterBlock({ story }: { story: NtlStory }) {
 }
 
 // ── Main drawer ────────────────────────────────────────────────────────────
-export function DayDetailDrawer({ selected, onClose }: {
+export function DayDetailDrawer({ selected, onClose, source = "news" }: {
   selected: SelectedDayState;
   onClose: () => void;
+  source?: "news" | "social";
 }) {
   const [last, setLast] = useState<{ feed: NtlFeed; day: NtlDay } | null>(null);
   const [items, setItems] = useState<NtlDayItem[]>([]);
@@ -103,22 +104,31 @@ export function DayDetailDrawer({ selected, onClose }: {
     if (!selected) return;
     const { feed, day } = selected;
 
-    // check if within 7-day retention window
-    const today = new Date();
-    const p = ntlParseDate(day.date);
-    const ageDays = Math.round(
-      (Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()) -
-        Date.UTC(p.y, p.m, p.d)) / 86400000
-    );
-    if (ageDays > 7) { setItems([]); return; }
+    if (source === "news") {
+      // check if within 7-day retention window
+      const today = new Date();
+      const p = ntlParseDate(day.date);
+      const ageDays = Math.round(
+        (Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()) -
+          Date.UTC(p.y, p.m, p.d)) / 86400000
+      );
+      if (ageDays > 7) { setItems([]); return; }
 
-    setLoadingItems(true);
-    const params = new URLSearchParams({ feedId: feed.feedId, date: day.date });
-    fetch(`/api/news-timeline/day-items?${params}`)
-      .then((r) => r.json())
-      .then((d) => { setItems(d.items ?? []); setLoadingItems(false); })
-      .catch(() => setLoadingItems(false));
-  }, [selected?.feed.feedId, selected?.day.date]);
+      setLoadingItems(true);
+      const params = new URLSearchParams({ feedId: feed.feedId, date: day.date });
+      fetch(`/api/news-timeline/day-items?${params}`)
+        .then((r) => r.json())
+        .then((d) => { setItems(d.items ?? []); setLoadingItems(false); })
+        .catch(() => setLoadingItems(false));
+    } else {
+      setLoadingItems(true);
+      const params = new URLSearchParams({ entityId: feed.feedId, date: day.date });
+      fetch(`/api/social-timeline/day-items?${params}`)
+        .then((r) => r.json())
+        .then((d) => { setItems(d.items ?? []); setLoadingItems(false); })
+        .catch(() => setLoadingItems(false));
+    }
+  }, [selected?.feed.feedId, selected?.day.date, source]);
 
   const open = !!selected;
   const sel = selected ?? last;
@@ -145,14 +155,14 @@ export function DayDetailDrawer({ selected, onClose }: {
   const trendGlyph =
     trendVsPrev == null ? "▬" : trendVsPrev > 0.02 ? "▲" : trendVsPrev < -0.02 ? "▼" : "▬";
 
-  // purge check
+  // purge check (news only — social items are not purged)
   const today = new Date();
   const p = ntlParseDate(day.date);
   const ageDays = Math.round(
     (Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()) -
       Date.UTC(p.y, p.m, p.d)) / 86400000
   );
-  const purged = ageDays > 7;
+  const purged = source === "news" && ageDays > 7;
 
   const stories = day.stories ?? [];
   const multiTopic = stories.length > 1;
@@ -163,7 +173,7 @@ export function DayDetailDrawer({ selected, onClose }: {
       <div className="ntl-dw-head">
         <div className="ntl-dw-bar">
           <span className="ntl-dw-eyebrow">
-            <span className="ntl-dw-glyph">◈</span> Google Alerts · day detail
+            <span className="ntl-dw-glyph">◈</span> {source === "social" ? "Social · day detail" : "Google Alerts · day detail"}
           </span>
           <button className="ntl-dw-close" onClick={onClose} aria-label="Close">✕</button>
         </div>
@@ -204,8 +214,10 @@ export function DayDetailDrawer({ selected, onClose }: {
         <div className="ntl-dw-block">
           <div className="ntl-dw-label">What happened</div>
           {present
-            ? <p className="ntl-dw-summary">{day.aiSummary}</p>
-            : <p className="ntl-dw-summary ntl-dw-empty">No Google Alerts items were ingested this day.</p>}
+            ? day.aiSummary
+              ? <p className="ntl-dw-summary">{day.aiSummary}</p>
+              : <p className="ntl-dw-summary ntl-dw-empty">{source === "social" ? "No AI summary available for social activity." : "No summary available."}</p>
+            : <p className="ntl-dw-summary ntl-dw-empty">{source === "social" ? "No social items were ingested this day." : "No Google Alerts items were ingested this day."}</p>}
         </div>
 
         {present && (
@@ -260,7 +272,9 @@ export function DayDetailDrawer({ selected, onClose }: {
         )}
 
         <p className="ntl-dw-foot">
-          Read-only news context · summarized from Google Alerts · no clustering or signal/noise marking applied.
+          {source === "social"
+            ? "Social conversation data · Reddit, X, HN, Threads · cluster sentiment where available."
+            : "Read-only news context · summarized from Google Alerts · no clustering or signal/noise marking applied."}
         </p>
       </div>
     </div>
