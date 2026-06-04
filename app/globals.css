@@ -947,8 +947,7 @@ input, select, textarea { font: inherit; color: inherit; }
 .ntl-chip-score { font-family: var(--font-mono); font-size: 10px; font-weight: 600; font-feature-settings: "tnum"; }
 .ntl-chip-text {
   font-size: 11.5px; line-height: 1.4; color: var(--ink-80);
-  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
-  overflow: hidden; text-wrap: pretty;
+  text-wrap: pretty;
 }
 .ntl-chip-stem { position: absolute; top: 100%; left: 50%; width: 1px; background: var(--border); transform: translateX(-50%); }
 

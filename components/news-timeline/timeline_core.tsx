@@ -61,7 +61,7 @@ export type HoverPopState = {
 export const NTL_WINDOWS: Record<WindowKey, number> = { "7d": 7, "30d": 30, "90d": 90 };
 export const NTL_COLW: Record<WindowKey, number> = { "7d": 152, "30d": 96, "90d": 30 };
 export const NTL_BAND_H = 132;
-export const NTL_CHIP_LANE = 104;
+export const NTL_CHIP_LANE = 180;
 
 // Feed-identity color palette for combined-overlay mode.
 const NTL_PALETTE = [
