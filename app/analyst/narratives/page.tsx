@@ -217,7 +217,6 @@ export default function NarrativesPage() {
             <div key={entity.id} className="ntl-entity-group">
               <div className="ntl-entity-header">
                 <EntityBadge label={entity.label} type={entity.type} />
-                <span className="ntl-entity-label">{entity.label}</span>
               </div>
 
               {/* News Timeline */}
