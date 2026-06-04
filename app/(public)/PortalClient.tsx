@@ -38,12 +38,6 @@ type NarrativeItem = {
   firstSeenAt: string; lastSeenAt: string; platformCount: number | null;
 };
 
-type SignalBrief = {
-  id: string; title: string; url: string | null; platform: string;
-  publishedAt: string | null; author: string | null;
-  clusterLabel: string | null; narrativeStage: string | null;
-};
-
 type PublicReport = {
   id: string; clusterLabel: string; companyName: string | null; generatedAt: string;
 };
@@ -559,54 +553,6 @@ function NarrativesSection({ companyId }: { companyId: string }) {
   );
 }
 
-// ─── Section: Signal briefs (last 24h) ───────────────────────────────────────
-
-function SignalBriefsSection({ companyId }: { companyId: string }) {
-  const [briefs, setBriefs] = useState<SignalBrief[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    setLoading(true);
-    fetch(`/api/public/signal-briefs?companyId=${companyId}`)
-      .then((r) => r.json())
-      .then((d) => { setBriefs(d.briefs ?? []); setLoading(false); })
-      .catch(() => setLoading(false));
-  }, [companyId]);
-
-  return (
-    <section className="pp-section">
-      <div className="pp-shead">
-        <div className="pp-shead-l">
-          <span className="pp-shead-num">03</span>
-          <span className="pp-shead-title">Signal briefs</span>
-          <span className="pp-shead-desc">high-signal items from the last 24 hours</span>
-        </div>
-        {briefs.length > 0 && <span className="pp-shead-meta">{briefs.length} items</span>}
-      </div>
-
-      {loading ? (
-        <div className="pp-empty"><div className="pp-empty-mark">◆</div><div className="pp-empty-title">Loading…</div></div>
-      ) : briefs.length === 0 ? (
-        <div className="pp-briefs"><div className="pp-brief-empty">∅ No high-signal items in the last 24 hours</div></div>
-      ) : (
-        <div className="pp-briefs">
-          {briefs.map((b) => (
-            <div key={b.id} className="pp-brief-row">
-              <PlatformChip platform={b.platform} size="sm" />
-              <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--ink-50)" }}>{relTime(b.publishedAt)}</div>
-              <div className="pp-brief-title">
-                {b.url ? <a href={b.url} target="_blank" rel="noopener noreferrer">{b.title}</a> : b.title}
-              </div>
-              <div className="pp-brief-cluster">{b.clusterLabel ?? "—"}</div>
-              <div className="pp-brief-time">{b.narrativeStage ? <StagePill stage={b.narrativeStage} /> : null}</div>
-            </div>
-          ))}
-        </div>
-      )}
-    </section>
-  );
-}
-
 // ─── Section: Signal brief reports ───────────────────────────────────────────
 
 function SignalReportsSection({ companyId }: { companyId: string }) {
@@ -625,7 +571,7 @@ function SignalReportsSection({ companyId }: { companyId: string }) {
     <section className="pp-section">
       <div className="pp-shead">
         <div className="pp-shead-l">
-          <span className="pp-shead-num">04</span>
+          <span className="pp-shead-num">03</span>
           <span className="pp-shead-title">Signal brief reports</span>
           <span className="pp-shead-desc">analyst-generated cluster reports</span>
         </div>
@@ -701,7 +647,7 @@ function NewsTimelineSection({ companyId }: { companyId: string }) {
     <section className="pp-section">
       <div className="pp-shead">
         <div className="pp-shead-l">
-          <span className="pp-shead-num">05</span>
+          <span className="pp-shead-num">04</span>
           <span className="pp-shead-title">News timeline</span>
           <span className="pp-shead-desc">Google Alerts sentiment per feed · last 7 days</span>
         </div>
@@ -866,7 +812,6 @@ function PortalInner() {
         {/* Sections */}
         <DailyBriefSection companyId={activeId} date={date} onDateChange={setDate} dateRange={dateRange} />
         <NarrativesSection companyId={activeId} />
-        <SignalBriefsSection companyId={activeId} />
         <SignalReportsSection companyId={activeId} />
         <NewsTimelineSection companyId={activeId} />
 
