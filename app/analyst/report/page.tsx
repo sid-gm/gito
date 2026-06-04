@@ -77,7 +77,7 @@ export default function ReportsListPage() {
           {reports.map((r) => (
             <button
               key={r.id}
-              onClick={() => router.push(`/report/${r.id}`)}
+              onClick={() => router.push(`/analyst/report/${r.id}`)}
               style={{
                 display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16,
                 padding: "16px 20px", background: "var(--paper)", border: "1px solid var(--border)",

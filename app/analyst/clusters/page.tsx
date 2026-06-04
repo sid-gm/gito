@@ -432,7 +432,7 @@ export default function ClustersPage() {
     try {
       const res = await fetch(`/api/clusters/${clusterId}/report`, { method: "POST" });
       const { reportId } = await res.json();
-      router.push(`/report/${reportId}`);
+      router.push(`/analyst/report/${reportId}`);
     } catch {
       setReportingId(null);
     }
