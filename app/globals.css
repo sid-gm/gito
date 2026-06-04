@@ -944,6 +944,8 @@ input, select, textarea { font: inherit; color: inherit; }
 .ntl-chip:hover { border-color: var(--ink-40); background: var(--paper); z-index: 6; }
 .ntl-chip-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
 .ntl-chip-date { font-family: var(--font-mono); font-size: 9.5px; color: var(--ink-50); font-feature-settings: "tnum"; white-space: nowrap; }
+.ntl-chip-entity { font-family: var(--font-mono); font-size: 9px; color: var(--ink-40); letter-spacing: 0.05em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 55%; }
+.ntl-chip-meta { display: flex; align-items: center; gap: 7px; margin-bottom: 4px; }
 .ntl-chip-score { font-family: var(--font-mono); font-size: 10px; font-weight: 600; font-feature-settings: "tnum"; }
 .ntl-chip-text {
   font-size: 11.5px; line-height: 1.4; color: var(--ink-80);

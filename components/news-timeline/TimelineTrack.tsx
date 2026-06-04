@@ -82,7 +82,7 @@ function FeedRail({ feed, days, colW, win, density, style, onHover, onLeave, onD
   const laneH = hasChips ? NTL_CHIP_LANE : 12;
   const segs = flat ? [] : buildSegments(days);
   const gid = `ntl-grad-${feed.feedId}`;
-  const chipW = Math.max(58, colW - 14);
+  const chipW = Math.max(200, colW - 14);
   const stats = feed._stats ?? feedStats(days);
 
   return (
@@ -134,8 +134,6 @@ function FeedRail({ feed, days, colW, win, density, style, onHover, onLeave, onD
                       key={d.date}
                       className={cx("ntl-dot ntl-dot-neutral", isToday && "ntl-dot-recent", isSelected && "ntl-dot-active")}
                       style={{ left: cx0, top: NTL_BAND_H / 2, width: r * 2, height: r * 2 }}
-                      onMouseEnter={(e) => onHover(d, feed.feedLabel, e)}
-                      onMouseLeave={onLeave}
                       onClick={(e) => { e.stopPropagation(); onDayClick(feed, d); }}
                     />
                   );
@@ -152,8 +150,6 @@ function FeedRail({ feed, days, colW, win, density, style, onHover, onLeave, onD
                   key={d.date}
                   className={cx("ntl-dot", `ntl-dot-${slug}`, isToday && "ntl-dot-recent", isSelected && "ntl-dot-active")}
                   style={{ left: cx0, top: y, width: r * 2, height: r * 2 }}
-                  onMouseEnter={(e) => onHover(d, feed.feedLabel, e)}
-                  onMouseLeave={onLeave}
                   onClick={(e) => { e.stopPropagation(); onDayClick(feed, d); }}
                 />
               );
@@ -166,7 +162,6 @@ function FeedRail({ feed, days, colW, win, density, style, onHover, onLeave, onD
             if (i < N - expCount) return null;
             const cx0 = (i + 0.5) * colW;
             const slug = sentSlug(d.sentimentLabel);
-            const dm = fmtDayMon(d.date);
             const y = flat ? NTL_BAND_H / 2 : scoreToY(d.sentimentScore);
             const isSelected = selectedDay?.feedId === feed.feedId && selectedDay?.date === d.date;
             return (
@@ -175,13 +170,16 @@ function FeedRail({ feed, days, colW, win, density, style, onHover, onLeave, onD
                 <div
                   className={cx("ntl-chip", isSelected && "ntl-chip-active")}
                   style={{ left: cx0, width: chipW, bottom: NTL_BAND_H + 4 }}
-                  onMouseEnter={(e) => onHover(d, feed.feedLabel, e)}
-                  onMouseLeave={onLeave}
                   onClick={() => onDayClick(feed, d)}
                 >
                   <div className="ntl-chip-head">
-                    <span className="ntl-chip-date">{i === N - 1 ? "Today" : `${dm.mon} ${dm.day}`}</span>
+                    <span className="ntl-chip-date">{i === N - 1 ? "Today" : fmtFullDate(d.date)}</span>
+                    <span className="ntl-chip-entity">{feed.entityLabel.toUpperCase()}</span>
+                  </div>
+                  <div className="ntl-chip-meta">
+                    <SentPill label={d.sentimentLabel} />
                     <span className={cx("ntl-chip-score", `nd-text-${slug}`)}>{fmtScore(d.sentimentScore)}</span>
+                    <span className="ntl-pop-items">{d.itemCount} {d.itemCount === 1 ? "item" : "items"}</span>
                   </div>
                   <div className="ntl-chip-text">{d.aiSummary}</div>
                 </div>
@@ -246,8 +244,6 @@ function CombinedTimeline({ feeds, colW, win, onHover, onLeave, onDayClick, sele
                   <div key={f.feedId + d.date}
                     className={cx("ntl-dot", isSelected && "ntl-dot-active")}
                     style={{ left: (i + 0.5) * colW, top: yOf(d.sentimentScore), width: 9, height: 9, background: getFeedColor(fi) }}
-                    onMouseEnter={(e) => onHover(d, f.feedLabel, e)}
-                    onMouseLeave={onLeave}
                     onClick={(e) => { e.stopPropagation(); onDayClick(f, d); }}
                   />
                 );
@@ -383,7 +379,6 @@ export function NewsTimeline({ feeds, win, feedFilter, style, arrangement, densi
           </div>
         </>
       )}
-      <HoverPop pop={pop} />
     </>
   );
 }
