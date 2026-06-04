@@ -13,7 +13,7 @@ export async function GET(req: Request) {
 
   for (const company of companies) {
     try {
-      const inserted = await collectAndIngestRedditRss(company.id);
+      const inserted = await collectAndIngestRedditRss(company.id, company.name);
       console.log(`[cron/reddit-rss] company=${company.id} inserted=${inserted}`);
       total += inserted;
     } catch (err) {

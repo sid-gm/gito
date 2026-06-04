@@ -5,8 +5,9 @@ import { eq } from "drizzle-orm";
 import { collectSubredditRss } from "./reddit-rss";
 import { upsertItems } from "./ingest";
 import { groupRedditThreadsIntoClusters } from "@/lib/ai/reddit-thread-cluster";
+import { sendNotification } from "@/lib/notifications/telegram";
 
-export async function collectAndIngestRedditRss(companyId: string): Promise<number> {
+export async function collectAndIngestRedditRss(companyId: string, companyLabel?: string): Promise<number> {
   const subreddits = await db
     .select()
     .from(redditSubreddits)
@@ -20,6 +21,7 @@ export async function collectAndIngestRedditRss(companyId: string): Promise<numb
     .where(eq(trackedEntities.companyId, companyId));
 
   let total = 0;
+  const allItems: NewIngestedItem[] = [];
 
   for (const sub of subreddits) {
     try {
@@ -45,6 +47,7 @@ export async function collectAndIngestRedditRss(companyId: string): Promise<numb
         };
       });
 
+      allItems.push(...items);
       const inserted = await upsertItems(items);
       total += inserted;
     } catch (err) {
@@ -54,6 +57,17 @@ export async function collectAndIngestRedditRss(companyId: string): Promise<numb
 
   if (total > 0) {
     await groupRedditThreadsIntoClusters();
+
+    if (companyLabel) {
+      if (total === 1) {
+        const item = allItems[0];
+        await sendNotification(
+          `<b>New Reddit post · ${companyLabel}</b>\n${item.title ?? ""}${item.url ? `\n${item.url}` : ""}`
+        );
+      } else {
+        await sendNotification(`<b>${total} new Reddit posts · ${companyLabel}</b>`);
+      }
+    }
   }
 
   return total;
