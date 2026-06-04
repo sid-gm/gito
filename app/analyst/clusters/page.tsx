@@ -9,6 +9,7 @@ import { StageKey } from "@/components/StagePill";
 import { AddItemDialog } from "@/components/AddItemDialog";
 import { ItemAnnotations } from "@/components/ItemAnnotations";
 import ThreadIngestDialog from "@/components/ThreadIngestDialog";
+import XReplyIngestDialog from "@/components/XReplyIngestDialog";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -286,6 +287,9 @@ export default function ClustersPage() {
   const [mergeModal, setMergeModal] = useState<MergeModalState | null>(null);
   const [mergeBusy, setMergeBusy] = useState(false);
   const [addItemClusterId, setAddItemClusterId] = useState<string | null>(null);
+  const [xReplyClusterId, setXReplyClusterId] = useState<string | null>(null);
+  const [xReplyThreadUrl, setXReplyThreadUrl] = useState<string>("");
+  const [xReplyEntityId, setXReplyEntityId] = useState<string | null>(null);
   const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const gridRef = useRef<HTMLDivElement>(null);
 
@@ -806,6 +810,21 @@ export default function ClustersPage() {
                       >
                         {reportingId === cluster.id ? "Generating…" : "◉ Report"}
                       </button>
+                      {cluster.platforms.includes("twitter") && (
+                        <button
+                          className="btn-ghost btn"
+                          style={{ fontSize: 10, padding: "2px 8px", fontFamily: "var(--font-mono)", letterSpacing: "0.04em" }}
+                          onClick={() => {
+                            const twitterItem = cluster.topItems.find((i) => i.platform === "twitter");
+                            setXReplyClusterId(cluster.id);
+                            setXReplyThreadUrl(twitterItem?.url ?? twitterItem?.externalId ?? "");
+                            setXReplyEntityId(cluster.entityId);
+                          }}
+                          title="Add X replies to this cluster"
+                        >
+                          ↩ Replies
+                        </button>
+                      )}
                     </div>
                   </div>
                   {cluster.trackedEntities?.length > 0 && (
@@ -840,6 +859,16 @@ export default function ClustersPage() {
           entities={entities}
           onClose={() => setThreadDialogOpen(false)}
           onInserted={() => { setThreadDialogOpen(false); fetchClusters(); }}
+        />
+      )}
+
+      {xReplyClusterId && (
+        <XReplyIngestDialog
+          clusterId={xReplyClusterId}
+          threadUrl={xReplyThreadUrl}
+          entityId={xReplyEntityId}
+          onClose={() => setXReplyClusterId(null)}
+          onInserted={() => { setXReplyClusterId(null); fetchClusters(); }}
         />
       )}
 
