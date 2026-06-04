@@ -56,12 +56,31 @@ export default function NarrativesPage() {
   }, [activeCompanyId]);
 
   useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollLeft = scrollRef.current.scrollWidth;
-  }, [ntlData, ntlWin]);
+    const containers = Array.from(
+      document.querySelectorAll<HTMLDivElement>(".ntl-scroll")
+    );
+    containers.forEach((c) => { c.scrollLeft = c.scrollWidth; });
 
-  useEffect(() => {
-    if (socialScrollRef.current) socialScrollRef.current.scrollLeft = socialScrollRef.current.scrollWidth;
-  }, [socialData, ntlWin]);
+    let syncing = false;
+    const handlers = containers.map((source) => {
+      const handler = () => {
+        if (syncing) return;
+        syncing = true;
+        containers.forEach((target) => {
+          if (target !== source) target.scrollLeft = source.scrollLeft;
+        });
+        syncing = false;
+      };
+      source.addEventListener("scroll", handler, { passive: true });
+      return { source, handler };
+    });
+
+    return () => {
+      handlers.forEach(({ source, handler }) =>
+        source.removeEventListener("scroll", handler)
+      );
+    };
+  }, [ntlData, socialData, ntlWin]);
 
   // News handlers
   const onHover = useCallback((day: NtlDay, label: string, e: React.MouseEvent) => {

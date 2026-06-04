@@ -69,26 +69,40 @@ export async function GET(req: Request) {
           )
         );
 
+      // Merge manual articles into sparse days
+      let mergedDays = [...days];
       if (manualRows.length > 0) {
         const byDate = new Map<string, number>();
         for (const row of manualRows) {
           const date = row.publishedAt?.toISOString().slice(0, 10);
           if (date) byDate.set(date, (byDate.get(date) ?? 0) + 1);
         }
-        const merged = [...days];
         for (const [date, count] of byDate) {
-          const existing = merged.find((d) => d.date === date);
+          const existing = mergedDays.find((d) => d.date === date);
           if (existing) {
             existing.itemCount = (existing.itemCount ?? 0) + count;
           } else {
-            merged.push({ date, aiSummary: null, sentimentScore: null, sentimentLabel: null, itemCount: count, stories: null });
+            mergedDays.push({ date, aiSummary: null, sentimentScore: null, sentimentLabel: null, itemCount: count, stories: null });
           }
         }
-        merged.sort((a, b) => a.date.localeCompare(b.date));
-        return { ...feed, days: merged };
+        mergedDays.sort((a, b) => a.date.localeCompare(b.date));
       }
 
-      return { ...feed, days };
+      // Fill full date range so News and Social timelines share identical x-axis positions
+      const dayMap = new Map(mergedDays.map((d) => [d.date, d]));
+      const today = new Date();
+      const cursor = new Date(`${cutoff}T00:00:00.000Z`);
+      const fullDays: typeof mergedDays = [];
+      while (cursor <= today) {
+        const dateStr = cursor.toISOString().slice(0, 10);
+        fullDays.push(dayMap.get(dateStr) ?? {
+          date: dateStr, aiSummary: null, sentimentScore: null,
+          sentimentLabel: null, itemCount: 0, stories: null,
+        });
+        cursor.setDate(cursor.getDate() + 1);
+      }
+
+      return { ...feed, days: fullDays };
     })
   );
 
