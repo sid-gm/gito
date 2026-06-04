@@ -25,6 +25,10 @@ export default function NarrativesPage() {
   const [selectedDay, setSelectedDay] = useState<SelectedDayState>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
+  // Summarize state
+  const [summarizing, setSummarizing] = useState(false);
+  const [summarizeResult, setSummarizeResult] = useState<{ processed: number; total: number } | null>(null);
+
   // Social timeline state
   const [socialData, setSocialData] = useState<NtlTimelineData | null>(null);
   const [socialLoading, setSocialLoading] = useState(false);
@@ -87,6 +91,24 @@ export default function NarrativesPage() {
     );
   }, []);
 
+  const handleSummarize = useCallback(async () => {
+    if (!activeCompanyId) return;
+    setSummarizing(true);
+    setSummarizeResult(null);
+    try {
+      const res = await fetch(`/api/run/summarize-news-timeline?companyId=${activeCompanyId}&force=true`, { method: "POST" });
+      const data = await res.json();
+      if (data.ok) {
+        setSummarizeResult({ processed: data.processed, total: data.total });
+        // Refresh news timeline data
+        const params = new URLSearchParams({ companyId: activeCompanyId, window: "90d" });
+        const d = await fetch(`/api/news-timeline?${params}`).then((r) => r.json());
+        setNtlData(d);
+      }
+    } catch { /* best-effort */ }
+    setSummarizing(false);
+  }, [activeCompanyId]);
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape") { setSelectedDay(null); setSocialSelectedDay(null); }
@@ -139,7 +161,19 @@ export default function NarrativesPage() {
               ))}
             </div>
           </div>
-          <div className="filter-group filter-group-right">
+          <div className="filter-group filter-group-right" style={{ gap: 10 }}>
+            {summarizeResult && (
+              <span className="result-meta" style={{ color: "var(--ink-60)" }}>
+                {summarizeResult.processed} of {summarizeResult.total} days updated
+              </span>
+            )}
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={handleSummarize}
+              disabled={summarizing || !activeCompanyId}
+            >
+              {summarizing ? "Generating…" : "Generate summaries"}
+            </button>
             <span className="result-meta">
               {loading ? "loading…" : <><strong>{entities.length}</strong> {entities.length === 1 ? "entity" : "entities"} · <strong>{NTL_WINDOWS[ntlWin]}</strong> days</>}
             </span>
