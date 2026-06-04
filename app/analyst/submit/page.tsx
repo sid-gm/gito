@@ -77,6 +77,7 @@ export default function SubmitPage() {
   const { activeCompanyId } = useCompany();
   const [entities, setEntities] = useState<Entity[]>([]);
   const [form, setForm] = useState(emptyForm);
+  const [showInNewsTimeline, setShowInNewsTimeline] = useState(false);
   const [fetchingMeta, setFetchingMeta] = useState(false);
   const [saving, setSaving] = useState(false);
   const [done, setDone] = useState<{ clusterId?: string } | boolean>(false);
@@ -329,11 +330,13 @@ export default function SubmitPage() {
         body: JSON.stringify({
           ...form,
           entityId: form.entityId === "none" ? undefined : form.entityId,
+          showInNewsTimeline,
         }),
       });
       if (res.ok) {
         setDone(true);
         setForm(emptyForm);
+        setShowInNewsTimeline(false);
       } else {
         setError("Failed to submit. Check required fields.");
       }
@@ -673,6 +676,18 @@ export default function SubmitPage() {
                 </select>
               </Field>
 
+              {!useThreadFlow && !useXThreadFlow && (
+                <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", userSelect: "none" }}>
+                  <input
+                    type="checkbox"
+                    checked={showInNewsTimeline}
+                    onChange={(e) => setShowInNewsTimeline(e.target.checked)}
+                    style={{ width: 15, height: 15, cursor: "pointer", accentColor: "var(--ink-100)" }}
+                  />
+                  <span style={{ fontSize: 13 }}>Show in news timeline</span>
+                </label>
+              )}
+
               <div className="form-foot">
                 <div className="form-foot-meta">
                   <PlatformChip platform="manual" />
@@ -681,7 +696,9 @@ export default function SubmitPage() {
                       ? `Will create cluster with ${selectedTweets.length} tweet${selectedTweets.length !== 1 ? "s" : ""}`
                       : useThreadFlow
                         ? `Will create cluster with ${selectedComments.length} comment${selectedComments.length !== 1 ? "s" : ""}`
-                        : "Will appear in feed tagged Manual"}
+                        : showInNewsTimeline
+                          ? "Will appear in feed and news timeline"
+                          : "Will appear in feed tagged Manual"}
                   </span>
                 </div>
                 <div style={{ display: "flex", gap: 8 }}>
@@ -691,6 +708,7 @@ export default function SubmitPage() {
                     onClick={() => {
                       setForm(emptyForm);
                       setDone(false);
+                      setShowInNewsTimeline(false);
                       setRedditComments([]);
                       setSelectedIdxs(new Set());
                       setPasteText("");

@@ -10,6 +10,7 @@ const schema = z.object({
   author: z.string().optional(),
   publishedAt: z.string().optional(),
   entityId: z.string().uuid().optional(),
+  showInNewsTimeline: z.boolean().default(false),
 });
 
 export async function POST(req: Request) {
@@ -19,7 +20,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const { url, title, body: itemBody, author, publishedAt, entityId } = parsed.data;
+  const { url, title, body: itemBody, author, publishedAt, entityId, showInNewsTimeline } = parsed.data;
 
   const [item] = await db
     .insert(ingestedItems)
@@ -33,6 +34,7 @@ export async function POST(req: Request) {
       publishedAt: publishedAt ? new Date(publishedAt) : new Date(),
       entityId: entityId || null,
       rawJson: null,
+      showInNewsTimeline,
     })
     .returning();
 

@@ -9,6 +9,7 @@ import {
   integer,
   real,
   primaryKey,
+  boolean,
 } from "drizzle-orm/pg-core";
 
 export const entityTypeEnum = pgEnum("entity_type", [
@@ -102,6 +103,7 @@ export const ingestedItems = pgTable(
     publishedAt: timestamp("published_at"),
     rawJson: jsonb("raw_json"),
     subtype: text("subtype"),
+    showInNewsTimeline: boolean("show_in_news_timeline").default(false).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (t) => [unique("platform_external_id_unique").on(t.platform, t.externalId)]
