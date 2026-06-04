@@ -103,22 +103,10 @@ export function DayDetailDrawer({ selected, onClose, source = "news" }: {
   useEffect(() => {
     if (!selected) return;
     const { feed, day } = selected;
-    const isManualFeed = feed.feedId.startsWith("__manual__:");
 
     if (source === "news") {
-      if (!isManualFeed) {
-        // check if within 7-day retention window
-        const today = new Date();
-        const p = ntlParseDate(day.date);
-        const ageDays = Math.round(
-          (Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()) -
-            Date.UTC(p.y, p.m, p.d)) / 86400000
-        );
-        if (ageDays > 7) { setItems([]); return; }
-      }
-
       setLoadingItems(true);
-      const params = new URLSearchParams({ feedId: feed.feedId, date: day.date });
+      const params = new URLSearchParams({ feedId: feed.feedId, date: day.date, entityId: feed.entityId });
       fetch(`/api/news-timeline/day-items?${params}`)
         .then((r) => r.json())
         .then((d) => { setItems(d.items ?? []); setLoadingItems(false); })
@@ -138,9 +126,8 @@ export function DayDetailDrawer({ selected, onClose, source = "news" }: {
   if (!sel) return null;
 
   const { feed, day } = sel;
-  const isManualFeed = feed.feedId.startsWith("__manual__:");
   const slug = day.sentimentScore == null ? "neutral" : sentSlug(day.sentimentLabel);
-  const present = isManualFeed ? (day.itemCount ?? 0) > 0 : day.sentimentScore != null;
+  const present = day.sentimentScore != null || (day.itemCount ?? 0) > 0;
 
   // prev-day trend
   const idx = feed.days.findIndex((d) => d.date === day.date);
@@ -166,7 +153,7 @@ export function DayDetailDrawer({ selected, onClose, source = "news" }: {
     (Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()) -
       Date.UTC(p.y, p.m, p.d)) / 86400000
   );
-  const purged = !isManualFeed && source === "news" && ageDays > 7;
+  const purged = source === "news" && ageDays > 7;
 
   const stories = day.stories ?? [];
   const multiTopic = stories.length > 1;
@@ -177,7 +164,7 @@ export function DayDetailDrawer({ selected, onClose, source = "news" }: {
       <div className="ntl-dw-head">
         <div className="ntl-dw-bar">
           <span className="ntl-dw-eyebrow">
-            <span className="ntl-dw-glyph">◈</span> {source === "social" ? "Social · day detail" : isManualFeed ? "Manual Articles · day detail" : "Google Alerts · day detail"}
+            <span className="ntl-dw-glyph">◈</span> {source === "social" ? "Social · day detail" : "Google Alerts · day detail"}
           </span>
           <button className="ntl-dw-close" onClick={onClose} aria-label="Close">✕</button>
         </div>
@@ -221,7 +208,7 @@ export function DayDetailDrawer({ selected, onClose, source = "news" }: {
             ? day.aiSummary
               ? <p className="ntl-dw-summary">{day.aiSummary}</p>
               : <p className="ntl-dw-summary ntl-dw-empty">{source === "social" ? "No AI summary available for social activity." : "No summary available."}</p>
-            : <p className="ntl-dw-summary ntl-dw-empty">{source === "social" ? "No social items were ingested this day." : isManualFeed ? "No manual articles ingested this day." : "No Google Alerts items were ingested this day."}</p>}
+            : <p className="ntl-dw-summary ntl-dw-empty">{source === "social" ? "No social items were ingested this day." : "No Google Alerts items were ingested this day."}</p>}
         </div>
 
         {present && (
@@ -278,9 +265,7 @@ export function DayDetailDrawer({ selected, onClose, source = "news" }: {
         <p className="ntl-dw-foot">
           {source === "social"
             ? "Social conversation data · Reddit, X, HN, Threads · cluster sentiment where available."
-            : isManualFeed
-              ? "Manually ingested articles · no AI summary or sentiment · articles are retained indefinitely."
-              : "Read-only news context · summarized from Google Alerts · no clustering or signal/noise marking applied."}
+            : "Read-only news context · summarized from Google Alerts · no clustering or signal/noise marking applied."}
         </p>
       </div>
     </div>

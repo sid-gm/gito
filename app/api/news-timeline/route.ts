@@ -34,6 +34,8 @@ export async function GET(req: Request) {
     .where(and(...conditions))
     .orderBy(asc(rssFeeds.label));
 
+  const cutoffDate = new Date(`${cutoff}T00:00:00.000Z`);
+
   const result = await Promise.all(
     feeds.map(async (feed) => {
       const days = await db
@@ -54,55 +56,41 @@ export async function GET(req: Request) {
         )
         .orderBy(asc(newsTimelineDays.periodDate));
 
+      // Merge manual articles for this entity into the days array
+      const manualRows = await db
+        .select({ publishedAt: ingestedItems.publishedAt })
+        .from(ingestedItems)
+        .where(
+          and(
+            eq(ingestedItems.entityId, feed.entityId),
+            eq(ingestedItems.platform, "manual"),
+            eq(ingestedItems.showInNewsTimeline, true),
+            gte(ingestedItems.publishedAt, cutoffDate)
+          )
+        );
+
+      if (manualRows.length > 0) {
+        const byDate = new Map<string, number>();
+        for (const row of manualRows) {
+          const date = row.publishedAt?.toISOString().slice(0, 10);
+          if (date) byDate.set(date, (byDate.get(date) ?? 0) + 1);
+        }
+        const merged = [...days];
+        for (const [date, count] of byDate) {
+          const existing = merged.find((d) => d.date === date);
+          if (existing) {
+            existing.itemCount = (existing.itemCount ?? 0) + count;
+          } else {
+            merged.push({ date, aiSummary: null, sentimentScore: null, sentimentLabel: null, itemCount: count, stories: null });
+          }
+        }
+        merged.sort((a, b) => a.date.localeCompare(b.date));
+        return { ...feed, days: merged };
+      }
+
       return { ...feed, days };
     })
   );
 
-  // Append virtual manual feed for flagged manual articles
-  const manualEntityConditions: SQL[] = [eq(trackedEntities.companyId, companyId)];
-  if (entityId) manualEntityConditions.push(eq(ingestedItems.entityId, entityId));
-
-  const manualRows = await db
-    .select({ publishedAt: ingestedItems.publishedAt })
-    .from(ingestedItems)
-    .innerJoin(trackedEntities, eq(ingestedItems.entityId, trackedEntities.id))
-    .where(
-      and(
-        eq(ingestedItems.platform, "manual"),
-        eq(ingestedItems.showInNewsTimeline, true),
-        eq(trackedEntities.companyId, companyId),
-        gte(ingestedItems.publishedAt, new Date(`${cutoff}T00:00:00.000Z`)),
-        ...(entityId ? [eq(ingestedItems.entityId, entityId)] : [])
-      )
-    );
-
-  const extraFeeds: { feedId: string; feedLabel: string; entityId: string; entityLabel: string; entityType: string; days: { date: string; aiSummary: null; sentimentScore: null; sentimentLabel: null; itemCount: number; stories: null }[] }[] = [];
-
-  if (manualRows.length > 0) {
-    const byDate = new Map<string, number>();
-    for (const row of manualRows) {
-      const date = row.publishedAt?.toISOString().slice(0, 10);
-      if (date) byDate.set(date, (byDate.get(date) ?? 0) + 1);
-    }
-    const manualDays = Array.from(byDate.entries())
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([date, count]) => ({
-        date,
-        aiSummary: null as null,
-        sentimentScore: null as null,
-        sentimentLabel: null as null,
-        itemCount: count,
-        stories: null as null,
-      }));
-    extraFeeds.push({
-      feedId: `__manual__:${companyId}`,
-      feedLabel: "Manual Articles",
-      entityId: "__manual__",
-      entityLabel: "Manual",
-      entityType: "manual",
-      days: manualDays,
-    });
-  }
-
-  return NextResponse.json({ feeds: [...result, ...extraFeeds] });
+  return NextResponse.json({ feeds: result });
 }
