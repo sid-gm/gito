@@ -27,7 +27,7 @@ export default function NarrativesPage() {
 
   // Summarize state
   const [summarizing, setSummarizing] = useState(false);
-  const [summarizeResult, setSummarizeResult] = useState<{ processed: number; total: number } | null>(null);
+  const [summarizeResult, setSummarizeResult] = useState<{ processed: number; total: number; socialProcessed: number; socialTotal: number } | null>(null);
 
   // Social timeline state
   const [socialData, setSocialData] = useState<NtlTimelineData | null>(null);
@@ -99,11 +99,15 @@ export default function NarrativesPage() {
       const res = await fetch(`/api/run/summarize-news-timeline?companyId=${activeCompanyId}&force=true`, { method: "POST" });
       const data = await res.json();
       if (data.ok) {
-        setSummarizeResult({ processed: data.processed, total: data.total });
-        // Refresh news timeline data
+        setSummarizeResult({ processed: data.processed, total: data.total, socialProcessed: data.socialProcessed, socialTotal: data.socialTotal });
+        // Refresh both timelines
         const params = new URLSearchParams({ companyId: activeCompanyId, window: "90d" });
-        const d = await fetch(`/api/news-timeline?${params}`).then((r) => r.json());
-        setNtlData(d);
+        const [ntl, social] = await Promise.all([
+          fetch(`/api/news-timeline?${params}`).then((r) => r.json()),
+          fetch(`/api/social-timeline?${params}`).then((r) => r.json()),
+        ]);
+        setNtlData(ntl);
+        setSocialData(social);
       }
     } catch { /* best-effort */ }
     setSummarizing(false);
@@ -164,7 +168,7 @@ export default function NarrativesPage() {
           <div className="filter-group filter-group-right" style={{ gap: 10 }}>
             {summarizeResult && (
               <span className="result-meta" style={{ color: "var(--ink-60)" }}>
-                {summarizeResult.processed} of {summarizeResult.total} days updated
+                News: {summarizeResult.processed}/{summarizeResult.total} days · Social: {summarizeResult.socialProcessed}/{summarizeResult.socialTotal} clusters
               </span>
             )}
             <button

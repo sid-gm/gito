@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull, inArray } from "drizzle-orm";
 import { generateText } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { db } from "@/lib/db";
-import { rssFeeds, trackedEntities, ingestedItems, newsTimelineDays } from "@/lib/db/schema";
+import { rssFeeds, trackedEntities, ingestedItems, newsTimelineDays, clusters, clusterItems } from "@/lib/db/schema";
 
 type Story = {
   label: string;
@@ -167,5 +167,63 @@ export async function POST(req: Request) {
     }
   }
 
-  return NextResponse.json({ ok: true, processed, skipped, total });
+  // ── Social clusters: generate narrativeSummary for any missing it ────────
+  let socialProcessed = 0;
+  let socialTotal = 0;
+
+  const socialClusters = await db
+    .select({
+      id: clusters.id,
+      label: clusters.label,
+      entityId: clusters.entityId,
+    })
+    .from(clusters)
+    .where(
+      and(
+        isNull(clusters.narrativeSummary),
+        isNull(clusters.archivedAt),
+        inArray(clusters.entityId, entityIds)
+      )
+    );
+
+  socialTotal = socialClusters.length;
+
+  for (const cluster of socialClusters) {
+    try {
+      const items = await db
+        .select({ title: ingestedItems.title, body: ingestedItems.body })
+        .from(clusterItems)
+        .innerJoin(ingestedItems, eq(clusterItems.itemId, ingestedItems.id))
+        .where(eq(clusterItems.clusterId, cluster.id))
+        .limit(12);
+
+      const lines = items
+        .map((it) => it.title?.trim() || it.body?.slice(0, 120).trim())
+        .filter(Boolean)
+        .map((t, i) => `${i + 1}. ${t}`)
+        .join("\n");
+
+      if (!lines) continue;
+
+      const { text } = await generateText({
+        model: openai("gpt-4o-mini"),
+        prompt: `These are items in the cluster "${cluster.label ?? "Unnamed"}":\n\n${lines}\n\nWrite a 1-2 sentence summary of what this cluster is about. Return only the summary text, no labels or JSON.`,
+        maxOutputTokens: 120,
+      });
+
+      const summary = text.trim();
+      if (!summary) continue;
+
+      await db
+        .update(clusters)
+        .set({ narrativeSummary: summary })
+        .where(eq(clusters.id, cluster.id));
+
+      socialProcessed++;
+    } catch (err) {
+      console.error(`[summarize-news-timeline] cluster ${cluster.id}:`, err);
+    }
+  }
+
+  return NextResponse.json({ ok: true, processed, skipped, total, socialProcessed, socialTotal });
 }
