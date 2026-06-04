@@ -44,6 +44,10 @@ type SignalBrief = {
   clusterLabel: string | null; narrativeStage: string | null;
 };
 
+type PublicReport = {
+  id: string; clusterLabel: string; companyName: string | null; generatedAt: string;
+};
+
 // ─── Stage constants ──────────────────────────────────────────────────────────
 
 const STAGE_COLOR: Record<string, string> = {
@@ -603,6 +607,57 @@ function SignalBriefsSection({ companyId }: { companyId: string }) {
   );
 }
 
+// ─── Section: Signal brief reports ───────────────────────────────────────────
+
+function SignalReportsSection({ companyId }: { companyId: string }) {
+  const [reports, setReports] = useState<PublicReport[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    fetch(`/api/public/reports?companyId=${companyId}`)
+      .then((r) => r.json())
+      .then((d) => { setReports(d.reports ?? []); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, [companyId]);
+
+  return (
+    <section className="pp-section">
+      <div className="pp-shead">
+        <div className="pp-shead-l">
+          <span className="pp-shead-num">04</span>
+          <span className="pp-shead-title">Signal brief reports</span>
+          <span className="pp-shead-desc">analyst-generated cluster reports</span>
+        </div>
+        {reports.length > 0 && <span className="pp-shead-meta">{reports.length} report{reports.length !== 1 ? "s" : ""}</span>}
+      </div>
+
+      {loading ? (
+        <div className="pp-empty"><div className="pp-empty-mark">◆</div><div className="pp-empty-title">Loading…</div></div>
+      ) : reports.length === 0 ? (
+        <div className="pp-briefs"><div className="pp-brief-empty">∅ No reports generated yet</div></div>
+      ) : (
+        <div className="pp-briefs">
+          {reports.map((r) => (
+            <a
+              key={r.id}
+              href={`/analyst/report/${r.id}`}
+              className="pp-brief-row"
+              style={{ textDecoration: "none", color: "inherit" }}
+            >
+              <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--ink-50)" }}>{relTime(r.generatedAt)}</div>
+              <div className="pp-brief-title">{r.clusterLabel}</div>
+              <div className="pp-brief-cluster" style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--ink-40)", letterSpacing: "0.04em" }}>
+                View report →
+              </div>
+            </a>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 // ─── Section: News timeline ───────────────────────────────────────────────────
 
 function NewsTimelineSection({ companyId }: { companyId: string }) {
@@ -646,7 +701,7 @@ function NewsTimelineSection({ companyId }: { companyId: string }) {
     <section className="pp-section">
       <div className="pp-shead">
         <div className="pp-shead-l">
-          <span className="pp-shead-num">04</span>
+          <span className="pp-shead-num">05</span>
           <span className="pp-shead-title">News timeline</span>
           <span className="pp-shead-desc">Google Alerts sentiment per feed · last 7 days</span>
         </div>
@@ -812,6 +867,7 @@ function PortalInner() {
         <DailyBriefSection companyId={activeId} date={date} onDateChange={setDate} dateRange={dateRange} />
         <NarrativesSection companyId={activeId} />
         <SignalBriefsSection companyId={activeId} />
+        <SignalReportsSection companyId={activeId} />
         <NewsTimelineSection companyId={activeId} />
 
         <footer className="pp-page-foot">
