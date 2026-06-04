@@ -55,7 +55,10 @@ export async function matchToExistingClusters(
     const batch = items.slice(offset, offset + PHASE1_BATCH);
 
     const itemList = batch
-      .map((item, i) => `[${i + 1}] "${item.title ?? "(no title)"}"`)
+      .map((item, i) => {
+        const date = item.publishedAt ? item.publishedAt.toISOString().split("T")[0] : null;
+        return `[${i + 1}] "${item.title ?? "(no title)"}"${date ? ` (${date})` : ""}`;
+      })
       .join("\n");
 
     const prompt = `You are classifying news articles, tweets, and posts into existing story clusters.
@@ -70,6 +73,7 @@ Rules:
 - Assign an item to an existing cluster ONLY if it covers the same specific event, announcement, or development as that cluster.
 - Sharing a person's name or a broad topic is NOT sufficient — the item must be about the same incident or thread.
 - Different controversies, appointments, statements, or events involving the same person belong in separate clusters.
+- Items from different dates may still belong in the same cluster if they are clearly about the same developing story or event.
 - When in doubt, mark the item as "new".
 
 Respond ONLY with a valid JSON object mapping each item number to a cluster number or "new".
@@ -121,7 +125,10 @@ export async function groupNewItems(
   }
 
   const itemList = items
-    .map((item, i) => `[${i + 1}] "${item.title ?? "(no title)"}"`)
+    .map((item, i) => {
+      const date = item.publishedAt ? item.publishedAt.toISOString().split("T")[0] : null;
+      return `[${i + 1}] "${item.title ?? "(no title)"}"${date ? ` (${date})` : ""}`;
+    })
     .join("\n");
 
   const prompt = `You are grouping news articles, tweets, and posts about "${entityLabel}" into story clusters.
@@ -132,6 +139,7 @@ ${itemList}
 Rules:
 - Group items ONLY if they cover the same specific event, announcement, or incident — not just because they mention the same person.
 - Each distinct controversy, appointment, statement, or event must be its own separate group.
+- Items from different dates may still be grouped together if they are clearly about the same developing story or event.
 - A bizarre or off-topic story (e.g. a casting call, satire, unrelated mention) should never be grouped with a legitimate news story even if they share a name.
 - When in doubt, keep items in separate groups.
 

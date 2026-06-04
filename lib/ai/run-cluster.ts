@@ -1,4 +1,4 @@
-import { and, eq, isNull, ne } from "drizzle-orm";
+import { and, desc, eq, isNull, ne, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { ingestedItems, clusters, clusterItems, trackedEntities } from "@/lib/db/schema";
 import { matchToExistingClusters, groupNewItems } from "@/lib/ai/cluster";
@@ -14,23 +14,39 @@ export async function runClustering(limit: number): Promise<ClusterRunResult> {
   // Pre-pass: group Reddit posts + their comments into clusters by thread URL
   await groupRedditThreadsIntoClusters();
 
-  const unassigned = await db
+  // Fetch ALL items (including already-clustered ones) so they can be reconsidered.
+  // Unassigned items come first so they're prioritised within the limit.
+  const allItems = await db
     .select({
       id: ingestedItems.id,
       entityId: ingestedItems.entityId,
       title: ingestedItems.title,
       publishedAt: ingestedItems.publishedAt,
+      currentClusterId: clusterItems.clusterId,
     })
     .from(ingestedItems)
     .leftJoin(clusterItems, eq(clusterItems.itemId, ingestedItems.id))
-    .where(and(isNull(clusterItems.itemId), ne(ingestedItems.platform, "google_alerts")))
+    .where(ne(ingestedItems.platform, "google_alerts"))
+    .orderBy(
+      sql`CASE WHEN ${clusterItems.itemId} IS NULL THEN 0 ELSE 1 END`,
+      desc(ingestedItems.publishedAt)
+    )
     .limit(limit);
 
-  const withTitle = unassigned.filter((i) => i.entityId && i.title?.trim());
-
-  if (withTitle.length === 0) {
-    return { assigned: 0, created: 0 };
+  // Build current-cluster map and deduplicate (an item may appear twice if in multiple clusters)
+  const currentClusterMap = new Map<string, string>();
+  const seen = new Set<string>();
+  const withTitle: typeof allItems = [];
+  for (const item of allItems) {
+    if (item.currentClusterId && !currentClusterMap.has(item.id)) {
+      currentClusterMap.set(item.id, item.currentClusterId);
+    }
+    if (seen.has(item.id)) continue;
+    seen.add(item.id);
+    if (item.entityId && item.title?.trim()) withTitle.push(item);
   }
+
+  if (withTitle.length === 0) return { assigned: 0, created: 0 };
 
   // Group by entity
   const byEntity = new Map<string, typeof withTitle>();
@@ -55,7 +71,7 @@ export async function runClustering(limit: number): Promise<ClusterRunResult> {
       .from(clusters)
       .where(and(eq(clusters.entityId, entityId), isNull(clusters.archivedAt)));
 
-    // Phase 1: match against existing labeled clusters
+    // Phase 1: match all items (assigned or not) against existing labeled clusters
     const { matched, unmatched } = await matchToExistingClusters(items, activeClusters);
 
     // Apply Phase 1 assignments
@@ -64,7 +80,27 @@ export async function runClustering(limit: number): Promise<ClusterRunResult> {
       const clusterRow = activeClusters.find((c) => c.id === clusterId);
       if (!clusterRow) continue;
 
+      const prevClusterId = currentClusterMap.get(itemId);
+
+      // Already in the correct cluster
+      if (prevClusterId === clusterId) {
+        assigned++;
+        continue;
+      }
+
       try {
+        // Move from old cluster if assigned elsewhere
+        if (prevClusterId) {
+          await db
+            .delete(clusterItems)
+            .where(and(eq(clusterItems.itemId, itemId), eq(clusterItems.clusterId, prevClusterId)));
+          await db
+            .update(clusters)
+            .set({ itemCount: sql`GREATEST(${clusters.itemCount} - 1, 0)` })
+            .where(eq(clusters.id, prevClusterId));
+          updatedClusterIds.add(prevClusterId);
+        }
+
         const newCount = clusterRow.itemCount + 1;
         await db
           .update(clusters)
@@ -79,14 +115,18 @@ export async function runClustering(limit: number): Promise<ClusterRunResult> {
         clusterRow.itemCount = newCount;
         updatedClusterIds.add(clusterId);
         assigned++;
+        currentClusterMap.set(itemId, clusterId);
       } catch (err) {
         console.error(`[run-cluster] assign item ${itemId}:`, err);
       }
     }
 
-    if (unmatched.length === 0) continue;
+    // Phase 2: only group items with no existing cluster assignment.
+    // Already-assigned items that didn't match Phase 1 stay in their current cluster.
+    const trulyUnmatched = unmatched.filter((i) => !currentClusterMap.has(i.id));
 
-    // Phase 2: group unmatched items into new clusters
+    if (trulyUnmatched.length === 0) continue;
+
     const entityRow = await db
       .select({ label: trackedEntities.label })
       .from(trackedEntities)
@@ -95,12 +135,12 @@ export async function runClustering(limit: number): Promise<ClusterRunResult> {
 
     const entityLabel = entityRow?.label ?? "this entity";
 
-    const groups = await groupNewItems(entityLabel, unmatched);
+    const groups = await groupNewItems(entityLabel, trulyUnmatched);
 
     for (const group of groups) {
       if (group.itemIds.length === 0) continue;
 
-      const firstItem = unmatched.find((i) => i.id === group.itemIds[0])!;
+      const firstItem = trulyUnmatched.find((i) => i.id === group.itemIds[0])!;
       const now = firstItem.publishedAt ?? new Date();
 
       try {
