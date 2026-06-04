@@ -11,12 +11,12 @@ import {
   SentPill, TimelineAxis, GridLines, HoverPop,
 } from "./timeline_core";
 
-// ── Build polyline segments for consecutive non-null days ──────────────────
+// ── Build polyline segments connecting all non-null days (gaps skipped) ───────
 function buildSegments(days: NtlDay[]) {
   const segs: { i: number; score: number }[][] = [];
   let cur: { i: number; score: number }[] | null = null;
   days.forEach((d, i) => {
-    if (d.sentimentScore == null) { cur = null; return; }
+    if (d.sentimentScore == null) return;
     if (!cur) { cur = []; segs.push(cur); }
     cur.push({ i, score: d.sentimentScore });
   });
