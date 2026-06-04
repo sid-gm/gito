@@ -25,36 +25,49 @@ type AISummaryResult = {
 };
 
 async function generateAISummary(
-  items: Array<{ platform: string; title: string | null; publishedAt: string | null }>,
-  analystNote: string | null,
+  entityLabel: string | null,
+  items: Array<{ platform: string; title: string | null; author: string | null; publishedAt: string | null; analystNote: string | null }>,
   narrativeSummary: string | null,
 ): Promise<AISummaryResult | null> {
   try {
     const newsItems = items.filter((i) => NEWS_PLATFORMS.has(i.platform));
     const socialItems = items.filter((i) => SOCIAL_PLATFORMS.has(i.platform));
 
-    const formatItems = (arr: typeof items) =>
-      arr.length === 0
-        ? "  (none)"
-        : arr
-            .map((i) => `  - [${i.publishedAt ? new Date(i.publishedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "unknown date"}] ${i.title ?? "(no title)"}`)
-            .join("\n");
+    const fmtDate = (iso: string | null) =>
+      iso ? new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "unknown date";
 
-    const prompt = `You are a media intelligence analyst. Analyze the following cluster of items and produce a brief summary.
+    const formatNewsItem = (i: typeof items[number]) => {
+      const base = `[${fmtDate(i.publishedAt)}] ${i.title ?? "(no title)"}`;
+      return i.analystNote ? `${base} - ${i.analystNote}` : base;
+    };
 
-${narrativeSummary ? `Background: ${narrativeSummary}\n` : ""}${analystNote ? `Analyst note: ${analystNote}\n` : ""}
-NEWS ITEMS (press coverage):
-${formatItems(newsItems)}
+    const formatSocialItem = (i: typeof items[number]) => {
+      const who = i.author ? `${i.author}: ` : "";
+      const base = `[${fmtDate(i.publishedAt)}] ${who}${i.title ?? "(no title)"}`;
+      return i.analystNote ? `${base} - ${i.analystNote}` : base;
+    };
 
-SOCIAL ITEMS (online discussion — HackerNews, Reddit, X/Twitter):
-${formatItems(socialItems)}
+    const newsBlock = newsItems.length === 0 ? "(none)" : newsItems.map(formatNewsItem).join("\n");
+    const socialBlock = socialItems.length === 0 ? "(none)" : socialItems.map(formatSocialItem).join("\n");
+
+    const entity = entityLabel ?? "the tracked entity";
+
+    const prompt = `You are provided stories about the entity ${entity}.
+
+Analyze the following cluster of items and produce a brief summary against the entity. We want to understand how discussions online are affecting the entity. We also want to compare the social discussion against how the mainstream news is covering this.
+${narrativeSummary ? `\nBackground: ${narrativeSummary}\n` : ""}
+news items:
+${newsBlock}
+
+social items:
+${socialBlock}
 
 Return a JSON object with exactly these fields:
-- "aiSummary": 2–4 sentence paragraph summarizing the story, noting how news coverage differs from online reaction if relevant
+- "aiSummary": Summarize what the sentiment is of public discussions for the entity being tracked. Note how news coverage differs from online reaction. Reflect on whether the public discussions online can affect the entity positively or not. If you are unsure, state so.
 - "newsSentimentScore": number from -1.0 (very negative) to 1.0 (very positive) reflecting news tone
 - "newsSentimentLabel": one of "very negative", "negative", "mixed", "neutral", "positive", "very positive"
-- "socialSentimentScore": same scale, reflecting social/online discussion tone
-- "socialSentimentLabel": same labels
+- "socialSentimentScore": number from -1.0 (very negative) to 1.0 (very positive) reflecting conversation tone
+- "socialSentimentLabel": one of "very negative", "negative", "mixed", "neutral", "positive", "very positive"
 
 Respond with only valid JSON, no markdown.`;
 
@@ -117,6 +130,7 @@ async function buildReportData(id: string) {
       author: ingestedItems.author,
       publishedAt: ingestedItems.publishedAt,
       url: ingestedItems.url,
+      analystNote: clusterItems.analystNote,
     })
     .from(clusterItems)
     .innerJoin(ingestedItems, eq(clusterItems.itemId, ingestedItems.id))
@@ -199,8 +213,8 @@ export async function POST(
   const { _meta, ...snapshotData } = data;
 
   const aiResult = await generateAISummary(
+    snapshotData.cluster.entityLabel ?? snapshotData.cluster.companyName,
     snapshotData.items,
-    snapshotData.cluster.analystNote,
     snapshotData.cluster.narrativeSummary,
   );
 

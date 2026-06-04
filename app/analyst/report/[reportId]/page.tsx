@@ -41,6 +41,7 @@ type ReportItem = {
   author: string | null;
   publishedAt: string | null;
   url: string | null;
+  analystNote: string | null;
 };
 
 type SourceRow = {
