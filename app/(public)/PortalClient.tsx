@@ -682,6 +682,84 @@ function NewsTimelineSection({ companyId }: { companyId: string }) {
   );
 }
 
+// ─── Section: Social timeline ────────────────────────────────────────────────
+
+function SocialTimelineSection({ companyId }: { companyId: string }) {
+  const [ntlData, setNtlData] = useState<NtlTimelineData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [pop, setPop] = useState<HoverPopState>(null);
+  const [selected, setSelected] = useState<SelectedDayState>(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    setLoading(true);
+    fetch(`/api/social-timeline?companyId=${companyId}&window=7d`)
+      .then((r) => r.json())
+      .then((d) => { setNtlData(d); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, [companyId]);
+
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollLeft = scrollRef.current.scrollWidth;
+  }, [ntlData]);
+
+  const onHover = useCallback((day: NtlDay, label: string, e: React.MouseEvent) => {
+    const rect = (e.target as HTMLElement).getBoundingClientRect();
+    setPop({ day, feedLabel: label, x: rect.left + rect.width / 2, y: rect.top, below: rect.top < 200 });
+  }, []);
+  const onLeave = useCallback(() => setPop(null), []);
+  const onDayClick = useCallback((feed: NtlFeed, day: NtlDay) => {
+    setPop(null);
+    setSelected((prev) => prev?.day.date === day.date && prev.feed.feedId === feed.feedId ? null : { feed, day });
+  }, []);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") setSelected(null); };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
+
+  const feeds = ntlData?.feeds ?? [];
+
+  return (
+    <section className="pp-section">
+      <div className="pp-shead">
+        <div className="pp-shead-l">
+          <span className="pp-shead-num">05</span>
+          <span className="pp-shead-title">Social timeline</span>
+          <span className="pp-shead-desc">Reddit · X · HackerNews · Threads sentiment per entity · last 7 days</span>
+        </div>
+        {feeds.length > 0 && <span className="pp-shead-meta">{feeds.length} source{feeds.length !== 1 ? "s" : ""} · avg sentiment per day</span>}
+      </div>
+
+      {loading ? (
+        <div className="pp-empty"><div className="pp-empty-mark">◈</div><div className="pp-empty-title">Loading…</div></div>
+      ) : feeds.length === 0 ? (
+        <div className="pp-empty"><div className="pp-empty-mark">∅</div><div className="pp-empty-title">No social data available</div></div>
+      ) : (
+        <>
+          <div className="ntl-legend" style={{ marginBottom: 4 }}>
+            {(["positive","negative","mixed","neutral"] as const).map((s) => (
+              <span key={s} className="ntl-legend-item">
+                <span className="ntl-legend-dot" style={{ background: `var(--nd-${s})` }} /> {s.charAt(0).toUpperCase() + s.slice(1)}
+              </span>
+            ))}
+            <span className="ntl-legend-note">one track per social entity · dot size = items that day · hover to read, click to expand</span>
+          </div>
+          <NewsTimeline
+            feeds={feeds} win="7d" feedFilter="all"
+            style="trend" arrangement="stacked" density="recent" showAvg={true}
+            pop={pop} scrollRef={scrollRef}
+            onHover={onHover} onLeave={onLeave} onDayClick={onDayClick}
+            selectedDay={selected ? { feedId: selected.feed.feedId, date: selected.day.date } : null}
+          />
+        </>
+      )}
+      <DayDetailDrawer selected={selected} onClose={() => setSelected(null)} source="social" />
+    </section>
+  );
+}
+
 // ─── Portal sidebar ───────────────────────────────────────────────────────────
 
 function PortalSidebar({ companies, activeId, onSelect }: {
@@ -814,6 +892,7 @@ function PortalInner() {
         <NarrativesSection companyId={activeId} />
         <SignalReportsSection companyId={activeId} />
         <NewsTimelineSection companyId={activeId} />
+        <SocialTimelineSection companyId={activeId} />
 
         <footer className="pp-page-foot">
           <span>Gito · public intelligence · usegito.com</span>
