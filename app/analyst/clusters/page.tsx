@@ -272,7 +272,6 @@ export default function ClustersPage() {
   const [entityId, setEntityId] = useState("all");
   const [sort, setSort] = useState("activity");
   const [hideSingletons, setHideSingletons] = useState(true);
-  const [classificationFilter, setClassificationFilter] = useState("all");
 
   const [loading, setLoading] = useState(true);
   const [clusterRunning, setClusterRunning] = useState(false);
@@ -304,14 +303,14 @@ export default function ClustersPage() {
   const fetchClusters = useCallback(async () => {
     if (!activeCompanyId) return;
     setLoading(true);
-    const params = new URLSearchParams({ sort, hideSingletons: String(hideSingletons), classification: classificationFilter, companyId: activeCompanyId });
+    const params = new URLSearchParams({ sort, hideSingletons: String(hideSingletons), companyId: activeCompanyId });
     if (entityId !== "all") params.set("entityId", entityId);
     const res = await fetch(`/api/clusters?${params}`);
     const data = await res.json();
     setClusterList(data.clusters ?? []);
     setStats(data.stats ?? null);
     setLoading(false);
-  }, [entityId, sort, hideSingletons, classificationFilter, activeCompanyId]);
+  }, [entityId, sort, hideSingletons, activeCompanyId]);
 
   useEffect(() => {
     if (activeCompanyId) fetch(`/api/entities?companyId=${activeCompanyId}`).then((r) => r.json()).then(setEntities);
@@ -680,15 +679,6 @@ export default function ClustersPage() {
             <select className="select" value={entityId} onChange={(e) => setEntityId(e.target.value)}>
               <option value="all">All entities</option>
               {entities.map((e) => <option key={e.id} value={e.id}>{e.label}</option>)}
-            </select>
-          </div>
-          <div className="filter-group">
-            <span className="filter-label">Classification</span>
-            <select className="select" value={classificationFilter} onChange={(e) => setClassificationFilter(e.target.value)}>
-              <option value="all">All</option>
-              <option value="narrative">Narrative</option>
-              <option value="noise">Noise</option>
-              <option value="unclassified">Unclassified</option>
             </select>
           </div>
           <div className="filter-group">
