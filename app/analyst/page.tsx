@@ -64,8 +64,6 @@ export default function FeedPage() {
   const [loading, setLoading] = useState(true);
   const [pageSize, setPageSize] = useState(50);
   const [page, setPage] = useState(1);
-  const [embedRunning, setEmbedRunning] = useState(false);
-  const [embedResult, setEmbedResult] = useState<string | null>(null);
   const [clusterRunning, setClusterRunning] = useState(false);
   const [clusterResult, setClusterResult] = useState<string | null>(null);
   const [threadDialogOpen, setThreadDialogOpen] = useState(false);
@@ -73,24 +71,6 @@ export default function FeedPage() {
   const [sessionIngestedUrls, setSessionIngestedUrls] = useState<Set<string>>(new Set());
   const [platformCounts, setPlatformCounts] = useState<Record<string, number>>({ all: 0 });
   const [totalSpark, setTotalSpark] = useState<number[]>([]);
-
-  const runEmbed = useCallback(async () => {
-    setEmbedRunning(true);
-    setEmbedResult(null);
-    try {
-      const res = await fetch("/api/run/embed", { method: "POST" });
-      const data = await res.json();
-      setEmbedResult(
-        data.embedded === 0
-          ? "nothing to embed"
-          : `${data.embedded} embedded · all done`
-      );
-    } catch {
-      setEmbedResult("error — check console");
-    } finally {
-      setEmbedRunning(false);
-    }
-  }, []);
 
   const runCluster = useCallback(async () => {
     setClusterRunning(true);
@@ -187,14 +167,6 @@ export default function FeedPage() {
             />
             <span className="kbd kbd-soft">/</span>
           </label>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <button className="btn" onClick={runEmbed} disabled={embedRunning}>
-              {embedRunning ? "Embedding…" : "Run Embed"}
-            </button>
-            {embedResult && (
-              <span style={{ fontSize: 12, color: "var(--ink-40)", whiteSpace: "nowrap" }}>{embedResult}</span>
-            )}
-          </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <button className="btn" onClick={runCluster} disabled={clusterRunning}>
               {clusterRunning ? "Clustering…" : "Run Cluster"}

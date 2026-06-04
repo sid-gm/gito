@@ -3,7 +3,6 @@
 import { useState } from "react";
 
 export const STAGE_STYLES: Record<string, { label: string; bg: string; color: string }> = {
-  relaxed:    { label: "RELAXED",    bg: "#2563EB",                                               color: "#FFFFFF" },
   emerging:   { label: "EMERGING",   bg: "color-mix(in oklch, var(--ok) 15%, transparent)",       color: "var(--ok)" },
   developing: { label: "DEVELOPING", bg: "color-mix(in oklch, var(--accent) 15%, transparent)",   color: "var(--accent)" },
   revival:    { label: "REVIVAL",    bg: "color-mix(in oklch, #8B5CF6 15%, transparent)",         color: "#8B5CF6" },
@@ -16,7 +15,6 @@ const STAGE_CONDITIONS: Array<{
   color: string;
   conditions: Array<{ label: string; check: (v: number, p: number, a: number, age: number) => boolean }>;
 }> = [
-  { stage: "relaxed",    color: "#2563EB",       conditions: [{ label: "age < 2d",     check: (_v,_p,_a,age) => age < 2 }] },
   { stage: "emerging",   color: "var(--ok)",     conditions: [{ label: "age < 2d",     check: (_v,_p,_a,age) => age < 2 }, { label: "spread or surge", check: (v,_p,a) => v >= 3 || a > 0 }] },
   { stage: "developing", color: "var(--accent)", conditions: [{ label: "v ≥ 3",        check: (v) => v >= 3 }] },
   { stage: "revival",    color: "#8B5CF6",       conditions: [{ label: "v > peak×1.5", check: (v,p) => p > 0 && v > p * 1.5 }, { label: "accel > 0", check: (_v,_p,a) => a > 0 }] },
@@ -144,8 +142,6 @@ export function StageKey() {
 
           {/* Main lifecycle row */}
           <div style={{ display: "flex", alignItems: "center", gap: 0, marginBottom: 12, flexWrap: "nowrap" }}>
-            <StagePillNode s="relaxed" />
-            <Gate label="age<2d + spread" />
             <StagePillNode s="emerging" />
             <Gate label="v≥3 + spread" />
             <StagePillNode s="developing" />

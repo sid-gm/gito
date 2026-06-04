@@ -3,7 +3,6 @@
     { "path": "/api/cron/hackernews",       "schedule": "0 * * * *"   },
     { "path": "/api/cron/twitter",          "schedule": "0 */6 * * *" },
     { "path": "/api/cron/google-alerts",    "schedule": "0 * * * *"   },
-    { "path": "/api/cron/threads",          "schedule": "0 * * * *"   },
     { "path": "/api/cron/cluster",          "schedule": "5,35 * * * *" },
     { "path": "/api/cron/name-clusters",         "schedule": "0 3 * * *"    },
     { "path": "/api/cron/archive-clusters",      "schedule": "0 4 * * *"    },

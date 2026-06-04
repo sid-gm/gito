@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { PlatformChip, EntityBadge, Field } from "@/components/primitives";
+import { PlatformChip, Field } from "@/components/primitives";
 import { useCompany } from "@/components/CompanyContext";
 
 type Entity = { id: string; label: string; entityType: string };
@@ -341,8 +341,6 @@ export default function SubmitPage() {
     setSaving(false);
   };
 
-  const previewEntity = entities.find((e) => e.id === form.entityId);
-
   return (
     <>
       <header className="topbar">
@@ -354,7 +352,7 @@ export default function SubmitPage() {
       </header>
 
       <div className="page">
-        <div className="submit-grid">
+        <div className="submit-grid" style={{ gridTemplateColumns: "1fr" }}>
           <form className="submit-form" onSubmit={handleSubmit}>
             <div className="form-stack">
               {entities.length === 0 && (
@@ -735,59 +733,6 @@ export default function SubmitPage() {
               )}
             </div>
           </form>
-
-          <aside className="submit-side">
-            <div className="side-card">
-              <div className="side-card-title">When to submit manually</div>
-              <ul className="side-list">
-                <li>An article behind a paywall the crawler can&apos;t reach.</li>
-                <li>A LinkedIn post — no LinkedIn collector yet.</li>
-                <li>A podcast episode, conference talk, or video.</li>
-                <li>Anything sent to you directly (email, DM) worth tracking.</li>
-              </ul>
-            </div>
-
-            <div className="side-card">
-              <div className="side-card-title">Live preview</div>
-              <article className="feedrow feedrow-medium feedrow-preview">
-                <div className="feedrow-rail" />
-                <div className="feedrow-left">
-                  <PlatformChip platform="manual" />
-                  <div className="feedrow-time">now</div>
-                </div>
-                <div className="feedrow-body">
-                  <div className="feedrow-head">
-                    <h3 className="feedrow-title">
-                      {form.title || <span className="dim">Title appears here…</span>}
-                    </h3>
-                  </div>
-                  <p className="feedrow-snippet">
-                    {form.body ? (
-                      form.body.slice(0, 180) + (form.body.length > 180 ? "…" : "")
-                    ) : (
-                      <span className="dim">Snippet preview will render here as you type.</span>
-                    )}
-                  </p>
-                  <div className="feedrow-meta">
-                    {form.author && <span className="meta-mono">{form.author}</span>}
-                    {previewEntity && (
-                      <EntityBadge label={previewEntity.label} type={previewEntity.entityType} />
-                    )}
-                  </div>
-                </div>
-              </article>
-            </div>
-
-            <div className="side-card side-card-tip">
-              <div className="side-card-title">Tip — URL parsing</div>
-              <div className="side-card-body">
-                We use <code className="codepill">/api/meta</code> to extract{" "}
-                <code className="codepill">og:title</code> and{" "}
-                <code className="codepill">author</code>. If a site blocks scraping, paste the
-                text by hand — manual items get the same treatment in clustering.
-              </div>
-            </div>
-          </aside>
         </div>
       </div>
     </>

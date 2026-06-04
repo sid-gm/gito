@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { cx, PlatformChip, Dot } from "@/components/primitives";
 import { VelocitySparkline } from "@/components/VelocitySparkline";
 import { useCompany } from "@/components/CompanyContext";
-import { StagePill, StageKey } from "@/components/StagePill";
+import { StageKey } from "@/components/StagePill";
 import { AddItemDialog } from "@/components/AddItemDialog";
 import { ItemAnnotations } from "@/components/ItemAnnotations";
 import ThreadIngestDialog from "@/components/ThreadIngestDialog";
@@ -151,32 +151,6 @@ function SignalDot({ signal }: { signal: string }) {
   return <Dot color={color} size={7} />;
 }
 
-function OverrideMenu({ clusterId, current, onDone }: { clusterId: string; current: string | null; onDone: () => void }) {
-  const [open, setOpen] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const apply = async (val: "narrative" | "noise" | "signal" | "watch" | null) => {
-    setBusy(true);
-    await fetch(`/api/clusters/${clusterId}/classify`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ classification: val }) });
-    setBusy(false); setOpen(false); onDone();
-  };
-  return (
-    <div style={{ position: "relative" }}>
-      <button className="btn-ghost" style={{ fontSize: 14, padding: "0 6px", lineHeight: 1 }} onClick={() => setOpen((v) => !v)} disabled={busy} title="Analyst override">⋯</button>
-      {open && (
-        <div style={{ position: "absolute", right: 0, top: "100%", zIndex: 100, background: "var(--paper)", border: "1px solid var(--border)", borderRadius: 6, boxShadow: "0 4px 16px rgba(0,0,0,0.12)", minWidth: 170, padding: "4px 0" }}>
-          <div style={{ padding: "4px 12px 2px", fontSize: 10, fontFamily: "var(--font-mono)", color: "var(--ink-30)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Analyst override</div>
-          {current !== "narrative" && <button className="dropdown-item" onClick={() => apply("narrative")}>Mark as Narrative</button>}
-          {current !== "signal"    && <button className="dropdown-item" onClick={() => apply("signal")}>Mark as Signal</button>}
-          {current !== "watch"     && <button className="dropdown-item" onClick={() => apply("watch")}>Mark as Watch</button>}
-          {current !== "noise"     && <button className="dropdown-item" onClick={() => apply("noise")}>Mark as Noise</button>}
-          {current !== null        && <button className="dropdown-item" style={{ color: "var(--ink-40)" }} onClick={() => apply(null)}>Reset override</button>}
-          <button className="dropdown-item" onClick={() => setOpen(false)} style={{ color: "var(--ink-30)" }}>Cancel</button>
-        </div>
-      )}
-    </div>
-  );
-}
-
 function WaveHeader({ label, isFirst }: { label: string; isFirst: boolean }) {
   return (
     <div style={{
@@ -303,8 +277,6 @@ export default function ClustersPage() {
   const [loading, setLoading] = useState(true);
   const [clusterRunning, setClusterRunning] = useState(false);
   const [clusterResult, setClusterResult] = useState<string | null>(null);
-  const [classifyRunning, setClassifyRunning] = useState(false);
-  const [classifyResult, setClassifyResult] = useState<string | null>(null);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [expandedData, setExpandedData] = useState<Record<string, ExpandedData>>({});
   const [expandLoading, setExpandLoading] = useState<Set<string>>(new Set());
@@ -462,17 +434,6 @@ export default function ClustersPage() {
       fetchClusters();
     } catch { setClusterResult("error — check console"); }
     finally { setClusterRunning(false); }
-  }, [fetchClusters]);
-
-  const runClassify = useCallback(async () => {
-    setClassifyRunning(true); setClassifyResult(null);
-    try {
-      const res = await fetch("/api/run/classify", { method: "POST" });
-      const data = await res.json();
-      setClassifyResult(`${data.classified} classified · ${data.signalsTagged} signals tagged`);
-      fetchClusters();
-    } catch { setClassifyResult("error — check console"); }
-    finally { setClassifyRunning(false); }
   }, [fetchClusters]);
 
   const toggleExpand = useCallback(async (clusterId: string) => {
@@ -675,9 +636,8 @@ export default function ClustersPage() {
               {mergeMode ? "Exit Merge Mode" : "Select to Merge"}
             </button>
             <button className="btn-ghost btn" onClick={runCluster} disabled={clusterRunning}>{clusterRunning ? "Clustering…" : "Run Cluster"}</button>
-            <button className="btn" onClick={runClassify} disabled={classifyRunning}>{classifyRunning ? "Classifying…" : "Run Classify"}</button>
-            {(clusterResult || classifyResult) && (
-              <span style={{ fontSize: 12, color: "var(--ink-40)", whiteSpace: "nowrap" }}>{classifyResult ?? clusterResult}</span>
+            {clusterResult && (
+              <span style={{ fontSize: 12, color: "var(--ink-40)", whiteSpace: "nowrap" }}>{clusterResult}</span>
             )}
           </div>
         </div>
@@ -776,7 +736,6 @@ export default function ClustersPage() {
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 4 }}>
                         <ClassificationPill classification={cluster.effectiveClassification} />
-                        {cluster.itemCount >= 2 && cluster.narrativeStage && <StagePill stage={cluster.narrativeStage} velocity24h={cluster.velocity24h} prevVelocity24h={cluster.prevVelocity24h} peakMomentum={cluster.peakMomentum} firstSeenAt={cluster.firstSeenAt} platformCount={cluster.platformCount} />}
                         {cluster.sentimentLabel && <SentimentPill label={cluster.sentimentLabel} />}
                         {cluster.momentum != null && cluster.momentum > 0 && (
                           <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--ink-40)" }}>↑{cluster.momentum.toFixed(1)}/day</span>
@@ -812,16 +771,9 @@ export default function ClustersPage() {
                       )}
                       <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                         <span className="cluster-card-count">{cluster.itemCount} items</span>
-                        {!mergeMode && <OverrideMenu clusterId={cluster.id} current={cluster.analystClassification} onDone={fetchClusters} />}
                       </div>
                     </div>
                   </div>
-
-                  {cluster.analystClassification && (
-                    <div style={{ fontSize: 11, color: "var(--ink-40)", fontStyle: "italic", marginBottom: 4, paddingLeft: 2 }}>
-                      Analyst: marked as {cluster.analystClassification}{cluster.analystNote ? ` — ${cluster.analystNote}` : ""}
-                    </div>
-                  )}
 
                   <div className="cluster-card-meta">{shortDate(cluster.firstSeenAt)} → {relativeTime(cluster.lastSeenAt)}</div>
 

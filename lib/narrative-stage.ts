@@ -11,7 +11,7 @@ export function computeNarrativeStage(opts: {
   platformCount?: number;
   nonNewsPlatformCount?: number;
   currentStage?: NarrativeStage;
-}): NarrativeStage {
+}): NarrativeStage | null {
   const {
     velocity24h,
     prevVelocity24h,
@@ -68,11 +68,11 @@ export function computeNarrativeStage(opts: {
     if (velocity24h >= 3 && spread) return "developing";
     if (ageInDays < 3 && velocity24h > 0) return "emerging";
     if (velocity24h === 0 && ageInDays > 2) return "declining";
-    return "relaxed";
+    return null;
   }
 
-  // ── From relaxed or null (new cluster / invalidated state) ───────────────
+  // ── From null (new cluster / invalidated state) ───────────────────────────
   if (ageInDays < 2 && (nonNewsPlatformCount >= 3 || platformCount >= 5)) return "emerging";
   if (ageInDays < 2 && velocity24h >= 3 && acceleration > 0) return "emerging";
-  return "relaxed";
+  return null;
 }
