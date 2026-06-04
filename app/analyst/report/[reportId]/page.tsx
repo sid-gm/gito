@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -15,6 +15,11 @@ type ReportCluster = {
   narrativeSummary: string | null;
   sentimentScore: number | null;
   sentimentLabel: string | null;
+  newsSentimentScore: number | null;
+  newsSentimentLabel: string | null;
+  socialSentimentScore: number | null;
+  socialSentimentLabel: string | null;
+  aiSummary: string | null;
   velocity24h: number | null;
   prevVelocity24h: number | null;
   platformCount: number | null;
@@ -43,19 +48,14 @@ type SourceRow = {
   itemCount: number;
 };
 
-type VelocityBucket = {
-  bucket: string;
-  itemCount: number;
-};
-
 type ReportData = {
   reportId: string;
   generatedAt: string;
+  analystSummary: string | null;
   cluster: ReportCluster;
   narratives: PeriodNarrative[];
   items: ReportItem[];
   sourceBreakdown: SourceRow[];
-  velocityHistory: VelocityBucket[];
 };
 
 // ─── Platform config ──────────────────────────────────────────────────────────
@@ -97,17 +97,6 @@ function relativeTime(iso: string) {
   return `${Math.floor(h / 24)}d ago`;
 }
 
-function velocityChange(v24: number | null, prev: number | null): string | null {
-  if (v24 == null || prev == null || prev === 0) return null;
-  const pct = Math.round(((v24 - prev) / prev) * 100);
-  return pct >= 0 ? `▲ ${pct}%` : `▼ ${Math.abs(pct)}%`;
-}
-
-function velocityChangeCls(v24: number | null, prev: number | null): string {
-  if (v24 == null || prev == null || prev === 0) return "metric-delta-neutral";
-  return v24 >= prev ? "metric-delta-err" : "metric-delta-ok";
-}
-
 function sentColor(score: number | null): string {
   if (score == null) return "var(--ink-50)";
   if (score <= -0.3) return "var(--err)";
@@ -140,6 +129,17 @@ function PlatformChip({ platform }: { platform: string }) {
   );
 }
 
+function PlatformBadge({ platform }: { platform: string }) {
+  const p = getPlatform(platform);
+  return (
+    <span style={{
+      fontFamily: "var(--font-mono)", fontSize: 9.5, fontWeight: 600,
+      letterSpacing: "0.04em", padding: "1px 5px", borderRadius: 3,
+      background: p.color, color: "#fff", whiteSpace: "nowrap",
+    }}>{p.short}</span>
+  );
+}
+
 function SentMiniBar({ value }: { value: number }) {
   const clamped = Math.max(-1, Math.min(1, value));
   const w = Math.abs(clamped) * 50;
@@ -155,63 +155,28 @@ function SentMiniBar({ value }: { value: number }) {
   );
 }
 
-function VelocityChart({ buckets }: { buckets: VelocityBucket[] }) {
-  const W = 720, H = 180, PAD = { l: 32, r: 12, t: 14, b: 24 };
-  const innerW = W - PAD.l - PAD.r;
-  const innerH = H - PAD.t - PAD.b;
-
-  if (!buckets.length) {
-    return (
-      <div style={{ height: H, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--ink-40)", fontFamily: "var(--font-mono)", fontSize: 11 }}>
-        No data in last 48h
-      </div>
-    );
-  }
-
-  const values = buckets.map((b) => b.itemCount);
-  const max = Math.max(...values, 1);
-  const xs = (i: number) => PAD.l + (i / Math.max(values.length - 1, 1)) * innerW;
-  const ys = (v: number) => PAD.t + innerH - (v / max) * innerH;
-
-  const linePath = values.map((v, i) => `${i === 0 ? "M" : "L"}${xs(i).toFixed(1)},${ys(v).toFixed(1)}`).join(" ");
-  const areaPath = `${linePath} L${xs(values.length - 1)},${ys(0)} L${xs(0)},${ys(0)} Z`;
-
-  let peakIdx = 0;
-  for (let i = 1; i < values.length; i++) if (values[i] > values[peakIdx]) peakIdx = i;
-
-  const yTicks = 3;
-  const gridLines = Array.from({ length: yTicks + 1 }, (_, i) => ({
-    y: PAD.t + (i / yTicks) * innerH,
-    v: Math.round(max * (1 - i / yTicks)),
-  }));
-
-  const tickCount = Math.min(7, values.length);
-  const xLabels = Array.from({ length: tickCount }, (_, i) => {
-    const idx = Math.round((i / (tickCount - 1)) * (values.length - 1));
-    const hoursAgo = values.length - 1 - idx;
-    return { x: xs(idx), label: hoursAgo === 0 ? "now" : `−${hoursAgo}h` };
-  });
-
+function SentimentCard({ label, score, sentimentLabel }: { label: string; score: number | null; sentimentLabel: string | null }) {
   return (
-    <svg style={{ display: "block", width: "100%", height: "auto" }} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet">
-      {gridLines.map((g, i) => (
-        <g key={i}>
-          <line x1={PAD.l} x2={W - PAD.r} y1={g.y} y2={g.y} stroke="var(--border-soft)" strokeDasharray={i === yTicks ? "" : "2 4"} />
-          <text x={PAD.l - 5} y={g.y + 3} textAnchor="end" fontSize="9" fill="var(--ink-50)" fontFamily="var(--font-mono)">{g.v}</text>
-        </g>
-      ))}
-      <path d={areaPath} fill="var(--accent)" opacity="0.10" />
-      <path d={linePath} fill="none" stroke="var(--accent)" strokeWidth="1.75" />
-      {values.length > 1 && (
+    <div style={{ padding: "18px 22px" }}>
+      <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--ink-50)", marginBottom: 8 }}>{label}</div>
+      {score != null ? (
         <>
-          <circle cx={xs(peakIdx)} cy={ys(values[peakIdx])} r="4" fill="var(--accent)" stroke="var(--paper)" strokeWidth="2" />
-          <text x={xs(peakIdx) + 8} y={ys(values[peakIdx]) + 3} fontSize="9" fill="var(--ink-70)" fontFamily="var(--font-mono)" fontWeight="600">PEAK {values[peakIdx]}</text>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
+            <span style={{ fontSize: 30, fontWeight: 600, letterSpacing: "-0.02em", lineHeight: 1, color: sentColor(score), fontVariantNumeric: "tabular-nums" }}>
+              {score >= 0 ? "+" : ""}{score.toFixed(2)}
+            </span>
+            {sentimentLabel && (
+              <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 500, padding: "2px 6px", borderRadius: 3, background: "color-mix(in oklch, var(--ink-50) 10%, transparent)", color: "var(--ink-60)" }}>
+                {sentimentLabel}
+              </span>
+            )}
+          </div>
+          <SentMiniBar value={score} />
         </>
+      ) : (
+        <div style={{ fontSize: 30, fontWeight: 600, color: "var(--ink-30)" }}>—</div>
       )}
-      {xLabels.map((l, i) => (
-        <text key={i} x={l.x} y={H - 5} fontSize="9" textAnchor="middle" fill="var(--ink-50)" fontFamily="var(--font-mono)">{l.label}</text>
-      ))}
-    </svg>
+    </div>
   );
 }
 
@@ -221,13 +186,36 @@ export default function ReportPage() {
   const params = useParams<{ reportId: string }>();
   const [data, setData] = useState<ReportData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [summaryText, setSummaryText] = useState<string>("");
+  const [savingState, setSavingState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     fetch(`/api/reports/${params.reportId}`)
       .then((r) => r.ok ? r.json() : Promise.reject("not found"))
-      .then(setData)
+      .then((d: ReportData) => {
+        setData(d);
+        setSummaryText(d.analystSummary ?? d.cluster.aiSummary ?? "");
+      })
       .catch(() => setError("Report not found."));
   }, [params.reportId]);
+
+  async function saveSummary() {
+    if (!data) return;
+    setSavingState("saving");
+    try {
+      const res = await fetch(`/api/reports/${params.reportId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ analystSummary: summaryText }),
+      });
+      setSavingState(res.ok ? "saved" : "error");
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = setTimeout(() => setSavingState("idle"), 2500);
+    } catch {
+      setSavingState("error");
+    }
+  }
 
   if (error) {
     return (
@@ -245,12 +233,8 @@ export default function ReportPage() {
     );
   }
 
-  const { cluster, narratives, items, sourceBreakdown, velocityHistory } = data;
+  const { cluster, narratives, items, sourceBreakdown } = data;
 
-  const stage = cluster.narrativeStage ? cluster.narrativeStage.toUpperCase() : null;
-  const effectiveClass = cluster.analystClassification ?? "narrative";
-  const velocityDeltaLabel = velocityChange(cluster.velocity24h, cluster.prevVelocity24h);
-  const velocityDeltaCls = velocityChangeCls(cluster.velocity24h, cluster.prevVelocity24h);
   const maxSourceCount = Math.max(...sourceBreakdown.map((s) => s.itemCount), 1);
 
   const periodEntries = narratives
@@ -264,6 +248,13 @@ export default function ReportPage() {
   const generatedAt = data.generatedAt
     ? new Date(data.generatedAt).toISOString().slice(0, 16).replace("T", " ") + " UTC"
     : "—";
+
+  const displaySummary = data.analystSummary ?? cluster.aiSummary ?? null;
+
+  const newsSentScore = cluster.newsSentimentScore ?? null;
+  const newsSentLabel = cluster.newsSentimentLabel ?? null;
+  const socialSentScore = cluster.socialSentimentScore ?? null;
+  const socialSentLabel = cluster.socialSentimentLabel ?? null;
 
   return (
     <div style={{ maxWidth: 1100, margin: "0 auto", padding: "32px 32px 80px", fontFamily: "var(--font-sans)" }}>
@@ -299,66 +290,16 @@ export default function ReportPage() {
 
       {/* ── Hero ───────────────────────────────────────────────────────────── */}
       <section style={{ paddingBottom: 8 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
-          <span style={{ display: "inline-flex", alignItems: "center", fontFamily: "var(--font-mono)", fontSize: 10, fontWeight: 600, letterSpacing: "0.08em", padding: "3px 8px", borderRadius: 3, background: "var(--accent)", color: "#fff", textTransform: "uppercase" }}>
-            SIGNAL
-          </span>
-          {stage && (
-            <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", padding: "3px 8px", borderRadius: 3, background: "color-mix(in oklch, var(--accent) 15%, transparent)", color: "var(--accent)" }}>
-              {stage}
-            </span>
-          )}
-          {effectiveClass && effectiveClass !== "narrative" && (
-            <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", padding: "3px 8px", borderRadius: 3, background: "color-mix(in oklch, var(--ok) 14%, transparent)", color: "var(--ok)", border: "1px solid color-mix(in oklch, var(--ok) 30%, transparent)" }}>
-              {effectiveClass.toUpperCase()}
-            </span>
-          )}
-        </div>
-
         <h1 style={{ fontSize: 36, fontWeight: 600, letterSpacing: "-0.025em", lineHeight: 1.05, margin: "0 0 24px", color: "var(--ink)" }}>
           {cluster.label ?? <span style={{ color: "var(--ink-40)", fontStyle: "italic" }}>Unnamed cluster</span>}
         </h1>
 
-        {/* Metric row */}
+        {/* News + Social sentiment row */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", border: "1px solid var(--border)", borderRadius: 10, background: "var(--paper)", overflow: "hidden" }}>
-          {/* Sentiment */}
-          <div style={{ padding: "18px 22px", borderRight: "1px solid var(--border-soft)" }}>
-            <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--ink-50)", marginBottom: 8 }}>Sentiment</div>
-            {cluster.sentimentScore != null ? (
-              <>
-                <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
-                  <span style={{ fontSize: 30, fontWeight: 600, letterSpacing: "-0.02em", lineHeight: 1, color: sentColor(cluster.sentimentScore), fontVariantNumeric: "tabular-nums" }}>
-                    {cluster.sentimentScore >= 0 ? "+" : ""}{cluster.sentimentScore.toFixed(2)}
-                  </span>
-                  {cluster.sentimentLabel && (
-                    <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 500, padding: "2px 6px", borderRadius: 3, background: "color-mix(in oklch, var(--ink-50) 10%, transparent)", color: "var(--ink-60)" }}>
-                      {cluster.sentimentLabel}
-                    </span>
-                  )}
-                </div>
-                <SentMiniBar value={cluster.sentimentScore} />
-              </>
-            ) : (
-              <div style={{ fontSize: 30, fontWeight: 600, color: "var(--ink-30)" }}>—</div>
-            )}
+          <div style={{ borderRight: "1px solid var(--border-soft)" }}>
+            <SentimentCard label="News Sentiment" score={newsSentScore} sentimentLabel={newsSentLabel} />
           </div>
-
-          {/* Velocity */}
-          <div style={{ padding: "18px 22px" }}>
-            <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--ink-50)", marginBottom: 8 }}>Velocity</div>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
-              <span style={{ fontSize: 30, fontWeight: 600, letterSpacing: "-0.02em", lineHeight: 1, color: "var(--ink)", fontVariantNumeric: "tabular-nums" }}>
-                {cluster.velocity24h != null ? cluster.velocity24h.toFixed(1) : "—"}
-                {cluster.velocity24h != null && <span style={{ color: "var(--ink-50)", fontSize: 13, fontWeight: 400, marginLeft: 4 }}>/day</span>}
-              </span>
-              {velocityDeltaLabel && (
-                <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 500, padding: "2px 6px", borderRadius: 3, background: velocityDeltaCls === "metric-delta-err" ? "color-mix(in oklch, var(--err) 10%, transparent)" : "color-mix(in oklch, var(--ok) 10%, transparent)", color: velocityDeltaCls === "metric-delta-err" ? "var(--err)" : "var(--ok)" }}>
-                  {velocityDeltaLabel}
-                </span>
-              )}
-            </div>
-            <div style={{ fontSize: 11.5, color: "var(--ink-60)" }}>{cluster.itemCount} items total</div>
-          </div>
+          <SentimentCard label="Social Sentiment" score={socialSentScore} sentimentLabel={socialSentLabel} />
         </div>
       </section>
 
@@ -384,42 +325,65 @@ export default function ReportPage() {
         </>
       )}
 
-      {/* ── Velocity chart + Source breakdown ──────────────────────────────── */}
+      {/* ── Summary ────────────────────────────────────────────────────────── */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", fontFamily: "var(--font-mono)", fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--ink-50)", padding: "0 0 8px", margin: "32px 0 14px", borderBottom: "1px solid var(--border-soft)" }}>
-        <span>Velocity &amp; sources</span>
-        <span style={{ fontSize: 10, color: "var(--ink-40)", letterSpacing: "0.06em" }}>snapshot · last 48h from generation</span>
+        <span>Summary</span>
+        <span style={{ fontSize: 10, color: "var(--ink-40)", letterSpacing: "0.06em" }}>news coverage vs. online reaction</span>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 18 }}>
-        {/* Velocity chart */}
-        <div style={{ background: "var(--paper)", border: "1px solid var(--border)", borderRadius: 10, padding: "18px 20px" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 14 }}>
-            <div style={{ fontSize: 14, fontWeight: 600, letterSpacing: "-0.01em", color: "var(--ink)" }}>Items per hour</div>
-            {velocityHistory.length > 0 && (
-              <div style={{ fontFamily: "var(--font-mono)", fontSize: 10.5, color: "var(--ink-50)" }}>
-                peak {Math.max(...velocityHistory.map((b) => b.itemCount))} · avg {(velocityHistory.reduce((a, b) => a + b.itemCount, 0) / velocityHistory.length).toFixed(1)}/h
-              </div>
-            )}
+      <div style={{ background: "var(--paper)", border: "1px solid var(--border)", borderRadius: 10, padding: "20px 24px" }}>
+        {displaySummary || summaryText ? (
+          <>
+            <textarea
+              value={summaryText}
+              onChange={(e) => { setSummaryText(e.target.value); setSavingState("idle"); }}
+              rows={5}
+              style={{
+                width: "100%", fontSize: 15, lineHeight: 1.65, color: "var(--ink)",
+                fontFamily: "var(--font-sans)", background: "transparent",
+                border: "1px solid var(--border-soft)", borderRadius: 6,
+                padding: "10px 14px", resize: "vertical", outline: "none",
+                boxSizing: "border-box",
+              }}
+              onFocus={(e) => { e.currentTarget.style.borderColor = "var(--accent)"; }}
+              onBlur={(e) => { e.currentTarget.style.borderColor = "var(--border-soft)"; }}
+            />
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10, justifyContent: "flex-end" }}>
+              {savingState === "saved" && <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--ok)" }}>Saved</span>}
+              {savingState === "error" && <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--err)" }}>Save failed</span>}
+              <button
+                onClick={saveSummary}
+                disabled={savingState === "saving"}
+                style={{
+                  fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 600, letterSpacing: "0.05em",
+                  padding: "5px 14px", borderRadius: 5, cursor: savingState === "saving" ? "default" : "pointer",
+                  background: "var(--accent)", color: "#fff", border: "none",
+                  opacity: savingState === "saving" ? 0.6 : 1,
+                }}
+              >
+                {savingState === "saving" ? "Saving…" : "Save"}
+              </button>
+            </div>
+          </>
+        ) : (
+          <div style={{ color: "var(--ink-40)", fontFamily: "var(--font-mono)", fontSize: 12, fontStyle: "italic" }}>
+            No summary yet — regenerate the report to produce an AI summary.
           </div>
-          <VelocityChart buckets={velocityHistory} />
-          <div style={{ display: "flex", gap: 18, marginTop: 12, fontSize: 11.5, color: "var(--ink-60)" }}>
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-              <span style={{ width: 9, height: 9, borderRadius: 2, background: "var(--accent)", display: "inline-block" }} />
-              Cluster volume
-            </span>
-          </div>
-        </div>
+        )}
+      </div>
 
-        {/* Source breakdown */}
-        <div style={{ background: "var(--paper)", border: "1px solid var(--border)", borderRadius: 10, padding: "18px 20px" }}>
-          <div style={{ fontSize: 14, fontWeight: 600, letterSpacing: "-0.01em", color: "var(--ink)", marginBottom: 16 }}>Source breakdown</div>
-          {sourceBreakdown.length === 0 ? (
-            <div style={{ color: "var(--ink-40)", fontFamily: "var(--font-mono)", fontSize: 11 }}>No data</div>
-          ) : (
+      {/* ── Source breakdown ───────────────────────────────────────────────── */}
+      {sourceBreakdown.length > 0 && (
+        <>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", fontFamily: "var(--font-mono)", fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--ink-50)", padding: "0 0 8px", margin: "32px 0 14px", borderBottom: "1px solid var(--border-soft)" }}>
+            <span>Sources</span>
+            <span style={{ fontSize: 10, color: "var(--ink-40)", letterSpacing: "0.06em" }}>by platform</span>
+          </div>
+          <div style={{ background: "var(--paper)", border: "1px solid var(--border)", borderRadius: 10, padding: "18px 20px" }}>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {sourceBreakdown.map((s) => {
                 const p = getPlatform(s.platform);
                 return (
-                  <div key={s.platform} style={{ display: "grid", gridTemplateColumns: "90px 1fr 30px", gap: 10, alignItems: "center" }}>
+                  <div key={s.platform} style={{ display: "grid", gridTemplateColumns: "110px 1fr 36px", gap: 10, alignItems: "center" }}>
                     <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--ink-80)", display: "flex", alignItems: "center", gap: 5, overflow: "hidden" }}>
                       <span style={{ width: 8, height: 8, borderRadius: 2, background: p.color, flexShrink: 0 }} />
                       <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.label}</span>
@@ -432,9 +396,9 @@ export default function ReportPage() {
                 );
               })}
             </div>
-          )}
-        </div>
-      </div>
+          </div>
+        </>
+      )}
 
       {/* ── Timeline ───────────────────────────────────────────────────────── */}
       {items.length > 0 && (() => {
@@ -457,45 +421,38 @@ export default function ReportPage() {
           <>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", fontFamily: "var(--font-mono)", fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--ink-50)", padding: "0 0 8px", margin: "32px 0 14px", borderBottom: "1px solid var(--border-soft)" }}>
               <span>Timeline</span>
-              <span style={{ fontSize: 10, color: "var(--ink-40)", letterSpacing: "0.06em" }}>{days.length} days of activity</span>
+              <span style={{ fontSize: 10, color: "var(--ink-40)", letterSpacing: "0.06em" }}>{days.length} days · news &amp; social</span>
             </div>
             <div style={{ position: "relative", paddingLeft: 20 }}>
               <div style={{ position: "absolute", left: 7, top: 8, bottom: 8, width: 1, background: "var(--border-soft)" }} />
               {days.map((day, di) => {
                 const dayItems = byDate[day];
-                const platforms = [...new Set(dayItems.map((it) => it.platform))];
                 return (
                   <div key={day} style={{ position: "relative", paddingBottom: di < days.length - 1 ? 20 : 0 }}>
                     <div style={{ position: "absolute", left: -16, top: 6, width: 8, height: 8, borderRadius: "50%", background: "var(--accent)", border: "2px solid var(--paper)" }} />
-                    <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 6, flexWrap: "wrap" }}>
+                    <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 8, flexWrap: "wrap" }}>
                       <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--ink-70)" }}>{day}</span>
                       <span style={{ fontFamily: "var(--font-mono)", fontSize: 10.5, color: "var(--ink-40)" }}>{dayItems.length} item{dayItems.length !== 1 ? "s" : ""}</span>
-                      <span style={{ display: "flex", gap: 4 }}>
-                        {platforms.map((p) => {
-                          const pc = getPlatform(p);
-                          return (
-                            <span key={p} style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, fontWeight: 600, letterSpacing: "0.04em", padding: "1px 4px", borderRadius: 3, background: pc.color, color: "#fff" }}>{pc.short}</span>
-                          );
-                        })}
-                      </span>
                     </div>
-                    <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 4 }}>
-                      {dayItems.slice(0, 4).map((it, ii) => (
-                        <li key={ii} style={{ fontSize: 13, lineHeight: 1.4, color: "var(--ink-80)", paddingLeft: 12, position: "relative" }}>
-                          <span style={{ position: "absolute", left: 0, top: "0.45em", width: 4, height: 4, borderRadius: "50%", background: "var(--ink-30)", display: "block" }} />
-                          {it.url ? (
-                            <a href={it.url} target="_blank" rel="noopener noreferrer" style={{ color: "inherit", textDecoration: "none" }}
-                              onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.textDecoration = "underline"; }}
-                              onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.textDecoration = "none"; }}>
-                              {it.title ?? it.url}
-                            </a>
-                          ) : (
-                            it.title ?? "—"
-                          )}
+                    <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 6 }}>
+                      {dayItems.slice(0, 5).map((it, ii) => (
+                        <li key={ii} style={{ fontSize: 13, lineHeight: 1.45, color: "var(--ink-80)", display: "flex", alignItems: "flex-start", gap: 8 }}>
+                          <PlatformBadge platform={it.platform} />
+                          <span>
+                            {it.url ? (
+                              <a href={it.url} target="_blank" rel="noopener noreferrer" style={{ color: "inherit", textDecoration: "none" }}
+                                onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.textDecoration = "underline"; }}
+                                onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.textDecoration = "none"; }}>
+                                {it.title ?? it.url}
+                              </a>
+                            ) : (
+                              it.title ?? "—"
+                            )}
+                          </span>
                         </li>
                       ))}
-                      {dayItems.length > 4 && (
-                        <li style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--ink-40)", paddingLeft: 12 }}>+{dayItems.length - 4} more</li>
+                      {dayItems.length > 5 && (
+                        <li style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--ink-40)" }}>+{dayItems.length - 5} more</li>
                       )}
                     </ul>
                   </div>

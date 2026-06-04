@@ -218,6 +218,7 @@ export const clusterReports = pgTable("cluster_reports", {
   snapshotData: jsonb("snapshot_data").notNull(),
   clusterLabel: text("cluster_label"),
   companyName: text("company_name"),
+  analystSummary: text("analyst_summary"),
   generatedAt: timestamp("generated_at").defaultNow().notNull(),
 });
 

@@ -72,6 +72,11 @@ export async function POST() {
       ALTER TABLE clusters DROP COLUMN IF EXISTS centroid_embedding
     `);
 
+    await db.execute(sql`
+      ALTER TABLE cluster_reports
+      ADD COLUMN IF NOT EXISTS analyst_summary TEXT
+    `);
+
     return NextResponse.json({ ok: true, message: "Migration applied" });
   } catch (err) {
     console.error("[POST /api/migrate]", err);

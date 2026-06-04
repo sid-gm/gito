@@ -18,7 +18,7 @@ export async function GET(
   if (!rows.length)
     return NextResponse.json({ error: "not found" }, { status: 404 });
 
-  const { snapshotData, generatedAt, id: reportId, clusterId, clusterLabel, companyName, companyId } = rows[0];
+  const { snapshotData, generatedAt, id: reportId, clusterId, clusterLabel, companyName, companyId, analystSummary } = rows[0];
 
   return NextResponse.json({
     reportId,
@@ -27,6 +27,29 @@ export async function GET(
     companyName,
     companyId,
     generatedAt: generatedAt.toISOString(),
+    analystSummary: analystSummary ?? null,
     ...(snapshotData as object),
   });
+}
+
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  const body = await req.json() as { analystSummary?: string };
+
+  if (typeof body.analystSummary !== "string")
+    return NextResponse.json({ error: "analystSummary required" }, { status: 400 });
+
+  const rows = await db
+    .update(clusterReports)
+    .set({ analystSummary: body.analystSummary })
+    .where(eq(clusterReports.id, id))
+    .returning({ id: clusterReports.id });
+
+  if (!rows.length)
+    return NextResponse.json({ error: "not found" }, { status: 404 });
+
+  return NextResponse.json({ ok: true });
 }

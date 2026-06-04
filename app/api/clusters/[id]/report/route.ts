@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { generateText } from "ai";
+import { openai } from "@ai-sdk/openai";
 import { db } from "@/lib/db";
 import {
   clusters,
@@ -10,6 +12,64 @@ import {
   companies,
 } from "@/lib/db/schema";
 import { and, count, desc, eq, gte, sql } from "drizzle-orm";
+
+const NEWS_PLATFORMS = new Set(["google_alerts", "manual"]);
+const SOCIAL_PLATFORMS = new Set(["hackernews", "reddit", "twitter"]);
+
+type AISummaryResult = {
+  aiSummary: string;
+  newsSentimentScore: number;
+  newsSentimentLabel: string;
+  socialSentimentScore: number;
+  socialSentimentLabel: string;
+};
+
+async function generateAISummary(
+  items: Array<{ platform: string; title: string | null; publishedAt: string | null }>,
+  analystNote: string | null,
+  narrativeSummary: string | null,
+): Promise<AISummaryResult | null> {
+  try {
+    const newsItems = items.filter((i) => NEWS_PLATFORMS.has(i.platform));
+    const socialItems = items.filter((i) => SOCIAL_PLATFORMS.has(i.platform));
+
+    const formatItems = (arr: typeof items) =>
+      arr.length === 0
+        ? "  (none)"
+        : arr
+            .map((i) => `  - [${i.publishedAt ? new Date(i.publishedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "unknown date"}] ${i.title ?? "(no title)"}`)
+            .join("\n");
+
+    const prompt = `You are a media intelligence analyst. Analyze the following cluster of items and produce a brief summary.
+
+${narrativeSummary ? `Background: ${narrativeSummary}\n` : ""}${analystNote ? `Analyst note: ${analystNote}\n` : ""}
+NEWS ITEMS (press coverage):
+${formatItems(newsItems)}
+
+SOCIAL ITEMS (online discussion — HackerNews, Reddit, X/Twitter):
+${formatItems(socialItems)}
+
+Return a JSON object with exactly these fields:
+- "aiSummary": 2–4 sentence paragraph summarizing the story, noting how news coverage differs from online reaction if relevant
+- "newsSentimentScore": number from -1.0 (very negative) to 1.0 (very positive) reflecting news tone
+- "newsSentimentLabel": one of "very negative", "negative", "mixed", "neutral", "positive", "very positive"
+- "socialSentimentScore": same scale, reflecting social/online discussion tone
+- "socialSentimentLabel": same labels
+
+Respond with only valid JSON, no markdown.`;
+
+    const { text } = await generateText({
+      model: openai("gpt-4o-mini"),
+      prompt,
+      temperature: 0.3,
+    });
+
+    const parsed = JSON.parse(text.trim()) as AISummaryResult;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
 
 async function buildReportData(id: string) {
   const clusterRow = await db
@@ -138,12 +198,29 @@ export async function POST(
 
   const { _meta, ...snapshotData } = data;
 
+  const aiResult = await generateAISummary(
+    snapshotData.items,
+    snapshotData.cluster.analystNote,
+    snapshotData.cluster.narrativeSummary,
+  );
+
+  const enrichedCluster = aiResult
+    ? {
+        ...snapshotData.cluster,
+        aiSummary: aiResult.aiSummary,
+        newsSentimentScore: aiResult.newsSentimentScore,
+        newsSentimentLabel: aiResult.newsSentimentLabel,
+        socialSentimentScore: aiResult.socialSentimentScore,
+        socialSentimentLabel: aiResult.socialSentimentLabel,
+      }
+    : snapshotData.cluster;
+
   const [inserted] = await db
     .insert(clusterReports)
     .values({
       clusterId: id,
       companyId: _meta.companyId ?? null,
-      snapshotData,
+      snapshotData: { ...snapshotData, cluster: enrichedCluster },
       clusterLabel: _meta.clusterLabel,
       companyName: _meta.companyName,
     })
