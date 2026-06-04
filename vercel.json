@@ -10,6 +10,7 @@
     { "path": "/api/cron/classify",              "schedule": "0 */2 * * *"  },
     { "path": "/api/cron/summarize-narratives",   "schedule": "0 */4 * * *"  },
     { "path": "/api/cron/summarize-news-timeline","schedule": "0 */4 * * *"  },
-    { "path": "/api/cron/purge-news-items",       "schedule": "0 6 * * *"    }
+    { "path": "/api/cron/purge-news-items",       "schedule": "0 6 * * *"    },
+    { "path": "/api/cron/notify-google-alerts-digest", "schedule": "30 */3 * * *" }
   ]
 }
