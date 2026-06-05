@@ -568,7 +568,7 @@ export default function DailyReportPage() {
                 {/* Artwork header */}
                 <div className="dr-card-head">
                   <div className="dr-card-id">
-                    <div className="dr-card-mark"><span>GT</span></div>
+                    <div className="dr-card-mark">🐦</div>
                     <div>
                       <div className="dr-card-eyebrow">Daily signal brief · {data.date}</div>
                       <div className="dr-card-title">{data.company} · cluster formation</div>

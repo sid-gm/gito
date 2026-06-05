@@ -101,9 +101,7 @@ export function Sidebar() {
   return (
     <aside className="sidebar">
       <div className="brand">
-        <div className="brand-mark">
-          <span className="brand-mark-inner">GT</span>
-        </div>
+        <div className="brand-mark">🐦</div>
         <div className="brand-text">
           <div className="brand-title">Gito</div>
           <div className="brand-sub">Signal-to-noise · v0.1</div>
