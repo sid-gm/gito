@@ -28,6 +28,7 @@ async function generateAISummary(
   entityLabel: string | null,
   items: Array<{ platform: string; title: string | null; author: string | null; publishedAt: string | null; analystNote: string | null }>,
   narrativeSummary: string | null,
+  periodNarratives: Array<{ periodDate: string; aiNarrative: string | null; analystNarrative: string | null }>,
 ): Promise<AISummaryResult | null> {
   try {
     const newsItems = items.filter((i) => NEWS_PLATFORMS.has(i.platform));
@@ -50,6 +51,16 @@ async function generateAISummary(
     const newsBlock = newsItems.length === 0 ? "(none)" : newsItems.map(formatNewsItem).join("\n");
     const socialBlock = socialItems.length === 0 ? "(none)" : socialItems.map(formatSocialItem).join("\n");
 
+    const narrativesLines = periodNarratives.flatMap((n) => {
+      const lines: string[] = [];
+      if (n.analystNarrative) lines.push(`[${n.periodDate}] Analyst notes: ${n.analystNarrative}`);
+      if (n.aiNarrative) lines.push(`[${n.periodDate}] AI summary: ${n.aiNarrative}`);
+      return lines;
+    });
+    const narrativesBlock = narrativesLines.length > 0
+      ? `\nanalyst and AI notes by day:\n${narrativesLines.join("\n")}\n`
+      : "";
+
     const entity = entityLabel ?? "the tracked entity";
 
     const prompt = `You are provided stories about the entity ${entity}.
@@ -61,7 +72,7 @@ ${newsBlock}
 
 social items:
 ${socialBlock}
-
+${narrativesBlock}
 Return a JSON object with exactly these fields:
 - "aiSummary": Summarize what the sentiment is of public discussions for the entity being tracked. Note how news coverage differs from online reaction. Reflect on whether the public discussions online can affect the entity positively or not. If you are unsure, state so.
 - "newsSentimentScore": number from -1.0 (very negative) to 1.0 (very positive) reflecting news tone
@@ -216,6 +227,7 @@ export async function POST(
     snapshotData.cluster.entityLabel ?? snapshotData.cluster.companyName,
     snapshotData.items,
     snapshotData.cluster.narrativeSummary,
+    snapshotData.narratives,
   );
 
   const enrichedCluster = aiResult
