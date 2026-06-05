@@ -216,6 +216,14 @@ export const threadsFilters = pgTable("threads_filters", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (t) => [unique("threads_filters_company_type_value_unique").on(t.companyId, t.filterType, t.value)]);
 
+export const trackedUserHandles = pgTable("tracked_user_handles", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  companyId: uuid("company_id").references(() => companies.id, { onDelete: "cascade" }),
+  platform: text("platform").notNull(),
+  username: text("username").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => [unique("tracked_user_handles_unique").on(t.companyId, t.platform, t.username)]);
+
 export const clusterReports = pgTable("cluster_reports", {
   id: uuid("id").defaultRandom().primaryKey(),
   clusterId: uuid("cluster_id")
@@ -246,6 +254,8 @@ export type NewTwitterHandle = typeof twitterHandles.$inferInsert;
 export type ThreadsFilter = typeof threadsFilters.$inferSelect;
 export type RedditSubreddit = typeof redditSubreddits.$inferSelect;
 export type NewRedditSubreddit = typeof redditSubreddits.$inferInsert;
+export type TrackedUserHandle = typeof trackedUserHandles.$inferSelect;
+export type NewTrackedUserHandle = typeof trackedUserHandles.$inferInsert;
 export type ClusterReport = typeof clusterReports.$inferSelect;
 export type RssFeed = typeof rssFeeds.$inferSelect;
 export type NewRssFeed = typeof rssFeeds.$inferInsert;
