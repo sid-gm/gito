@@ -768,7 +768,7 @@ function PortalSidebar({ companies, activeId, onSelect }: {
   return (
     <aside className="sidebar">
       <div className="pp-brand">
-        <div className="pp-brand-mark">GT</div>
+        <div className="pp-brand-mark"><img src="/gito-bird.png" alt="Gito" width={26} height={26} style={{ objectFit: "contain" }} /></div>
         <div>
           <div className="pp-brand-name">Gito</div>
           <div className="pp-brand-sub">Public intelligence</div>
