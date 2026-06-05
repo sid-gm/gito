@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { cx, PlatformChip } from "@/components/primitives";
 import { VelocitySparkline } from "@/components/VelocitySparkline";
@@ -38,6 +38,7 @@ type ClusterItem = {
   url: string | null;
   externalId: string | null;
   platform: string;
+  author: string | null;
   publishedAt: string | null;
   ingestedAt: string;
 };
@@ -299,6 +300,13 @@ export default function ClustersPage() {
   const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const gridRef = useRef<HTMLDivElement>(null);
 
+  const [rawTrackedHandles, setRawTrackedHandles] = useState<Array<{ platform: string; username: string }>>([]);
+  const trackedHandleSet = useMemo(() => {
+    const set = new Set<string>();
+    for (const h of rawTrackedHandles) set.add(`${h.platform.toLowerCase()}:${h.username.toLowerCase()}`);
+    return set;
+  }, [rawTrackedHandles]);
+
   const fetchClusters = useCallback(async () => {
     if (!activeCompanyId) return;
     setLoading(true);
@@ -312,7 +320,17 @@ export default function ClustersPage() {
   }, [entityId, sort, hideSingletons, activeCompanyId]);
 
   useEffect(() => {
-    if (activeCompanyId) fetch(`/api/entities?companyId=${activeCompanyId}`).then((r) => r.json()).then(setEntities);
+    if (!activeCompanyId) return;
+    fetch(`/api/entities?companyId=${activeCompanyId}`).then((r) => r.json()).then(setEntities);
+    Promise.all([
+      fetch(`/api/twitter-handles?companyId=${activeCompanyId}`).then((r) => r.json()),
+      fetch(`/api/user-handles?companyId=${activeCompanyId}`).then((r) => r.json()),
+    ]).then(([twitterRows, userRows]) => {
+      setRawTrackedHandles([
+        ...twitterRows.map((h: { handle: string }) => ({ platform: "twitter", username: h.handle })),
+        ...userRows.map((h: { platform: string; username: string }) => ({ platform: h.platform, username: h.username })),
+      ]);
+    });
   }, [activeCompanyId]);
   useEffect(() => { fetchClusters(); }, [fetchClusters]);
 
@@ -560,9 +578,22 @@ export default function ClustersPage() {
     const href = item.platform === "hackernews" && item.externalId
       ? `https://news.ycombinator.com/item?id=${item.externalId}`
       : item.url;
+
+    const normalizedAuthor = item.author?.toLowerCase().replace(/^[@]/, "").replace(/^u\//, "") ?? null;
+    const isTracked = normalizedAuthor !== null && trackedHandleSet.has(`${item.platform}:${normalizedAuthor}`);
+    const authorLabel =
+      item.platform === "reddit" ? `u/${normalizedAuthor}`
+      : item.platform === "hackernews" ? normalizedAuthor
+      : `@${normalizedAuthor}`;
+
     return (
       <div key={i} className="cluster-item-row">
         <PlatformChip platform={item.platform} size="sm" />
+        {isTracked && (
+          <span style={{ fontSize: 10, fontFamily: "var(--font-mono)", padding: "1px 6px", borderRadius: 99, background: "color-mix(in oklch, var(--accent) 10%, var(--paper))", color: "var(--accent)", border: "1px solid color-mix(in oklch, var(--accent) 25%, transparent)", whiteSpace: "nowrap", flexShrink: 0 }}>
+            {authorLabel}
+          </span>
+        )}
         <span className="cluster-item-title">
           {href ? (
             <a href={href} target="_blank" rel="noopener noreferrer">
