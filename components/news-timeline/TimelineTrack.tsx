@@ -33,7 +33,7 @@ function FeedHeader({ feed, stats, showAvg }: {
   const trendCls = stats.trend > 0.04 ? "ntl-trend-up" : stats.trend < -0.04 ? "ntl-trend-down" : "ntl-trend-flat";
   const trendGlyph = stats.trend > 0.04 ? "▲" : stats.trend < -0.04 ? "▼" : "▬";
   return (
-    <div className="ntl-fhead">
+    <div className="ntl-fhead" style={feed._color ? { borderLeft: `3px solid ${feed._color}` } : undefined}>
       <div className="ntl-fhead-pad">
         <div className="ntl-feed-name">
           <span className="ntl-feed-title">{feed.feedLabel}</span>
@@ -115,7 +115,7 @@ function FeedRail({ feed, days, colW, win, density, style, onHover, onLeave, onD
                 return (
                   <g key={si}>
                     <path d={area} fill={`url(#${gid})`} />
-                    <polyline points={linePts} fill="none" stroke="var(--ink-40)" strokeWidth="1.6" vectorEffect="non-scaling-stroke" strokeLinejoin="round" strokeLinecap="round" />
+                    <polyline points={linePts} fill="none" stroke={feed._color ?? "var(--ink-40)"} strokeWidth="1.6" vectorEffect="non-scaling-stroke" strokeLinejoin="round" strokeLinecap="round" />
                   </g>
                 );
               })}

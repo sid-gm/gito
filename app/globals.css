@@ -874,8 +874,8 @@ input, select, textarea { font: inherit; color: inherit; }
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   transform: translateX(-50%);
 }
-.ntl-tick-day { font-family: var(--font-mono); font-size: 10.5px; color: var(--ink-60); font-feature-settings: "tnum"; line-height: 1.1; }
-.ntl-tick-mon { font-family: var(--font-mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-40); line-height: 1.1; }
+.ntl-tick-day { font-family: var(--font-mono); font-size: 10.5px; color: var(--ink-80); font-feature-settings: "tnum"; line-height: 1.1; }
+.ntl-tick-mon { font-family: var(--font-mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-60); line-height: 1.1; }
 .ntl-tick-today .ntl-tick-day { color: var(--accent-ink); font-weight: 600; }
 
 /* Faint vertical gridlines spanning each rail (alignment cue). */

@@ -15,6 +15,16 @@ import type {
   WindowKey,
 } from "@/components/news-timeline/timeline_core";
 
+const PLATFORM_COLORS: Record<string, string> = {
+  reddit:       "oklch(0.60 0.18 30)",
+  twitter:      "oklch(0.58 0.15 240)",
+  hackernews:   "oklch(0.58 0.16 55)",
+  threads:      "oklch(0.55 0.15 285)",
+  instagram:    "oklch(0.62 0.12 320)",
+  google_alerts:"oklch(0.56 0.14 160)",
+  manual:       "oklch(0.55 0.06 220)",
+};
+
 const WIN_OPTS: { key: WindowKey; label: string }[] = [
   { key: "7d",  label: "7 days" },
   { key: "30d", label: "30 days" },
@@ -38,7 +48,14 @@ export default function PlatformSentimentPage() {
     const params = new URLSearchParams({ companyId: activeCompanyId, window: win });
     fetch(`/api/platform-sentiment-timeline?${params}`)
       .then((r) => r.json())
-      .then((d) => { setData(d); setLoading(false); })
+      .then((d) => {
+        const annotated = (d.feeds ?? []).map((f: NtlFeed) => ({
+          ...f,
+          _color: PLATFORM_COLORS[f.feedId],
+        }));
+        setData({ feeds: annotated });
+        setLoading(false);
+      })
       .catch(() => setLoading(false));
   }, [activeCompanyId, win]);
 
