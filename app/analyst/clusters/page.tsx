@@ -834,6 +834,16 @@ export default function ClustersPage() {
                           {expandLoading.has(cluster.id) ? "loading…" : isExpanded ? "show less" : `+ ${cluster.itemCount - 3} more`}
                         </button>
                       )}
+                      {!mergeMode && (
+                        <button
+                          className="btn-ghost btn"
+                          style={{ fontSize: 10, padding: "2px 8px", fontFamily: "var(--font-mono)", letterSpacing: "0.04em" }}
+                          onClick={() => router.push(`/analyst/clusters/${cluster.id}`)}
+                          title="Open cluster detail page"
+                        >
+                          ↗ Open
+                        </button>
+                      )}
                       <button
                         className="btn-ghost btn"
                         style={{ fontSize: 10, padding: "2px 8px", fontFamily: "var(--font-mono)", letterSpacing: "0.04em" }}
