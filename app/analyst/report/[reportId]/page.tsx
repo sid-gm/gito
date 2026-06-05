@@ -20,6 +20,10 @@ type ReportCluster = {
   socialSentimentScore: number | null;
   socialSentimentLabel: string | null;
   aiSummary: string | null;
+  entityActions: string | null;
+  publicReaction: string | null;
+  reputationRisk: string | null;
+  actionableItems: string[] | null;
   velocity24h: number | null;
   prevVelocity24h: number | null;
   platformCount: number | null;
@@ -304,6 +308,64 @@ export default function ReportPage() {
         </div>
       </section>
 
+      {/* ── Entity Actions ─────────────────────────────────────────────────── */}
+      {cluster.entityActions && (
+        <>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", fontFamily: "var(--font-mono)", fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--ink-50)", padding: "0 0 8px", margin: "32px 0 14px", borderBottom: "1px solid var(--border-soft)" }}>
+            <span>Entity Actions</span>
+            <span style={{ fontSize: 10, color: "var(--ink-40)", letterSpacing: "0.06em" }}>what {cluster.entityLabel ?? cluster.companyName ?? "the entity"} was doing / saying</span>
+          </div>
+          <div style={{ background: "var(--paper)", border: "1px solid var(--border)", borderRadius: 10, padding: "20px 24px" }}>
+            <p style={{ fontSize: 15, lineHeight: 1.65, color: "var(--ink)", margin: 0 }}>{cluster.entityActions}</p>
+          </div>
+        </>
+      )}
+
+      {/* ── Public Reaction ────────────────────────────────────────────────── */}
+      {cluster.publicReaction && (
+        <>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", fontFamily: "var(--font-mono)", fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--ink-50)", padding: "0 0 8px", margin: "32px 0 14px", borderBottom: "1px solid var(--border-soft)" }}>
+            <span>Public Reaction</span>
+            <span style={{ fontSize: 10, color: "var(--ink-40)", letterSpacing: "0.06em" }}>how audiences responded online</span>
+          </div>
+          <div style={{ background: "var(--paper)", border: "1px solid var(--border)", borderRadius: 10, padding: "20px 24px" }}>
+            <p style={{ fontSize: 15, lineHeight: 1.65, color: "var(--ink)", margin: 0 }}>{cluster.publicReaction}</p>
+          </div>
+        </>
+      )}
+
+      {/* ── Reputation Risk ────────────────────────────────────────────────── */}
+      {cluster.reputationRisk && (
+        <>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", fontFamily: "var(--font-mono)", fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--ink-50)", padding: "0 0 8px", margin: "32px 0 14px", borderBottom: "1px solid var(--border-soft)" }}>
+            <span>Reputation Risk</span>
+          </div>
+          <div style={{ background: "var(--paper)", border: "1px solid var(--border)", borderRadius: 10, padding: "20px 24px" }}>
+            <p style={{ fontSize: 15, lineHeight: 1.65, color: "var(--ink)", margin: 0 }}>{cluster.reputationRisk}</p>
+          </div>
+        </>
+      )}
+
+      {/* ── Actionable Items ───────────────────────────────────────────────── */}
+      {cluster.actionableItems && cluster.actionableItems.length > 0 && (
+        <>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", fontFamily: "var(--font-mono)", fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--ink-50)", padding: "0 0 8px", margin: "32px 0 14px", borderBottom: "1px solid var(--border-soft)" }}>
+            <span>Actionable Items</span>
+            <span style={{ fontSize: 10, color: "var(--ink-40)", letterSpacing: "0.06em" }}>recommendations</span>
+          </div>
+          <div style={{ background: "var(--paper)", border: "1px solid var(--border)", borderRadius: 10, padding: "20px 24px" }}>
+            <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 10 }}>
+              {cluster.actionableItems.map((item, i) => (
+                <li key={i} style={{ display: "flex", alignItems: "flex-start", gap: 10, fontSize: 15, lineHeight: 1.55, color: "var(--ink)" }}>
+                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 600, color: "var(--accent)", paddingTop: 2, flexShrink: 0 }}>{String(i + 1).padStart(2, "0")}</span>
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </>
+      )}
+
       {/* ── Narrative ──────────────────────────────────────────────────────── */}
       {periodEntries.length > 0 && (
         <>
@@ -329,7 +391,7 @@ export default function ReportPage() {
       {/* ── Summary ────────────────────────────────────────────────────────── */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", fontFamily: "var(--font-mono)", fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--ink-50)", padding: "0 0 8px", margin: "32px 0 14px", borderBottom: "1px solid var(--border-soft)" }}>
         <span>Summary</span>
-        <span style={{ fontSize: 10, color: "var(--ink-40)", letterSpacing: "0.06em" }}>news coverage vs. online reaction</span>
+        <span style={{ fontSize: 10, color: "var(--ink-40)", letterSpacing: "0.06em" }}>analysis across all linked clusters</span>
       </div>
       <div style={{ background: "var(--paper)", border: "1px solid var(--border)", borderRadius: 10, padding: "20px 24px" }}>
         {displaySummary || summaryText ? (

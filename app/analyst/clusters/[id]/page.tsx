@@ -178,6 +178,12 @@ export default function ClusterDetailPage() {
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
 
+  // Report modal
+  const [reportModalOpen, setReportModalOpen] = useState(false);
+  const [modalClusters, setModalClusters] = useState<Array<{ id: string; label: string | null; itemCount: number }>>([]);
+  const [selectedLinkedIds, setSelectedLinkedIds] = useState<Set<string>>(new Set());
+  const [loadingModalClusters, setLoadingModalClusters] = useState(false);
+
   // Add item
   const [addItemOpen, setAddItemOpen] = useState(false);
 
@@ -241,10 +247,32 @@ export default function ClusterDetailPage() {
     }
   };
 
-  const generateReport = async () => {
-    setReporting(true);
+  const openReportModal = async () => {
+    if (!cluster) return;
+    setReportModalOpen(true);
+    setSelectedLinkedIds(new Set());
+    setLoadingModalClusters(true);
     try {
-      const res = await fetch(`/api/clusters/${id}/report`, { method: "POST" });
+      const res = await fetch(`/api/clusters?entityId=${cluster.entityId}`);
+      const { clusters: all } = await res.json();
+      setModalClusters(
+        (all as Array<{ id: string; label: string | null; itemCount: number }>)
+          .filter((c) => c.id !== id)
+      );
+    } finally {
+      setLoadingModalClusters(false);
+    }
+  };
+
+  const generateReport = async (linkedIds: Set<string>) => {
+    setReporting(true);
+    setReportModalOpen(false);
+    try {
+      const res = await fetch(`/api/clusters/${id}/report`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ linkedClusterIds: [...linkedIds] }),
+      });
       const { reportId } = await res.json();
       router.push(`/analyst/report/${reportId}`);
     } catch {
@@ -335,6 +363,70 @@ export default function ClusterDetailPage() {
 
   return (
     <>
+      {/* Report — linked cluster selection modal */}
+      {reportModalOpen && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 200, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center" }} onClick={() => setReportModalOpen(false)}>
+          <div style={{ background: "var(--paper)", border: "1px solid var(--border)", borderRadius: 8, boxShadow: "0 8px 32px rgba(0,0,0,0.18)", width: 480, maxWidth: "90vw", maxHeight: "80vh", display: "flex", flexDirection: "column" }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ padding: "20px 24px 0" }}>
+              <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 4 }}>Link clusters to this brief</div>
+              <p style={{ fontSize: 13, color: "var(--ink-60)", margin: "0 0 16px", lineHeight: 1.5 }}>
+                Select other clusters to include in the analysis. Their items and notes will be sent to the AI alongside this cluster.
+              </p>
+            </div>
+            <div style={{ flex: 1, overflowY: "auto", padding: "0 24px" }}>
+              {loadingModalClusters ? (
+                <div style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--ink-40)", padding: "12px 0" }}>Loading clusters…</div>
+              ) : modalClusters.length === 0 ? (
+                <div style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--ink-40)", fontStyle: "italic", padding: "12px 0" }}>No other clusters for this entity.</div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                  {modalClusters.map((c) => {
+                    const checked = selectedLinkedIds.has(c.id);
+                    return (
+                      <label key={c.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderRadius: 6, cursor: "pointer", background: checked ? "color-mix(in oklch, var(--accent) 8%, var(--paper))" : "transparent", border: `1px solid ${checked ? "color-mix(in oklch, var(--accent) 30%, transparent)" : "transparent"}` }}>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => {
+                            setSelectedLinkedIds((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(c.id)) next.delete(c.id);
+                              else next.add(c.id);
+                              return next;
+                            });
+                          }}
+                          style={{ accentColor: "var(--accent)", width: 14, height: 14, flexShrink: 0 }}
+                        />
+                        <span style={{ flex: 1, fontSize: 13, lineHeight: 1.4, color: c.label ? "var(--ink)" : "var(--ink-40)", fontStyle: c.label ? "normal" : "italic" }}>
+                          {c.label ?? "Unnamed cluster"}
+                        </span>
+                        <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--ink-40)", whiteSpace: "nowrap" }}>{c.itemCount} items</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            <div style={{ padding: "16px 24px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid var(--border-soft)", marginTop: 12 }}>
+              <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--ink-40)" }}>
+                {selectedLinkedIds.size > 0 ? `${selectedLinkedIds.size} cluster${selectedLinkedIds.size !== 1 ? "s" : ""} linked` : "No additional clusters selected"}
+              </span>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button className="btn-ghost btn" style={{ fontSize: 12 }} onClick={() => setReportModalOpen(false)}>Cancel</button>
+                <button
+                  className="btn"
+                  style={{ fontSize: 12 }}
+                  disabled={reporting}
+                  onClick={() => generateReport(selectedLinkedIds)}
+                >
+                  {reporting ? "Generating…" : "Generate Brief"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Delete confirm modal */}
       {deleteConfirm && (
         <div style={{ position: "fixed", inset: 0, zIndex: 200, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -433,7 +525,7 @@ export default function ClusterDetailPage() {
             <button
               className="btn-ghost btn"
               style={{ fontSize: 11, fontFamily: "var(--font-mono)", letterSpacing: "0.04em" }}
-              onClick={generateReport}
+              onClick={openReportModal}
               disabled={reporting}
               title="Generate Signal Brief"
             >
