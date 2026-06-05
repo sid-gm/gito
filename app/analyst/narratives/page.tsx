@@ -81,7 +81,7 @@ export default function NarrativesPage() {
         source.removeEventListener("scroll", handler)
       );
     };
-  }, [ntlData, socialData, ntlWin]);
+  }, [ntlData, socialData, ntlWin, chipDensity]);
 
   // News handlers
   const onHover = useCallback((day: NtlDay, label: string, e: React.MouseEvent) => {

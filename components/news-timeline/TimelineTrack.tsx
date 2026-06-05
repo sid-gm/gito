@@ -5,7 +5,7 @@ import { cx, EntityBadge } from "@/components/primitives";
 import {
   NtlFeed, NtlDay, WindowKey, StyleKey, DensityKey, ArrangementKey,
   HoverPopState,
-  NTL_BAND_H, NTL_CHIP_LANE, NTL_WINDOWS, NTL_COLW,
+  NTL_BAND_H, NTL_CHIP_LANE, NTL_WINDOWS, NTL_COLW, NTL_EXPANDED_COLW,
   expandedCount, feedStats, windowSlice, scoreToY, dotRadius,
   fmtScore, fmtDayMon, fmtFullDate, sentSlug, getFeedColor,
   SentPill, TimelineAxis, GridLines, HoverPop,
@@ -325,7 +325,8 @@ export function NewsTimeline({ feeds, win, feedFilter, style, arrangement, densi
   onDayClick?: (feed: NtlFeed, day: NtlDay) => void;
   selectedDay?: { feedId: string; date: string } | null;
 }) {
-  const colW = NTL_COLW[win];
+  const expCount = expandedCount(win, density);
+  const colW = expCount > 0 ? NTL_EXPANDED_COLW : NTL_COLW[win];
   const filtered = feedFilter === "all" ? feeds : feeds.filter((f) => f.feedId === feedFilter);
   const [focusId, setFocusId] = React.useState(feeds[0]?.feedId ?? "");
 

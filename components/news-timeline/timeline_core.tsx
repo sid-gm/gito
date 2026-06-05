@@ -60,6 +60,7 @@ export type HoverPopState = {
 // ── Layout constants ───────────────────────────────────────────────────────
 export const NTL_WINDOWS: Record<WindowKey, number> = { "7d": 7, "30d": 30, "90d": 90 };
 export const NTL_COLW: Record<WindowKey, number> = { "7d": 152, "30d": 96, "90d": 30 };
+export const NTL_EXPANDED_COLW = 220;
 export const NTL_BAND_H = 132;
 export const NTL_CHIP_LANE = 180;
 
