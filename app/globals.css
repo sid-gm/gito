@@ -874,8 +874,8 @@ input, select, textarea { font: inherit; color: inherit; }
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   transform: translateX(-50%);
 }
-.ntl-tick-day { font-family: var(--font-mono); font-size: 10.5px; color: var(--ink-60); font-feature-settings: "tnum"; line-height: 1.1; }
-.ntl-tick-mon { font-family: var(--font-mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-40); line-height: 1.1; }
+.ntl-tick-day { font-family: var(--font-mono); font-size: 10.5px; color: var(--ink-80); font-feature-settings: "tnum"; line-height: 1.1; }
+.ntl-tick-mon { font-family: var(--font-mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-60); line-height: 1.1; }
 .ntl-tick-today .ntl-tick-day { color: var(--accent-ink); font-weight: 600; }
 
 /* Faint vertical gridlines spanning each rail (alignment cue). */
@@ -1141,3 +1141,16 @@ input, select, textarea { font: inherit; color: inherit; }
   font-family: var(--font-mono); font-size: 10px; line-height: 1.5; color: var(--ink-40);
   margin: 2px 0 0; padding-top: 14px; border-top: 1px solid var(--border-soft); text-wrap: pretty;
 }
+
+/* ── Clickable cluster card (platform sentiment drawer) ──────────────────── */
+.ntl-cluster-link {
+  text-decoration: none; color: inherit; display: flex; flex-direction: column;
+  border-radius: var(--r-2); transition: background var(--d-soft);
+  margin: 0 -6px; padding-left: 6px; padding-right: 6px;
+}
+.ntl-cluster-link:hover { background: var(--paper-2); }
+.ntl-cluster-go {
+  margin-left: 4px; color: var(--ink-40); font-size: 11px;
+  transition: color var(--d-soft);
+}
+.ntl-cluster-link:hover .ntl-cluster-go { color: var(--accent-ink); }

@@ -40,6 +40,7 @@ export type NtlFeed = {
   _wdays?: NtlDay[];
   _stats?: ReturnType<typeof feedStats>;
   _showAvg?: boolean;
+  _color?: string;
 };
 
 export type NtlTimelineData = { feeds: NtlFeed[] };
