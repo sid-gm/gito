@@ -223,6 +223,13 @@ export function Sidebar() {
           <span className="nav-glyph">◈</span>
           <span className="nav-label">Global Narratives</span>
         </Link>
+        <Link
+          href="/analyst/platform-sentiment"
+          className={cx("nav-item nav-item-sub", path === "/analyst/platform-sentiment" && "nav-item-on")}
+        >
+          <span className="nav-glyph">◉</span>
+          <span className="nav-label">Platform Sentiment</span>
+        </Link>
 
         <div className="nav-section" style={{ marginTop: 16 }}>Publish</div>
         <Link
