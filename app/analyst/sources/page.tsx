@@ -16,6 +16,7 @@ type RedditStats = SourceStats;
 type RedditSubreddit = { id: string; subredditName: string; keywordFilters: string[]; createdAt: string };
 type TwitterHandle = { id: string; handle: string; createdAt: string };
 type RssFeed = { id: string; entityId: string; label: string; feedUrl: string; createdAt: string };
+type UserHandle = { id: string; platform: string; username: string; createdAt: string };
 
 type Entity = {
   id: string;
@@ -146,6 +147,16 @@ export default function SourcesPage() {
   const [redditEditingId, setRedditEditingId] = useState<string | null>(null);
   const [redditEditKeywords, setRedditEditKeywords] = useState("");
 
+  // Tracked user handles (HN, Reddit, Manual/other platforms)
+  const [userHandles, setUserHandles] = useState<UserHandle[]>([]);
+  const [hnUserInput, setHnUserInput] = useState("");
+  const [hnUserError, setHnUserError] = useState("");
+  const [redditUserInput, setRedditUserInput] = useState("");
+  const [redditUserError, setRedditUserError] = useState("");
+  const [manualUserPlatform, setManualUserPlatform] = useState("");
+  const [manualUserUsername, setManualUserUsername] = useState("");
+  const [manualUserError, setManualUserError] = useState("");
+
   const loadEntities = () => {
     if (!activeCompanyId) return;
     fetch(`/api/entities?companyId=${activeCompanyId}`)
@@ -167,6 +178,13 @@ export default function SourcesPage() {
       .then((rows: TwitterHandle[]) => setTwitterHandles(rows));
   };
 
+  const loadUserHandles = () => {
+    if (!activeCompanyId) return;
+    fetch(`/api/user-handles?companyId=${activeCompanyId}`)
+      .then((r) => r.json())
+      .then((rows: UserHandle[]) => setUserHandles(rows));
+  };
+
   useEffect(() => {
     if (!activeCompanyId) return;
 
@@ -178,6 +196,7 @@ export default function SourcesPage() {
     loadEntities();
     loadRssFeeds();
     loadTwitterHandles();
+    loadUserHandles();
 
     const refreshStats = () => {
       const cq = `companyId=${activeCompanyId}`;
@@ -298,6 +317,30 @@ export default function SourcesPage() {
     const cq = activeCompanyId ? `?companyId=${activeCompanyId}` : "";
     await fetch(`/api/twitter-handles/${id}${cq}`, { method: "DELETE" });
     setTwitterHandles((prev) => prev.filter((h) => h.id !== id));
+  }
+
+  // User handles CRUD (HN, Reddit users, Manual/other)
+  async function handleAddUserHandle(platform: string, username: string, onSuccess: () => void, onError: (msg: string) => void) {
+    if (!activeCompanyId || !username.trim()) return;
+    const res = await fetch("/api/user-handles", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ platform, username: username.trim(), companyId: activeCompanyId }),
+    });
+    if (res.ok) {
+      const row = await res.json() as UserHandle;
+      setUserHandles((prev) => [...prev, row]);
+      onSuccess();
+    } else {
+      const body = await res.json().catch(() => ({}));
+      onError(body.error ?? "Failed to add user");
+    }
+  }
+
+  async function handleDeleteUserHandle(id: string) {
+    const cq = activeCompanyId ? `?companyId=${activeCompanyId}` : "";
+    await fetch(`/api/user-handles/${id}${cq}`, { method: "DELETE" });
+    setUserHandles((prev) => prev.filter((h) => h.id !== id));
   }
 
   // Reddit CRUD
@@ -713,6 +756,39 @@ export default function SourcesPage() {
                   </div>
                 )}
 
+                {/* HackerNews — tracked users */}
+                {s.key === "hackernews" && (
+                  <div className="scard-env">
+                    <div className="scard-env-label">Tracked users</div>
+                    {userHandles.filter((h) => h.platform === "hackernews").length > 0 && (
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+                        {userHandles.filter((h) => h.platform === "hackernews").map((h) => (
+                          <div key={h.id} style={{ display: "flex", alignItems: "center", gap: 3, background: "var(--surface-1)", border: "1px solid var(--border)", borderRadius: 4, padding: "2px 6px", fontSize: 12 }}>
+                            <span className="mono">{h.username}</span>
+                            <button
+                              onClick={() => handleDeleteUserHandle(h.id)}
+                              style={{ background: "none", border: "none", cursor: "pointer", color: "var(--ink-40)", fontSize: 13, padding: 0, lineHeight: 1 }}
+                              aria-label={`Remove ${h.username}`}
+                            >×</button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <input
+                        type="text"
+                        value={hnUserInput}
+                        onChange={(e) => { setHnUserInput(e.target.value); setHnUserError(""); }}
+                        onKeyDown={(e) => e.key === "Enter" && handleAddUserHandle("hackernews", hnUserInput, () => setHnUserInput(""), setHnUserError)}
+                        placeholder="username"
+                        style={{ flex: 1, fontSize: 12, padding: "3px 8px", background: "var(--surface-1)", border: "1px solid var(--border)", borderRadius: 4, color: "var(--ink-100)", fontFamily: "var(--font-mono)" }}
+                      />
+                      <button className="btn btn-ghost btn-sm" onClick={() => handleAddUserHandle("hackernews", hnUserInput, () => setHnUserInput(""), setHnUserError)}>Add</button>
+                    </div>
+                    {hnUserError && <div style={{ color: "var(--err)", fontSize: 11, marginTop: 4 }}>{hnUserError}</div>}
+                  </div>
+                )}
+
                 {/* X / Twitter — global handles */}
                 {s.key === "twitter" && (
                   <div className="scard-env">
@@ -845,6 +921,39 @@ export default function SourcesPage() {
                   </div>
                 )}
 
+                {/* Reddit — tracked users */}
+                {s.key === "reddit" && (
+                  <div className="scard-env">
+                    <div className="scard-env-label">Tracked users</div>
+                    {userHandles.filter((h) => h.platform === "reddit").length > 0 && (
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+                        {userHandles.filter((h) => h.platform === "reddit").map((h) => (
+                          <div key={h.id} style={{ display: "flex", alignItems: "center", gap: 3, background: "var(--surface-1)", border: "1px solid var(--border)", borderRadius: 4, padding: "2px 6px", fontSize: 12 }}>
+                            <span className="mono">u/{h.username}</span>
+                            <button
+                              onClick={() => handleDeleteUserHandle(h.id)}
+                              style={{ background: "none", border: "none", cursor: "pointer", color: "var(--ink-40)", fontSize: 13, padding: 0, lineHeight: 1 }}
+                              aria-label={`Remove u/${h.username}`}
+                            >×</button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <input
+                        type="text"
+                        value={redditUserInput}
+                        onChange={(e) => { setRedditUserInput(e.target.value); setRedditUserError(""); }}
+                        onKeyDown={(e) => e.key === "Enter" && handleAddUserHandle("reddit", redditUserInput, () => setRedditUserInput(""), setRedditUserError)}
+                        placeholder="u/username"
+                        style={{ flex: 1, fontSize: 12, padding: "3px 8px", background: "var(--surface-1)", border: "1px solid var(--border)", borderRadius: 4, color: "var(--ink-100)", fontFamily: "var(--font-mono)" }}
+                      />
+                      <button className="btn btn-ghost btn-sm" onClick={() => handleAddUserHandle("reddit", redditUserInput, () => setRedditUserInput(""), setRedditUserError)}>Add</button>
+                    </div>
+                    {redditUserError && <div style={{ color: "var(--err)", fontSize: 11, marginTop: 4 }}>{redditUserError}</div>}
+                  </div>
+                )}
+
                 {/* Reddit — subreddits config */}
                 {s.key === "reddit" && (
                   <div className="scard-env">
@@ -921,6 +1030,55 @@ export default function SourcesPage() {
                         <button className="btn btn-ghost btn-sm" onClick={addRedditSubreddit}>Add</button>
                       </div>
                     </div>
+                  </div>
+                )}
+
+                {/* Manual — tracked users on other platforms */}
+                {s.key === "manual" && (
+                  <div className="scard-env">
+                    <div className="scard-env-label">Tracked users</div>
+                    {userHandles.filter((h) => h.platform !== "hackernews" && h.platform !== "reddit" && h.platform !== "twitter").length > 0 && (
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+                        {userHandles
+                          .filter((h) => h.platform !== "hackernews" && h.platform !== "reddit" && h.platform !== "twitter")
+                          .map((h) => (
+                            <div key={h.id} style={{ display: "flex", alignItems: "center", gap: 3, background: "var(--surface-1)", border: "1px solid var(--border)", borderRadius: 4, padding: "2px 6px", fontSize: 12 }}>
+                              <span style={{ color: "var(--ink-40)", fontSize: 11 }}>{h.platform}</span>
+                              <span style={{ color: "var(--ink-40)", fontSize: 11 }}>·</span>
+                              <span className="mono">{h.username}</span>
+                              <button
+                                onClick={() => handleDeleteUserHandle(h.id)}
+                                style={{ background: "none", border: "none", cursor: "pointer", color: "var(--ink-40)", fontSize: 13, padding: 0, lineHeight: 1 }}
+                                aria-label={`Remove ${h.username}`}
+                              >×</button>
+                            </div>
+                          ))}
+                      </div>
+                    )}
+                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <input
+                          type="text"
+                          value={manualUserPlatform}
+                          onChange={(e) => { setManualUserPlatform(e.target.value); setManualUserError(""); }}
+                          placeholder="platform (e.g. linkedin)"
+                          style={{ width: 140, fontSize: 12, padding: "3px 8px", background: "var(--surface-1)", border: "1px solid var(--border)", borderRadius: 4, color: "var(--ink-100)" }}
+                        />
+                        <input
+                          type="text"
+                          value={manualUserUsername}
+                          onChange={(e) => { setManualUserUsername(e.target.value); setManualUserError(""); }}
+                          onKeyDown={(e) => e.key === "Enter" && handleAddUserHandle(manualUserPlatform, manualUserUsername, () => { setManualUserUsername(""); setManualUserPlatform(""); }, setManualUserError)}
+                          placeholder="username"
+                          style={{ flex: 1, fontSize: 12, padding: "3px 8px", background: "var(--surface-1)", border: "1px solid var(--border)", borderRadius: 4, color: "var(--ink-100)", fontFamily: "var(--font-mono)" }}
+                        />
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          onClick={() => handleAddUserHandle(manualUserPlatform, manualUserUsername, () => { setManualUserUsername(""); setManualUserPlatform(""); }, setManualUserError)}
+                        >Add</button>
+                      </div>
+                    </div>
+                    {manualUserError && <div style={{ color: "var(--err)", fontSize: 11, marginTop: 4 }}>{manualUserError}</div>}
                   </div>
                 )}
 
