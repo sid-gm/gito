@@ -449,7 +449,7 @@ export default function SubmitPage() {
               {entities.length === 0 && (
                 <div className="banner" style={{ background: "oklch(0.97 0.04 80)", borderColor: "var(--warn, oklch(0.75 0.15 80))" }}>
                   <strong>No entities configured.</strong> You need at least one tracked entity before
-                  submitting. <a href="/analyst/track" className="ulink">Create an entity →</a>
+                  submitting. <a href="/analyst/sources" className="ulink">Create an entity →</a>
                 </div>
               )}
 

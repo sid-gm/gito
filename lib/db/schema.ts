@@ -201,6 +201,13 @@ export const redditSubreddits = pgTable("reddit_subreddits", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (t) => [unique("reddit_subreddits_company_subreddit_unique").on(t.companyId, t.subredditName)]);
 
+export const twitterHandles = pgTable("twitter_handles", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  companyId: uuid("company_id").references(() => companies.id, { onDelete: "cascade" }),
+  handle: text("handle").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => [unique("twitter_handles_company_handle_unique").on(t.companyId, t.handle)]);
+
 export const threadsFilters = pgTable("threads_filters", {
   id: uuid("id").defaultRandom().primaryKey(),
   companyId: uuid("company_id").references(() => companies.id, { onDelete: "cascade" }),
@@ -234,6 +241,8 @@ export type NewCluster = typeof clusters.$inferInsert;
 export type ClusterItem = typeof clusterItems.$inferSelect;
 export type ClusterPeriodNarrative = typeof clusterPeriodNarratives.$inferSelect;
 export type ClusterMerge = typeof clusterMerges.$inferSelect;
+export type TwitterHandle = typeof twitterHandles.$inferSelect;
+export type NewTwitterHandle = typeof twitterHandles.$inferInsert;
 export type ThreadsFilter = typeof threadsFilters.$inferSelect;
 export type RedditSubreddit = typeof redditSubreddits.$inferSelect;
 export type NewRedditSubreddit = typeof redditSubreddits.$inferInsert;

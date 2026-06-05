@@ -9,7 +9,6 @@ import { useCompany } from "@/components/CompanyContext";
 
 const SOURCES_NAV = [
   { href: "/analyst",        label: "Feed",    glyph: "≡" },
-  { href: "/analyst/track",  label: "Track",   glyph: "◆" },
   { href: "/analyst/sources",label: "Sources", glyph: "◴" },
   { href: "/analyst/submit", label: "Manual",  glyph: "✎" },
 ];

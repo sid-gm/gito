@@ -493,8 +493,7 @@ function Empty() {
       <div className="empty-mark">∅</div>
       <div className="empty-title">Nothing here yet</div>
       <div className="empty-sub">
-        Add entities in{" "}
-        <a href="/analyst/track" className="ulink">Track</a>, configure sources in{" "}
+        Add entities and configure sources in{" "}
         <a href="/analyst/sources" className="ulink">Sources</a>, or{" "}
         <a href="/analyst/submit" className="ulink">submit manually</a>.
       </div>

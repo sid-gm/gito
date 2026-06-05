@@ -344,7 +344,7 @@ export function NewsTimeline({ feeds, win, feedFilter, style, arrangement, densi
   if (feeds.length === 0) {
     return (
       <div style={{ padding: "24px 16px", textAlign: "center", color: "var(--ink-50)", fontSize: 13 }}>
-        No RSS feeds configured yet. Add Google Alerts feeds on the Track page.
+        No RSS feeds configured yet. Add Google Alerts feeds on the Sources page.
       </div>
     );
   }

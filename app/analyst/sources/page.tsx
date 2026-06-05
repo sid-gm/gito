@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { cx, Dot, PlatformChip, Sparkline } from "@/components/primitives";
+import { useEffect, useState, useMemo } from "react";
+import { cx, Dot, PlatformChip, Sparkline, Field } from "@/components/primitives";
 import { useCompany } from "@/components/CompanyContext";
 import ThreadIngestDialog from "@/components/ThreadIngestDialog";
 
@@ -14,8 +14,25 @@ type TwitterStats = SourceStats;
 type RedditStats = SourceStats;
 
 type RedditSubreddit = { id: string; subredditName: string; keywordFilters: string[]; createdAt: string };
+type TwitterHandle = { id: string; handle: string; createdAt: string };
+type RssFeed = { id: string; entityId: string; label: string; feedUrl: string; createdAt: string };
 
-type Entity = { id: string; label: string };
+type Entity = {
+  id: string;
+  label: string;
+  queryString: string;
+  entityType: "keyword" | "executive" | "product";
+  createdAt: string;
+};
+
+const emptyEntityForm = {
+  label: "",
+  queryString: "",
+  entityType: "keyword" as Entity["entityType"],
+};
+
+const entityGlyph = (type: Entity["entityType"]) =>
+  type === "executive" ? "◉" : type === "product" ? "◧" : "◇";
 
 function relativeTime(iso: string | null): string {
   if (!iso) return "—";
@@ -53,7 +70,7 @@ const SOURCE_DEFS: SourceDef[] = [
   {
     key: "google_alerts",
     name: "Google Alerts",
-    desc: "Parses RSS feeds you configure in Google Alerts. Add a feed URL to each tracked entity in the Track page.",
+    desc: "Parses RSS feeds you configure in Google Alerts. Add a feed URL per tracked entity below.",
     requiresEnv: [],
   },
   {
@@ -88,35 +105,79 @@ function fillSeries(
 
 export default function SourcesPage() {
   const { activeCompanyId } = useCompany();
+
+  // Source health
   const [envStatus, setEnvStatus] = useState<EnvStatus | null>(null);
-  const [alertCount, setAlertCount] = useState(0);
   const [pollStatus, setPollStatus] = useState<Record<string, "idle" | "polling" | { inserted: number } | "error">>({});
   const [gaStats, setGaStats] = useState<GAStats | null>(null);
   const [hnStats, setHnStats] = useState<HNStats | null>(null);
   const [twitterStats, setTwitterStats] = useState<TwitterStats | null>(null);
   const [sourceSparklines, setSourceSparklines] = useState<Record<string, number[]>>({});
-  const [entities, setEntities] = useState<Entity[]>([]);
-  const [threadDialogOpen, setThreadDialogOpen] = useState(false);
   const [redditStats, setRedditStats] = useState<RedditStats | null>(null);
+  const [threadDialogOpen, setThreadDialogOpen] = useState(false);
+
+  // Entities
+  const [entities, setEntities] = useState<Entity[]>([]);
+  const [entityAddOpen, setEntityAddOpen] = useState(false);
+  const [entityForm, setEntityForm] = useState(emptyEntityForm);
+  const [entitySaving, setEntitySaving] = useState(false);
+  const [entityError, setEntityError] = useState("");
+  const [entityEditingId, setEntityEditingId] = useState<string | null>(null);
+  const [entityEditForm, setEntityEditForm] = useState({ label: "", entityType: "keyword" as Entity["entityType"], queryString: "" });
+  const [entityEditSaving, setEntityEditSaving] = useState(false);
+  const [entityEditError, setEntityEditError] = useState("");
+
+  // RSS feeds (Google Alerts)
+  const [rssFeeds, setRssFeeds] = useState<RssFeed[]>([]);
+  const [feedAddOpen, setFeedAddOpen] = useState(false);
+  const [feedForm, setFeedForm] = useState({ entityId: "", label: "", feedUrl: "" });
+  const [feedSaving, setFeedSaving] = useState(false);
+  const [feedError, setFeedError] = useState("");
+
+  // Twitter/X handles
+  const [twitterHandles, setTwitterHandles] = useState<TwitterHandle[]>([]);
+  const [twitterInput, setTwitterInput] = useState("");
+  const [twitterAddError, setTwitterAddError] = useState("");
+
+  // Reddit
   const [redditSubreddits, setRedditSubreddits] = useState<RedditSubreddit[]>([]);
   const [redditInput, setRedditInput] = useState("");
   const [redditKeywordInput, setRedditKeywordInput] = useState("");
   const [redditEditingId, setRedditEditingId] = useState<string | null>(null);
   const [redditEditKeywords, setRedditEditKeywords] = useState("");
 
+  const loadEntities = () => {
+    if (!activeCompanyId) return;
+    fetch(`/api/entities?companyId=${activeCompanyId}`)
+      .then((r) => r.json())
+      .then((rows: Entity[]) => setEntities(rows));
+  };
+
+  const loadRssFeeds = () => {
+    if (!activeCompanyId) return;
+    fetch(`/api/rss-feeds?companyId=${activeCompanyId}`)
+      .then((r) => r.json())
+      .then((rows: RssFeed[]) => setRssFeeds(rows));
+  };
+
+  const loadTwitterHandles = () => {
+    if (!activeCompanyId) return;
+    fetch(`/api/twitter-handles?companyId=${activeCompanyId}`)
+      .then((r) => r.json())
+      .then((rows: TwitterHandle[]) => setTwitterHandles(rows));
+  };
+
   useEffect(() => {
     if (!activeCompanyId) return;
 
     fetch("/api/sources/status").then((r) => r.json()).then(setEnvStatus);
-    fetch(`/api/entities?companyId=${activeCompanyId}`)
-      .then((r) => r.json())
-      .then((rows: { id: string; label: string; googleAlertsFeedUrl: string | null }[]) => {
-        setAlertCount(rows.filter((e) => e.googleAlertsFeedUrl).length);
-        setEntities(rows.map((e) => ({ id: e.id, label: e.label })));
-      });
     fetch(`/api/reddit-subreddits?companyId=${activeCompanyId}`)
       .then((r) => r.json())
       .then((rows: RedditSubreddit[]) => setRedditSubreddits(rows));
+
+    loadEntities();
+    loadRssFeeds();
+    loadTwitterHandles();
 
     const refreshStats = () => {
       const cq = `companyId=${activeCompanyId}`;
@@ -140,14 +201,110 @@ export default function SourcesPage() {
     return () => clearInterval(interval);
   }, [activeCompanyId]);
 
+  // Entity CRUD
+  async function handleEntityAdd(e: React.FormEvent) {
+    e.preventDefault();
+    if (!activeCompanyId) return;
+    setEntitySaving(true);
+    setEntityError("");
+    const res = await fetch("/api/entities", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...entityForm, companyId: activeCompanyId }),
+    });
+    if (res.ok) {
+      setEntityForm(emptyEntityForm);
+      setEntityAddOpen(false);
+      loadEntities();
+    } else {
+      setEntityError("Failed to save.");
+    }
+    setEntitySaving(false);
+  }
+
+  async function handleEntityEditSave(id: string) {
+    setEntityEditSaving(true);
+    setEntityEditError("");
+    const res = await fetch(`/api/entities/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        label: entityEditForm.label,
+        queryString: entityEditForm.queryString,
+        entityType: entityEditForm.entityType,
+      }),
+    });
+    if (res.ok) {
+      setEntityEditingId(null);
+      loadEntities();
+    } else {
+      setEntityEditError("Failed to save changes.");
+    }
+    setEntityEditSaving(false);
+  }
+
+  async function handleEntityDelete(id: string, label: string) {
+    if (!window.confirm(`Delete "${label}"? This will remove the entity and all linked clusters. Ingested items will be kept but unlinked.`)) return;
+    await fetch(`/api/entities/${id}`, { method: "DELETE" });
+    loadEntities();
+  }
+
+  // RSS feed CRUD
+  async function handleFeedAdd(e: React.FormEvent) {
+    e.preventDefault();
+    setFeedSaving(true);
+    setFeedError("");
+    const res = await fetch("/api/rss-feeds", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(feedForm),
+    });
+    if (res.ok) {
+      setFeedForm({ entityId: "", label: "", feedUrl: "" });
+      setFeedAddOpen(false);
+      loadRssFeeds();
+    } else {
+      const body = await res.json().catch(() => ({}));
+      setFeedError(body.error ?? "Failed to add feed.");
+    }
+    setFeedSaving(false);
+  }
+
+  async function handleFeedDelete(id: string) {
+    await fetch(`/api/rss-feeds/${id}`, { method: "DELETE" });
+    loadRssFeeds();
+  }
+
+  // Twitter handle CRUD
+  async function handleTwitterAdd() {
+    if (!activeCompanyId || !twitterInput.trim()) return;
+    setTwitterAddError("");
+    const res = await fetch("/api/twitter-handles", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ handle: twitterInput.trim(), companyId: activeCompanyId }),
+    });
+    if (res.ok) {
+      const row = await res.json() as TwitterHandle;
+      setTwitterHandles((prev) => [...prev, row]);
+      setTwitterInput("");
+    } else {
+      const body = await res.json().catch(() => ({}));
+      setTwitterAddError(body.error ?? "Failed to add handle.");
+    }
+  }
+
+  async function handleTwitterDelete(id: string) {
+    const cq = activeCompanyId ? `?companyId=${activeCompanyId}` : "";
+    await fetch(`/api/twitter-handles/${id}${cq}`, { method: "DELETE" });
+    setTwitterHandles((prev) => prev.filter((h) => h.id !== id));
+  }
+
+  // Reddit CRUD
   async function addRedditSubreddit() {
     if (!activeCompanyId) return;
     const name = redditInput.trim().replace(/^r\//, "").toLowerCase();
-    const keywords = redditKeywordInput
-      .split(",")
-      .map((k) => k.trim())
-      .filter(Boolean);
-    // Need at least a subreddit name or some keywords to track
+    const keywords = redditKeywordInput.split(",").map((k) => k.trim()).filter(Boolean);
     if (!name && keywords.length === 0) return;
     const subredditName = name || "all";
     const res = await fetch("/api/reddit-subreddits", {
@@ -156,12 +313,10 @@ export default function SourcesPage() {
       body: JSON.stringify({ subredditName, keywordFilters: keywords, companyId: activeCompanyId }),
     });
     if (res.status === 409 && subredditName === "all") {
-      // Merge new keywords into the existing "all" entry
       const existing = redditSubreddits.find((r) => r.subredditName === "all");
       if (existing) {
         const merged = [...new Set([...existing.keywordFilters, ...keywords])];
-        const cq = `?companyId=${activeCompanyId}`;
-        const patchRes = await fetch(`/api/reddit-subreddits/${existing.id}${cq}`, {
+        const patchRes = await fetch(`/api/reddit-subreddits/${existing.id}?companyId=${activeCompanyId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ keywordFilters: merged }),
@@ -204,6 +359,18 @@ export default function SourcesPage() {
       setRedditEditKeywords("");
     }
   }
+
+  // Feeds grouped by entity
+  const feedsByEntityId = useMemo(() => {
+    const map: Record<string, RssFeed[]> = {};
+    for (const f of rssFeeds) {
+      if (!map[f.entityId]) map[f.entityId] = [];
+      map[f.entityId].push(f);
+    }
+    return map;
+  }, [rssFeeds]);
+
+  const alertCount = rssFeeds.length;
 
   const isConnected = (key: string) => {
     if (key === "hackernews" || key === "manual") return "active";
@@ -264,6 +431,196 @@ export default function SourcesPage() {
       </header>
 
       <div className="page">
+
+        {/* ── Tracked Entities ── */}
+        <div className="tbl-wrap" style={{ marginBottom: 32 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>Tracked entities</div>
+              <div style={{ fontSize: 12, color: "var(--ink-60)" }}>Keywords, products and executives the system monitors.</div>
+            </div>
+            <button
+              className="btn btn-primary btn-sm"
+              onClick={() => { setEntityAddOpen((v) => !v); setEntityError(""); }}
+            >
+              {entityAddOpen ? "✕ Cancel" : "+ Add entity"}
+            </button>
+          </div>
+
+          {entityAddOpen && (
+            <form className="addcard" onSubmit={handleEntityAdd} style={{ marginBottom: 12 }}>
+              <div className="addcard-head">
+                <span className="kbd">New</span>
+                <span>Add a tracked entity. The query runs against every active source on the next hourly poll.</span>
+              </div>
+              <div className="addcard-grid">
+                <Field label="Label" hint="Display name used everywhere">
+                  <input
+                    className="ipt"
+                    placeholder="e.g. Sam Altman — CEO"
+                    value={entityForm.label}
+                    onChange={(e) => setEntityForm((f) => ({ ...f, label: e.target.value }))}
+                    required
+                  />
+                </Field>
+                <Field label="Type">
+                  <div className="seg">
+                    {(["keyword", "product", "executive"] as const).map((t) => (
+                      <button
+                        key={t}
+                        type="button"
+                        className={cx("seg-btn", entityForm.entityType === t && "seg-btn-on")}
+                        onClick={() => setEntityForm((f) => ({ ...f, entityType: t }))}
+                      >
+                        <span className={`ebadge-glyph eg-${t}`}>{entityGlyph(t)}</span>
+                        {t[0].toUpperCase() + t.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+                </Field>
+                <Field
+                  label="Search query"
+                  hint='Boolean operators: "exact phrase" OR term1 OR term2 · commas are not supported'
+                  full
+                >
+                  <input
+                    className="ipt mono"
+                    placeholder='"Sam Altman" OR "sama"'
+                    value={entityForm.queryString}
+                    onChange={(e) => setEntityForm((f) => ({ ...f, queryString: e.target.value }))}
+                    required
+                  />
+                </Field>
+              </div>
+              <div className="addcard-foot">
+                <div className="addcard-platforms">
+                  <span className="dim">Will be polled on:</span>
+                  <PlatformChip platform="hackernews" />
+                  <PlatformChip platform="twitter" />
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  {entityError && <span style={{ color: "var(--err)", fontSize: 12 }}>{entityError}</span>}
+                  <button type="button" className="btn btn-ghost" onClick={() => setEntityAddOpen(false)}>Cancel</button>
+                  <button type="submit" className="btn btn-primary" disabled={entitySaving}>
+                    {entitySaving ? "Adding…" : "Add entity"}
+                  </button>
+                </div>
+              </div>
+            </form>
+          )}
+
+          <table className="tbl tbl-entities">
+            <thead>
+              <tr>
+                <th style={{ width: 28 }} />
+                <th>Entity</th>
+                <th style={{ width: 110 }}>Type</th>
+                <th>Search query</th>
+                <th style={{ width: 100 }}>Added</th>
+                <th style={{ width: 100 }} />
+              </tr>
+            </thead>
+            <tbody>
+              {entities.map((e) => (
+                entityEditingId === e.id ? (
+                  <tr key={e.id} className="entity-row">
+                    <td />
+                    <td>
+                      <input
+                        className="ipt"
+                        value={entityEditForm.label}
+                        onChange={(ev) => setEntityEditForm((f) => ({ ...f, label: ev.target.value }))}
+                        style={{ fontSize: 12, padding: "3px 8px" }}
+                      />
+                    </td>
+                    <td>
+                      <div className="seg" style={{ flexWrap: "wrap", gap: 2 }}>
+                        {(["keyword", "product", "executive"] as const).map((t) => (
+                          <button
+                            key={t}
+                            type="button"
+                            className={cx("seg-btn", entityEditForm.entityType === t && "seg-btn-on")}
+                            onClick={() => setEntityEditForm((f) => ({ ...f, entityType: t }))}
+                            style={{ fontSize: 11, padding: "2px 6px" }}
+                          >
+                            <span className={`ebadge-glyph eg-${t}`}>{entityGlyph(t)}</span>
+                            {t[0].toUpperCase() + t.slice(1)}
+                          </button>
+                        ))}
+                      </div>
+                    </td>
+                    <td>
+                      <input
+                        className="ipt mono"
+                        value={entityEditForm.queryString}
+                        onChange={(ev) => setEntityEditForm((f) => ({ ...f, queryString: ev.target.value }))}
+                        style={{ fontSize: 12, padding: "3px 8px" }}
+                      />
+                      {entityEditError && <div style={{ color: "var(--err)", fontSize: 11, marginTop: 2 }}>{entityEditError}</div>}
+                    </td>
+                    <td />
+                    <td>
+                      <div style={{ display: "flex", gap: 4 }}>
+                        <button className="btn btn-ghost btn-sm" onClick={() => handleEntityEditSave(e.id)} disabled={entityEditSaving}>
+                          {entityEditSaving ? "…" : "Save"}
+                        </button>
+                        <button className="btn btn-ghost btn-sm" onClick={() => { setEntityEditingId(null); setEntityEditError(""); }}>
+                          Cancel
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  <tr key={e.id} className="entity-row">
+                    <td>
+                      <span className={cx("ebadge-glyph", `eg-${e.entityType}`)}>
+                        {entityGlyph(e.entityType)}
+                      </span>
+                    </td>
+                    <td className="entity-label">{e.label}</td>
+                    <td>
+                      <span className={cx("type-pill", `type-${e.entityType}`)}>{e.entityType}</span>
+                    </td>
+                    <td>
+                      <code className="codepill">{e.queryString}</code>
+                    </td>
+                    <td className="mono dim">{new Date(e.createdAt).toLocaleDateString()}</td>
+                    <td>
+                      <div style={{ display: "flex", gap: 4 }}>
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          onClick={() => {
+                            setEntityEditingId(e.id);
+                            setEntityEditForm({ label: e.label, entityType: e.entityType, queryString: e.queryString });
+                            setEntityEditError("");
+                          }}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          style={{ color: "var(--err)" }}
+                          onClick={() => handleEntityDelete(e.id, e.label)}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                )
+              ))}
+            </tbody>
+          </table>
+          {entities.length === 0 && (
+            <div className="empty">
+              <div className="empty-mark">∅</div>
+              <div className="empty-title">No entities yet</div>
+              <div className="empty-sub">Add your first keyword, product, or executive above.</div>
+            </div>
+          )}
+        </div>
+
+        {/* ── Source Cards ── */}
         <div className="src-grid">
           {SOURCE_DEFS.map((s) => {
             const status = isConnected(s.key) as "active" | "degraded" | "offline";
@@ -356,19 +713,139 @@ export default function SourcesPage() {
                   </div>
                 )}
 
+                {/* X / Twitter — global handles */}
+                {s.key === "twitter" && (
+                  <div className="scard-env">
+                    <div className="scard-env-label">X accounts</div>
+                    {twitterHandles.length > 0 && (
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+                        {twitterHandles.map((h) => (
+                          <div key={h.id} style={{ display: "flex", alignItems: "center", gap: 3, background: "var(--surface-1)", border: "1px solid var(--border)", borderRadius: 4, padding: "2px 6px", fontSize: 12 }}>
+                            <span className="mono">@{h.handle}</span>
+                            <button
+                              onClick={() => handleTwitterDelete(h.id)}
+                              style={{ background: "none", border: "none", cursor: "pointer", color: "var(--ink-40)", fontSize: 13, padding: 0, lineHeight: 1 }}
+                              aria-label={`Remove @${h.handle}`}
+                            >
+                              ×
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <input
+                        type="text"
+                        value={twitterInput}
+                        onChange={(e) => setTwitterInput(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && handleTwitterAdd()}
+                        placeholder="@handle"
+                        style={{
+                          flex: 1,
+                          fontSize: 12,
+                          padding: "3px 8px",
+                          background: "var(--surface-1)",
+                          border: "1px solid var(--border)",
+                          borderRadius: 4,
+                          color: "var(--ink-100)",
+                          fontFamily: "var(--font-mono)",
+                        }}
+                      />
+                      <button className="btn btn-ghost btn-sm" onClick={handleTwitterAdd}>Add</button>
+                    </div>
+                    {twitterAddError && <div style={{ color: "var(--err)", fontSize: 11, marginTop: 4 }}>{twitterAddError}</div>}
+                  </div>
+                )}
+
+                {/* Google Alerts — feeds grouped by entity */}
                 {s.key === "google_alerts" && (
                   <div className="scard-env">
-                    <div className="scard-env-label">RSS feeds configured</div>
-                    <div style={{ fontSize: 13, color: "var(--ink-80)" }}>
-                      {alertCount > 0 ? (
-                        <span style={{ color: "var(--ok)" }}>{alertCount} entity {alertCount === 1 ? "feed" : "feeds"} active</span>
-                      ) : (
-                        <span className="dim">None — add a feed URL to a tracked entity</span>
-                      )}
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                      <div className="scard-env-label" style={{ marginBottom: 0 }}>RSS feeds</div>
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => { setFeedAddOpen((v) => !v); setFeedError(""); }}
+                      >
+                        {feedAddOpen ? "Cancel" : "+ Add feed"}
+                      </button>
+                    </div>
+
+                    {feedAddOpen && (
+                      <form onSubmit={handleFeedAdd} style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 10, padding: "8px", background: "var(--surface-1)", border: "1px solid var(--border)", borderRadius: 4 }}>
+                        <select
+                          className="ipt"
+                          value={feedForm.entityId}
+                          onChange={(e) => setFeedForm((f) => ({ ...f, entityId: e.target.value }))}
+                          required
+                          style={{ fontSize: 12, padding: "3px 8px" }}
+                        >
+                          <option value="">Select entity…</option>
+                          {entities.map((en) => (
+                            <option key={en.id} value={en.id}>{en.label}</option>
+                          ))}
+                        </select>
+                        <input
+                          className="ipt"
+                          placeholder="Label (e.g. Sam Altman)"
+                          value={feedForm.label}
+                          onChange={(e) => setFeedForm((f) => ({ ...f, label: e.target.value }))}
+                          required
+                          style={{ fontSize: 12, padding: "3px 8px" }}
+                        />
+                        <input
+                          className="ipt mono"
+                          placeholder="https://www.google.com/alerts/feeds/…"
+                          value={feedForm.feedUrl}
+                          onChange={(e) => setFeedForm((f) => ({ ...f, feedUrl: e.target.value }))}
+                          required
+                          style={{ fontSize: 12, padding: "3px 8px" }}
+                        />
+                        {feedError && <div style={{ color: "var(--err)", fontSize: 11 }}>{feedError}</div>}
+                        <div style={{ display: "flex", gap: 4 }}>
+                          <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setFeedAddOpen(false); setFeedError(""); }}>Cancel</button>
+                          <button type="submit" className="btn btn-primary btn-sm" disabled={feedSaving}>
+                            {feedSaving ? "Saving…" : "Add feed"}
+                          </button>
+                        </div>
+                      </form>
+                    )}
+
+                    {entities.filter((en) => feedsByEntityId[en.id]?.length > 0).length === 0 && !feedAddOpen && (
+                      <div style={{ fontSize: 12, color: "var(--ink-40)", fontStyle: "italic" }}>
+                        None — add a feed URL to a tracked entity above.
+                      </div>
+                    )}
+
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {entities
+                        .filter((en) => feedsByEntityId[en.id]?.length > 0)
+                        .map((en) => (
+                          <div key={en.id}>
+                            <div style={{ fontSize: 11, fontWeight: 600, color: "var(--ink-60)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                              {en.label}
+                            </div>
+                            {feedsByEntityId[en.id].map((feed) => (
+                              <div key={feed.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0", borderBottom: "1px solid var(--border-soft)" }}>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontSize: 12, fontWeight: 500 }}>{feed.label}</div>
+                                  <div style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "var(--ink-40)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{feed.feedUrl}</div>
+                                </div>
+                                <button
+                                  onClick={() => handleFeedDelete(feed.id)}
+                                  style={{ background: "none", border: "none", cursor: "pointer", color: "var(--ink-40)", fontSize: 13, padding: 0, lineHeight: 1, flexShrink: 0 }}
+                                  aria-label="Remove feed"
+                                >
+                                  ×
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        ))}
                     </div>
                   </div>
                 )}
 
+                {/* Reddit — subreddits config */}
                 {s.key === "reddit" && (
                   <div className="scard-env">
                     <div className="scard-env-label">Tracked subreddits</div>
@@ -387,14 +864,7 @@ export default function SourcesPage() {
                                   onChange={(e) => setRedditEditKeywords(e.target.value)}
                                   onKeyDown={(e) => e.key === "Enter" && saveRedditKeywords(sub.id)}
                                   placeholder="keyword1, keyword2 (empty = all posts)"
-                                  style={{
-                                    fontSize: 12,
-                                    padding: "3px 8px",
-                                    background: "var(--surface-1)",
-                                    border: "1px solid var(--border)",
-                                    borderRadius: 4,
-                                    color: "var(--ink-100)",
-                                  }}
+                                  style={{ fontSize: 12, padding: "3px 8px", background: "var(--surface-1)", border: "1px solid var(--border)", borderRadius: 4, color: "var(--ink-100)" }}
                                 />
                                 <div style={{ display: "flex", gap: 4 }}>
                                   <button className="btn btn-ghost btn-sm" onClick={() => saveRedditKeywords(sub.id)}>Save</button>
@@ -409,9 +879,7 @@ export default function SourcesPage() {
                                 {sub.keywordFilters.length === 0 ? (
                                   <span className="codepill" style={{ color: "var(--ink-40)" }}>All posts</span>
                                 ) : (
-                                  sub.keywordFilters.map((kw) => (
-                                    <span key={kw} className="codepill">{kw}</span>
-                                  ))
+                                  sub.keywordFilters.map((kw) => <span key={kw} className="codepill">{kw}</span>)
                                 )}
                                 <button
                                   onClick={() => { setRedditEditingId(sub.id); setRedditEditKeywords(sub.keywordFilters.join(", ")); }}
@@ -439,14 +907,7 @@ export default function SourcesPage() {
                         onChange={(e) => setRedditInput(e.target.value)}
                         onKeyDown={(e) => e.key === "Enter" && addRedditSubreddit()}
                         placeholder="subreddit (optional — blank tracks all of Reddit)"
-                        style={{
-                          fontSize: 12,
-                          padding: "3px 8px",
-                          background: "var(--surface-1)",
-                          border: "1px solid var(--border)",
-                          borderRadius: 4,
-                          color: "var(--ink-100)",
-                        }}
+                        style={{ fontSize: 12, padding: "3px 8px", background: "var(--surface-1)", border: "1px solid var(--border)", borderRadius: 4, color: "var(--ink-100)" }}
                       />
                       <div style={{ display: "flex", gap: 6 }}>
                         <input
@@ -455,19 +916,9 @@ export default function SourcesPage() {
                           onChange={(e) => setRedditKeywordInput(e.target.value)}
                           onKeyDown={(e) => e.key === "Enter" && addRedditSubreddit()}
                           placeholder="keywords (optional, comma-separated)"
-                          style={{
-                            flex: 1,
-                            fontSize: 12,
-                            padding: "3px 8px",
-                            background: "var(--surface-1)",
-                            border: "1px solid var(--border)",
-                            borderRadius: 4,
-                            color: "var(--ink-100)",
-                          }}
+                          style={{ flex: 1, fontSize: 12, padding: "3px 8px", background: "var(--surface-1)", border: "1px solid var(--border)", borderRadius: 4, color: "var(--ink-100)" }}
                         />
-                        <button className="btn btn-ghost btn-sm" onClick={addRedditSubreddit}>
-                          Add
-                        </button>
+                        <button className="btn btn-ghost btn-sm" onClick={addRedditSubreddit}>Add</button>
                       </div>
                     </div>
                   </div>
@@ -541,7 +992,7 @@ export default function SourcesPage() {
       {threadDialogOpen && activeCompanyId && (
         <ThreadIngestDialog
           companyId={activeCompanyId}
-          entities={entities}
+          entities={entities.map((e) => ({ id: e.id, label: e.label }))}
           onClose={() => setThreadDialogOpen(false)}
           onInserted={() => setThreadDialogOpen(false)}
         />
