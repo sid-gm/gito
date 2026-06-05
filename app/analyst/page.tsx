@@ -409,7 +409,7 @@ function FeedRow({ item, entities, onIngestThread }: { item: FeedItem; entities:
       <div className="feedrow-actions">
         {item.clusterId && (
           <a
-            href="/analyst/clusters"
+            href={`/analyst/clusters/${item.clusterId}`}
             className="btn btn-ghost btn-sm"
             style={{ fontSize: 11 }}
             title={item.clusterLabel ? `Cluster: ${item.clusterLabel}` : "View cluster"}
