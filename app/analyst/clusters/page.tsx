@@ -290,6 +290,8 @@ export default function ClustersPage() {
   const [xReplyClusterId, setXReplyClusterId] = useState<string | null>(null);
   const [xReplyThreadUrl, setXReplyThreadUrl] = useState<string>("");
   const [xReplyEntityId, setXReplyEntityId] = useState<string | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
   const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const gridRef = useRef<HTMLDivElement>(null);
 
@@ -427,6 +429,17 @@ export default function ClustersPage() {
     } catch { setClusterResult("error — check console"); }
     finally { setClusterRunning(false); }
   }, [fetchClusters]);
+
+  const deleteCluster = async (clusterId: string) => {
+    setDeleteBusy(true);
+    try {
+      await fetch(`/api/clusters/${clusterId}/delete`, { method: "DELETE" });
+      setClusterList((prev) => prev.filter((c) => c.id !== clusterId));
+      setDeleteConfirmId(null);
+    } finally {
+      setDeleteBusy(false);
+    }
+  };
 
   const toggleExpand = useCallback(async (clusterId: string) => {
     if (expandedIds.has(clusterId)) {
@@ -597,6 +610,31 @@ export default function ClustersPage() {
           busy={mergeBusy}
         />
       )}
+
+      {deleteConfirmId && (() => {
+        const cluster = clusterList.find((c) => c.id === deleteConfirmId);
+        return (
+          <div style={{ position: "fixed", inset: 0, zIndex: 200, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div style={{ background: "var(--paper)", border: "1px solid var(--border)", borderRadius: 8, boxShadow: "0 8px 32px rgba(0,0,0,0.18)", width: 400, maxWidth: "90vw", padding: 24 }}>
+              <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>Delete cluster?</div>
+              <p style={{ fontSize: 13, color: "var(--ink-60)", marginBottom: 20, lineHeight: 1.5 }}>
+                <strong>{cluster?.label ?? "Unnamed cluster"}</strong> and all its ingested items will be permanently deleted. This cannot be undone.
+              </p>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                <button className="btn-ghost btn" onClick={() => setDeleteConfirmId(null)} disabled={deleteBusy}>Cancel</button>
+                <button
+                  className="btn"
+                  style={{ background: "var(--err)", color: "#fff", borderColor: "var(--err)" }}
+                  onClick={() => deleteCluster(deleteConfirmId)}
+                  disabled={deleteBusy}
+                >
+                  {deleteBusy ? "Deleting…" : "Delete cluster"}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {addItemClusterId && (
         <AddItemDialog
@@ -809,6 +847,14 @@ export default function ClustersPage() {
                         title="Generate Signal Brief for this cluster"
                       >
                         {reportingId === cluster.id ? "Generating…" : "◉ Report"}
+                      </button>
+                      <button
+                        className="btn-ghost btn"
+                        style={{ fontSize: 10, padding: "2px 8px", fontFamily: "var(--font-mono)", letterSpacing: "0.04em", color: "var(--err)", borderColor: "color-mix(in oklch, var(--err) 30%, transparent)" }}
+                        onClick={() => setDeleteConfirmId(cluster.id)}
+                        title="Delete this cluster and all its items"
+                      >
+                        ✕ Delete
                       </button>
                       {(() => {
                         const isXUrl = (u: string | null) => /^https?:\/\/(x\.com|twitter\.com)\//i.test(u ?? "");
