@@ -53,3 +53,20 @@ export async function PATCH(
 
   return NextResponse.json({ ok: true });
 }
+
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+
+  const rows = await db
+    .delete(clusterReports)
+    .where(eq(clusterReports.id, id))
+    .returning({ id: clusterReports.id });
+
+  if (!rows.length)
+    return NextResponse.json({ error: "not found" }, { status: 404 });
+
+  return NextResponse.json({ ok: true });
+}
