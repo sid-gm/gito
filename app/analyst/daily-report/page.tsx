@@ -568,7 +568,7 @@ export default function DailyReportPage() {
                 {/* Artwork header */}
                 <div className="dr-card-head">
                   <div className="dr-card-id">
-                    <div className="dr-card-mark">🐦</div>
+                    <div className="dr-card-mark"><img src="/gito-bird.png" alt="Gito" width={22} height={22} style={{ objectFit: "contain" }} /></div>
                     <div>
                       <div className="dr-card-eyebrow">Daily signal brief · {data.date}</div>
                       <div className="dr-card-title">{data.company} · cluster formation</div>

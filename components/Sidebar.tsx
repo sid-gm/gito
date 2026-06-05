@@ -101,7 +101,9 @@ export function Sidebar() {
   return (
     <aside className="sidebar">
       <div className="brand">
-        <div className="brand-mark">🐦</div>
+        <div className="brand-mark">
+          <img src="/gito-bird.png" alt="Gito" width={26} height={26} style={{ objectFit: "contain" }} />
+        </div>
         <div className="brand-text">
           <div className="brand-title">Gito</div>
           <div className="brand-sub">Signal-to-noise · v0.1</div>

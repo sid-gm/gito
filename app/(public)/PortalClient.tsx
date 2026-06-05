@@ -379,7 +379,7 @@ function DailyBriefSection({ companyId, date, onDateChange, dateRange }: {
                 <div className="dr-card">
                   <div className="dr-card-head">
                     <div className="dr-card-id">
-                      <div className="dr-card-mark">🐦</div>
+                      <div className="dr-card-mark"><img src="/gito-bird.png" alt="Gito" width={22} height={22} style={{ objectFit: "contain" }} /></div>
                       <div>
                         <div className="dr-card-eyebrow">Daily signal brief · {data?.date}</div>
                         <div className="dr-card-title">{data?.company} · cluster formation</div>
@@ -836,7 +836,7 @@ function PortalInner() {
       <div className="shell">
         <aside className="sidebar">
           <div className="pp-brand">
-            <div className="pp-brand-mark">🐦</div>
+            <div className="pp-brand-mark"><img src="/gito-bird.png" alt="Gito" width={26} height={26} style={{ objectFit: "contain" }} /></div>
             <div><div className="pp-brand-name">Gito</div><div className="pp-brand-sub">Public intelligence</div></div>
           </div>
         </aside>
@@ -855,7 +855,7 @@ function PortalInner() {
       <div className="shell">
         <aside className="sidebar">
           <div className="pp-brand">
-            <div className="pp-brand-mark">🐦</div>
+            <div className="pp-brand-mark"><img src="/gito-bird.png" alt="Gito" width={26} height={26} style={{ objectFit: "contain" }} /></div>
             <div><div className="pp-brand-name">Gito</div><div className="pp-brand-sub">Public intelligence</div></div>
           </div>
         </aside>
@@ -911,7 +911,7 @@ export function PublicPortalClient() {
       <div className="shell">
         <aside className="sidebar">
           <div className="pp-brand">
-            <div className="pp-brand-mark">🐦</div>
+            <div className="pp-brand-mark"><img src="/gito-bird.png" alt="Gito" width={26} height={26} style={{ objectFit: "contain" }} /></div>
             <div><div className="pp-brand-name">Gito</div></div>
           </div>
         </aside>

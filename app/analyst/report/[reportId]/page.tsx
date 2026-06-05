@@ -263,8 +263,8 @@ export default function ReportPage() {
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 24, paddingBottom: 18, borderBottom: "1px solid var(--border)", marginBottom: 24, flexWrap: "wrap" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          <div style={{ width: 32, height: 32, borderRadius: 6, background: "var(--ink)", display: "grid", placeItems: "center", fontSize: 18, flexShrink: 0 }}>
-            🐦
+          <div style={{ width: 32, height: 32, borderRadius: 6, display: "grid", placeItems: "center", flexShrink: 0 }}>
+            <img src="/gito-bird.png" alt="Gito" width={28} height={28} style={{ objectFit: "contain" }} />
           </div>
           <div>
             <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--ink-50)", lineHeight: 1.2 }}>
