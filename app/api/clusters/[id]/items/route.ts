@@ -38,6 +38,7 @@ export async function GET(
       url: ingestedItems.url,
       externalId: ingestedItems.externalId,
       platform: ingestedItems.platform,
+      author: ingestedItems.author,
       publishedAt: ingestedItems.publishedAt,
       ingestedAt: ingestedItems.createdAt,
     })

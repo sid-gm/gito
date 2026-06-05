@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { PlatformChip } from "@/components/primitives";
+import { useCompany } from "@/components/CompanyContext";
 import { VelocitySparkline } from "@/components/VelocitySparkline";
 import { ItemAnnotations } from "@/components/ItemAnnotations";
 import { AddItemDialog } from "@/components/AddItemDialog";
@@ -48,6 +49,7 @@ type ClusterItem = {
   url: string | null;
   externalId: string | null;
   platform: string;
+  author: string | null;
   publishedAt: string | null;
   ingestedAt: string;
 };
@@ -154,10 +156,14 @@ export default function ClusterDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const id = params.id;
+  const { activeCompanyId } = useCompany();
 
   const [cluster, setCluster] = useState<Cluster | null>(null);
   const [expanded, setExpanded] = useState<ExpandedData | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Tracked user handles — used to highlight items authored by tracked users
+  const [rawTrackedHandles, setRawTrackedHandles] = useState<Array<{ platform: string; username: string }>>([]);
 
   // Label editing
   const [editingLabel, setEditingLabel] = useState(false);
@@ -193,6 +199,31 @@ export default function ClusterDetailPage() {
       })
       .catch(() => setError("Cluster not found."));
   }, [id]);
+
+  // Load tracked handles for the active company
+  useEffect(() => {
+    if (!activeCompanyId) return;
+    const cq = `companyId=${activeCompanyId}`;
+    Promise.all([
+      fetch(`/api/twitter-handles?${cq}`).then((r) => r.json()),
+      fetch(`/api/user-handles?${cq}`).then((r) => r.json()),
+    ]).then(([twitterRows, userRows]) => {
+      const combined: Array<{ platform: string; username: string }> = [
+        ...twitterRows.map((h: { handle: string }) => ({ platform: "twitter", username: h.handle })),
+        ...userRows.map((h: { platform: string; username: string }) => ({ platform: h.platform, username: h.username })),
+      ];
+      setRawTrackedHandles(combined);
+    });
+  }, [activeCompanyId]);
+
+  // Build a fast Set<"platform:username"> for O(1) lookup
+  const trackedHandleSet = useMemo(() => {
+    const set = new Set<string>();
+    for (const h of rawTrackedHandles) {
+      set.add(`${h.platform.toLowerCase()}:${h.username.toLowerCase()}`);
+    }
+    return set;
+  }, [rawTrackedHandles]);
 
   const saveLabel = async () => {
     if (!cluster) return;
@@ -267,9 +298,22 @@ export default function ClusterDetailPage() {
       item.platform === "hackernews" && item.externalId
         ? `https://news.ycombinator.com/item?id=${item.externalId}`
         : item.url;
+
+    const normalizedAuthor = item.author?.toLowerCase().replace(/^[@]/, "").replace(/^u\//, "") ?? null;
+    const isTracked = normalizedAuthor !== null && trackedHandleSet.has(`${item.platform}:${normalizedAuthor}`);
+    const authorLabel =
+      item.platform === "reddit" ? `u/${normalizedAuthor}`
+      : item.platform === "hackernews" ? normalizedAuthor
+      : `@${normalizedAuthor}`;
+
     return (
       <div key={i} className="cluster-item-row">
         <PlatformChip platform={item.platform} size="sm" />
+        {isTracked && (
+          <span style={{ fontSize: 10, fontFamily: "var(--font-mono)", padding: "1px 6px", borderRadius: 99, background: "color-mix(in oklch, var(--accent) 10%, var(--paper))", color: "var(--accent)", border: "1px solid color-mix(in oklch, var(--accent) 25%, transparent)", whiteSpace: "nowrap", flexShrink: 0 }}>
+            {authorLabel}
+          </span>
+        )}
         <span className="cluster-item-title">
           {href ? (
             <a href={href} target="_blank" rel="noopener noreferrer">
