@@ -7,7 +7,7 @@ import { StagePill } from "@/components/StagePill";
 import { NewsTimeline } from "@/components/news-timeline/TimelineTrack";
 import { DayDetailDrawer } from "@/components/news-timeline/DayDetailDrawer";
 import type {
-  NtlTimelineData, HoverPopState, NtlFeed, NtlDay, SelectedDayState,
+  NtlTimelineData, HoverPopState, NtlFeed, NtlDay, SelectedDayState, DensityKey,
 } from "@/components/news-timeline/timeline_core";
 import "./portal.css";
 
@@ -611,6 +611,7 @@ function NewsTimelineSection({ companyId }: { companyId: string }) {
   const [loading, setLoading] = useState(true);
   const [pop, setPop] = useState<HoverPopState>(null);
   const [selected, setSelected] = useState<SelectedDayState>(null);
+  const [density, setDensity] = useState<DensityKey>("minimal");
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -651,7 +652,15 @@ function NewsTimelineSection({ companyId }: { companyId: string }) {
           <span className="pp-shead-title">News timeline</span>
           <span className="pp-shead-desc">Google Alerts sentiment per feed · last 7 days</span>
         </div>
-        {feeds.length > 0 && <span className="pp-shead-meta">{feeds.length} feed{feeds.length !== 1 ? "s" : ""} · avg sentiment per day</span>}
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          {feeds.length > 0 && <span className="pp-shead-meta">{feeds.length} feed{feeds.length !== 1 ? "s" : ""} · avg sentiment per day</span>}
+          {feeds.length > 0 && (
+            <div className="seg seg-mono">
+              <button className={cx("seg-btn", density === "minimal" && "seg-btn-on")} onClick={() => setDensity("minimal")}>Compact</button>
+              <button className={cx("seg-btn", density === "recent" && "seg-btn-on")} onClick={() => setDensity("recent")}>Expanded</button>
+            </div>
+          )}
+        </div>
       </div>
 
       {loading ? (
@@ -670,7 +679,7 @@ function NewsTimelineSection({ companyId }: { companyId: string }) {
           </div>
           <NewsTimeline
             feeds={feeds} win="7d" feedFilter="all"
-            style="trend" arrangement="stacked" density="recent" showAvg={true}
+            style="trend" arrangement="stacked" density={density} showAvg={true}
             pop={pop} scrollRef={scrollRef}
             onHover={onHover} onLeave={onLeave} onDayClick={onDayClick}
             selectedDay={selected ? { feedId: selected.feed.feedId, date: selected.day.date } : null}
@@ -689,6 +698,7 @@ function SocialTimelineSection({ companyId }: { companyId: string }) {
   const [loading, setLoading] = useState(true);
   const [pop, setPop] = useState<HoverPopState>(null);
   const [selected, setSelected] = useState<SelectedDayState>(null);
+  const [density, setDensity] = useState<DensityKey>("minimal");
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -729,7 +739,15 @@ function SocialTimelineSection({ companyId }: { companyId: string }) {
           <span className="pp-shead-title">Social timeline</span>
           <span className="pp-shead-desc">Reddit · X · HackerNews · Threads sentiment per entity · last 7 days</span>
         </div>
-        {feeds.length > 0 && <span className="pp-shead-meta">{feeds.length} source{feeds.length !== 1 ? "s" : ""} · avg sentiment per day</span>}
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          {feeds.length > 0 && <span className="pp-shead-meta">{feeds.length} source{feeds.length !== 1 ? "s" : ""} · avg sentiment per day</span>}
+          {feeds.length > 0 && (
+            <div className="seg seg-mono">
+              <button className={cx("seg-btn", density === "minimal" && "seg-btn-on")} onClick={() => setDensity("minimal")}>Compact</button>
+              <button className={cx("seg-btn", density === "recent" && "seg-btn-on")} onClick={() => setDensity("recent")}>Expanded</button>
+            </div>
+          )}
+        </div>
       </div>
 
       {loading ? (
@@ -748,7 +766,7 @@ function SocialTimelineSection({ companyId }: { companyId: string }) {
           </div>
           <NewsTimeline
             feeds={feeds} win="7d" feedFilter="all"
-            style="trend" arrangement="stacked" density="recent" showAvg={true}
+            style="trend" arrangement="stacked" density={density} showAvg={true}
             pop={pop} scrollRef={scrollRef}
             onHover={onHover} onLeave={onLeave} onDayClick={onDayClick}
             selectedDay={selected ? { feedId: selected.feed.feedId, date: selected.day.date } : null}

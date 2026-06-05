@@ -6,7 +6,7 @@ import { useCompany } from "@/components/CompanyContext";
 import { NewsTimeline } from "@/components/news-timeline/TimelineTrack";
 import { DayDetailDrawer } from "@/components/news-timeline/DayDetailDrawer";
 import { NTL_WINDOWS } from "@/components/news-timeline/timeline_core";
-import type { HoverPopState, NtlTimelineData, WindowKey, NtlDay, NtlFeed, SelectedDayState } from "@/components/news-timeline/timeline_core";
+import type { HoverPopState, NtlTimelineData, WindowKey, DensityKey, NtlDay, NtlFeed, SelectedDayState } from "@/components/news-timeline/timeline_core";
 
 const WIN_OPTS: { key: WindowKey; label: string }[] = [
   { key: "7d",  label: "7 days" },
@@ -20,6 +20,7 @@ export default function NarrativesPage() {
   // News timeline state
   const [ntlData, setNtlData] = useState<NtlTimelineData | null>(null);
   const [ntlWin, setNtlWin] = useState<WindowKey>("30d");
+  const [chipDensity, setChipDensity] = useState<DensityKey>("minimal");
   const [ntlLoading, setNtlLoading] = useState(false);
   const [ntlPop, setNtlPop] = useState<HoverPopState>(null);
   const [selectedDay, setSelectedDay] = useState<SelectedDayState>(null);
@@ -184,6 +185,13 @@ export default function NarrativesPage() {
               ))}
             </div>
           </div>
+          <div className="filter-group">
+            <span className="filter-label">Cards</span>
+            <div className="seg seg-mono">
+              <button className={cx("seg-btn", chipDensity === "minimal" && "seg-btn-on")} onClick={() => setChipDensity("minimal")}>Compact</button>
+              <button className={cx("seg-btn", chipDensity === "recent" && "seg-btn-on")} onClick={() => setChipDensity("recent")}>Expanded</button>
+            </div>
+          </div>
           <div className="filter-group filter-group-right" style={{ gap: 10 }}>
             {summarizeResult && (
               <span className="result-meta" style={{ color: "var(--ink-60)" }}>
@@ -237,7 +245,7 @@ export default function NarrativesPage() {
                   feedFilter="all"
                   style="trend"
                   arrangement="stacked"
-                  density="recent"
+                  density={chipDensity}
                   showAvg={true}
                   pop={ntlPop}
                   scrollRef={scrollRef}
@@ -266,7 +274,7 @@ export default function NarrativesPage() {
                   feedFilter="all"
                   style="trend"
                   arrangement="stacked"
-                  density="recent"
+                  density={chipDensity}
                   showAvg={true}
                   pop={socialPop}
                   scrollRef={socialScrollRef}
