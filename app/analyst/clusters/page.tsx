@@ -10,6 +10,7 @@ import { AddItemDialog } from "@/components/AddItemDialog";
 import { ItemAnnotations } from "@/components/ItemAnnotations";
 import ThreadIngestDialog from "@/components/ThreadIngestDialog";
 import XReplyIngestDialog from "@/components/XReplyIngestDialog";
+import InstagramCommentIngestDialog from "@/components/InstagramCommentIngestDialog";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -290,6 +291,9 @@ export default function ClustersPage() {
   const [xReplyClusterId, setXReplyClusterId] = useState<string | null>(null);
   const [xReplyThreadUrl, setXReplyThreadUrl] = useState<string>("");
   const [xReplyEntityId, setXReplyEntityId] = useState<string | null>(null);
+  const [igCommentClusterId, setIgCommentClusterId] = useState<string | null>(null);
+  const [igCommentPostUrl, setIgCommentPostUrl] = useState<string>("");
+  const [igCommentEntityId, setIgCommentEntityId] = useState<string | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -878,6 +882,24 @@ export default function ClustersPage() {
                           </button>
                         );
                       })()}
+                      {(() => {
+                        const igItem = cluster.topItems.find((i) => i.platform === "instagram");
+                        if (!igItem) return null;
+                        return (
+                          <button
+                            className="btn-ghost btn"
+                            style={{ fontSize: 10, padding: "2px 8px", fontFamily: "var(--font-mono)", letterSpacing: "0.04em" }}
+                            onClick={() => {
+                              setIgCommentClusterId(cluster.id);
+                              setIgCommentPostUrl(igItem.url ?? igItem.externalId ?? "");
+                              setIgCommentEntityId(cluster.entityId);
+                            }}
+                            title="Add Instagram comments to this cluster"
+                          >
+                            ↩ Comments
+                          </button>
+                        );
+                      })()}
                     </div>
                   </div>
                   {cluster.trackedEntities?.length > 0 && (
@@ -922,6 +944,16 @@ export default function ClustersPage() {
           entityId={xReplyEntityId}
           onClose={() => setXReplyClusterId(null)}
           onInserted={() => { setXReplyClusterId(null); fetchClusters(); }}
+        />
+      )}
+
+      {igCommentClusterId && (
+        <InstagramCommentIngestDialog
+          clusterId={igCommentClusterId}
+          postUrl={igCommentPostUrl}
+          entityId={igCommentEntityId}
+          onClose={() => setIgCommentClusterId(null)}
+          onInserted={() => { setIgCommentClusterId(null); fetchClusters(); }}
         />
       )}
 

@@ -22,6 +22,12 @@ type ParsedTweet = {
   isOriginalPost: boolean;
 };
 
+type ParsedInstagramComment = {
+  author: string;
+  body: string;
+  timestamp: string | null;
+};
+
 type RedditChild = {
   kind: string;
   data: {
@@ -39,6 +45,10 @@ function isRedditUrl(url: string): boolean {
 
 function isXUrl(url: string): boolean {
   return /^https?:\/\/(x\.com|twitter\.com)\//i.test(url);
+}
+
+function isInstagramUrl(url: string): boolean {
+  return /^https?:\/\/(www\.)?instagram\.com\//i.test(url);
 }
 
 function toRedditJsonUrl(url: string): string {
@@ -98,11 +108,18 @@ export default function SubmitPage() {
   const [xPasteText, setXPasteText] = useState("");
   const [parsingXPaste, setParsingXPaste] = useState(false);
 
+  // Instagram comment panel state
+  const [igComments, setIgComments] = useState<ParsedInstagramComment[]>([]);
+  const [selectedIgIdxs, setSelectedIgIdxs] = useState<Set<number>>(new Set());
+  const [igPasteText, setIgPasteText] = useState("");
+  const [parsingIgPaste, setParsingIgPaste] = useState(false);
+
   const set = (k: keyof typeof form, v: string) =>
     setForm((f) => ({ ...f, [k]: v }));
 
   const isReddit = isRedditUrl(form.url);
   const isX = isXUrl(form.url) && !isReddit;
+  const isInstagram = isInstagramUrl(form.url) && !isReddit && !isX;
 
   // Clear Reddit panel when URL stops being Reddit
   useEffect(() => {
@@ -123,6 +140,15 @@ export default function SubmitPage() {
       setXPasteText("");
     }
   }, [isX]);
+
+  // Clear Instagram panel when URL stops being an Instagram URL
+  useEffect(() => {
+    if (!isInstagram) {
+      setIgComments([]);
+      setSelectedIgIdxs(new Set());
+      setIgPasteText("");
+    }
+  }, [isInstagram]);
 
   // Auto-fill author from X/Twitter status URL
   useEffect(() => {
@@ -254,10 +280,46 @@ export default function SubmitPage() {
     });
   }
 
+  const parseIgPaste = async () => {
+    if (!igPasteText.trim()) return;
+    setParsingIgPaste(true);
+    setIgComments([]);
+    setSelectedIgIdxs(new Set());
+    try {
+      const res = await fetch("/api/items/manual/parse-instagram-comments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: igPasteText }),
+      });
+      const data = await res.json();
+      const parsed: ParsedInstagramComment[] = data.comments ?? [];
+      setIgComments(parsed);
+      setSelectedIgIdxs(new Set(parsed.map((_, i) => i)));
+    } finally {
+      setParsingIgPaste(false);
+    }
+  };
+
+  function toggleAllIg() {
+    setSelectedIgIdxs(igComments.length === selectedIgIdxs.size
+      ? new Set()
+      : new Set(igComments.map((_, i) => i)));
+  }
+
+  function toggleIgIdx(i: number) {
+    setSelectedIgIdxs((s) => {
+      const next = new Set(s);
+      next.has(i) ? next.delete(i) : next.add(i);
+      return next;
+    });
+  }
+
   const selectedComments = redditComments.filter((_, i) => selectedIdxs.has(i));
   const selectedTweets = xTweets.filter((_, i) => selectedTweetIdxs.has(i));
+  const selectedIgComments = igComments.filter((_, i) => selectedIgIdxs.has(i));
   const useThreadFlow = (isReddit && selectedComments.length > 0) || (isX && selectedTweets.length > 0);
   const useXThreadFlow = isX && selectedTweets.length > 0;
+  const useInstagramFlow = isInstagram && selectedIgComments.length > 0;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -319,6 +381,32 @@ export default function SubmitPage() {
         setSelectedIdxs(new Set());
         setPasteText("");
         setPasteMode(false);
+      } else {
+        setError("Failed to submit. Check required fields.");
+      }
+    } else if (useInstagramFlow) {
+      // Instagram post + comments → create cluster automatically
+      const res = await fetch("/api/items/manual/instagram-thread", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          postUrl: form.url,
+          title: form.title,
+          body: form.body || undefined,
+          author: form.author || undefined,
+          publishedAt: form.publishedAt || undefined,
+          entityId: form.entityId !== "none" ? form.entityId : undefined,
+          companyId: activeCompanyId ?? undefined,
+          comments: selectedIgComments,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setDone({ clusterId: data.clusterId });
+        setForm(emptyForm);
+        setIgComments([]);
+        setSelectedIgIdxs(new Set());
+        setIgPasteText("");
       } else {
         setError("Failed to submit. Check required fields.");
       }
@@ -604,6 +692,103 @@ export default function SubmitPage() {
                       {selectedTweets.length > 0 && (
                         <div style={{ marginTop: 8, fontSize: 12, color: "var(--ink-60)" }}>
                           Submitting will create a cluster with {selectedTweets.length} tweet{selectedTweets.length !== 1 ? "s" : ""} and run sentiment analysis.
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* Instagram comment panel */}
+              {isInstagram && (
+                <div style={{ border: "1px solid var(--border)", borderRadius: 8, padding: "14px 14px 10px", background: "var(--surface-1)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 2 }}>Instagram post detected</div>
+                      <div style={{ fontSize: 12, color: "var(--ink-60)" }}>
+                        Paste the comments to create a tracked cluster with sentiment analysis.
+                      </div>
+                    </div>
+                    {igComments.length > 0 && (
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => { setIgComments([]); setSelectedIgIdxs(new Set()); setIgPasteText(""); }}
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+
+                  {igComments.length === 0 && (
+                    <div style={{ marginBottom: 8 }}>
+                      <textarea
+                        value={igPasteText}
+                        onChange={(e) => setIgPasteText(e.target.value)}
+                        rows={6}
+                        placeholder="Copy the comments from Instagram and paste here"
+                        style={{ width: "100%", boxSizing: "border-box", fontSize: 12, padding: "8px 10px", background: "var(--surface-0, var(--paper))", border: "1px solid var(--border)", borderRadius: 6, color: "var(--ink-100)", resize: "vertical", fontFamily: "inherit" }}
+                      />
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        onClick={parseIgPaste}
+                        disabled={parsingIgPaste || !igPasteText.trim()}
+                        style={{ marginTop: 6 }}
+                      >
+                        {parsingIgPaste ? "Parsing…" : "Parse comments"}
+                      </button>
+                    </div>
+                  )}
+
+                  {igComments.length > 0 && (
+                    <>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                        <div style={{ fontSize: 12, color: "var(--ink-60)" }}>
+                          {selectedIgIdxs.size} of {igComments.length} comment{igComments.length !== 1 ? "s" : ""} selected
+                        </div>
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={toggleAllIg}>
+                          {selectedIgIdxs.size === igComments.length ? "Deselect all" : "Select all"}
+                        </button>
+                      </div>
+                      <div style={{ maxHeight: 260, overflowY: "auto", border: "1px solid var(--border)", borderRadius: 6 }}>
+                        {igComments.map((c, i) => (
+                          <div
+                            key={i}
+                            onClick={() => toggleIgIdx(i)}
+                            style={{
+                              display: "flex",
+                              gap: 10,
+                              padding: "9px 12px",
+                              cursor: "pointer",
+                              borderBottom: i < igComments.length - 1 ? "1px solid var(--border)" : "none",
+                              background: selectedIgIdxs.has(i) ? "var(--surface-2)" : "transparent",
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selectedIgIdxs.has(i)}
+                              onChange={() => toggleIgIdx(i)}
+                              onClick={(e) => e.stopPropagation()}
+                              style={{ marginTop: 2, flexShrink: 0 }}
+                            />
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ display: "flex", gap: 8, marginBottom: 2 }}>
+                                <span style={{ fontWeight: 600, fontSize: 12 }}>@{c.author}</span>
+                                {c.timestamp && (
+                                  <span style={{ fontSize: 11, color: "var(--ink-40)" }}>{c.timestamp}</span>
+                                )}
+                              </div>
+                              <p style={{ margin: 0, fontSize: 12, color: "var(--ink-80)", overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
+                                {c.body}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      {selectedIgComments.length > 0 && (
+                        <div style={{ marginTop: 8, fontSize: 12, color: "var(--ink-60)" }}>
+                          Submitting will create a cluster with {selectedIgComments.length} comment{selectedIgComments.length !== 1 ? "s" : ""} and run sentiment analysis.
                         </div>
                       )}
                     </>

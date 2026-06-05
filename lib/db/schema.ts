@@ -47,6 +47,7 @@ export const platformEnum = pgEnum("platform", [
   "google_alerts",
   "manual",
   "threads",
+  "instagram",
 ]);
 
 export const companies = pgTable("companies", {
