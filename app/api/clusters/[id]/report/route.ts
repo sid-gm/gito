@@ -139,7 +139,7 @@ ${linkedBlocks.length > 0 ? linkedBlocks.join("\n\n") + "\n\n" : ""}Analyze all 
 - "aiSummary": overall analysis tying all clusters together — what is happening, why it matters
 - "entityActions": what ${entity} was actively doing, saying, or positioning (based primarily on news coverage)
 - "publicReaction": how the public and online communities reacted (based primarily on social items)
-- "reputationRisk": reputation risk assessment — include risk level (low / medium / high) and a concise explanation
+- "reputationRisk": a plain text string — state the risk level (low / medium / high) followed by a concise explanation, all in one string (e.g. "High — the backlash indicates...")
 - "actionableItems": array of strings, each a specific actionable recommendation for managing this narrative
 - "newsSentimentScore": number from -1.0 (very negative) to 1.0 (very positive) reflecting overall news tone across all clusters
 - "newsSentimentLabel": one of "very negative", "negative", "mixed", "neutral", "positive", "very positive"
@@ -156,6 +156,10 @@ Respond with only valid JSON, no markdown.`;
 
     const parsed = JSON.parse(text.trim()) as AISummaryResult;
     if (!Array.isArray(parsed.actionableItems)) parsed.actionableItems = [];
+    if (parsed.reputationRisk && typeof parsed.reputationRisk !== "string") {
+      const r = parsed.reputationRisk as unknown as { riskLevel?: string; explanation?: string };
+      parsed.reputationRisk = [r.riskLevel, r.explanation].filter(Boolean).join(" — ");
+    }
     return parsed;
   } catch {
     return null;
