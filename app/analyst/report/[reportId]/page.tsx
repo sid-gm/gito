@@ -347,7 +347,7 @@ export default function ReportPage() {
       )}
 
       {/* ── Actionable Items ───────────────────────────────────────────────── */}
-      {cluster.actionableItems && cluster.actionableItems.length > 0 && (
+      {Array.isArray(cluster.actionableItems) && cluster.actionableItems.length > 0 && (
         <>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", fontFamily: "var(--font-mono)", fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--ink-50)", padding: "0 0 8px", margin: "32px 0 14px", borderBottom: "1px solid var(--border-soft)" }}>
             <span>Actionable Items</span>

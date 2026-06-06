@@ -155,6 +155,7 @@ Respond with only valid JSON, no markdown.`;
     });
 
     const parsed = JSON.parse(text.trim()) as AISummaryResult;
+    if (!Array.isArray(parsed.actionableItems)) parsed.actionableItems = [];
     return parsed;
   } catch {
     return null;
