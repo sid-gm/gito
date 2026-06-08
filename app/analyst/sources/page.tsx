@@ -157,11 +157,24 @@ export default function SourcesPage() {
   const [manualUserUsername, setManualUserUsername] = useState("");
   const [manualUserError, setManualUserError] = useState("");
 
+  // Extension API key
+  const [apiKey, setApiKey] = useState<string | null>(null);
+  const [apiKeyVisible, setApiKeyVisible] = useState(false);
+  const [apiKeyCopied, setApiKeyCopied] = useState(false);
+  const [apiKeyRegenerating, setApiKeyRegenerating] = useState(false);
+
   const loadEntities = () => {
     if (!activeCompanyId) return;
     fetch(`/api/entities?companyId=${activeCompanyId}`)
       .then((r) => r.json())
       .then((rows: Entity[]) => setEntities(rows));
+  };
+
+  const loadApiKey = () => {
+    if (!activeCompanyId) return;
+    fetch(`/api/companies/api-key?companyId=${activeCompanyId}`)
+      .then((r) => r.json())
+      .then((d: { apiKey: string }) => setApiKey(d.apiKey));
   };
 
   const loadRssFeeds = () => {
@@ -197,6 +210,7 @@ export default function SourcesPage() {
     loadRssFeeds();
     loadTwitterHandles();
     loadUserHandles();
+    loadApiKey();
 
     const refreshStats = () => {
       const cq = `companyId=${activeCompanyId}`;
@@ -401,6 +415,26 @@ export default function SourcesPage() {
       setRedditEditingId(null);
       setRedditEditKeywords("");
     }
+  }
+
+  async function handleRegenerateApiKey() {
+    if (!activeCompanyId) return;
+    if (!window.confirm("Regenerate API key? The old key will stop working immediately.")) return;
+    setApiKeyRegenerating(true);
+    const res = await fetch(`/api/companies/api-key/regenerate?companyId=${activeCompanyId}`, { method: "POST" });
+    if (res.ok) {
+      const d = await res.json() as { apiKey: string };
+      setApiKey(d.apiKey);
+      setApiKeyVisible(true);
+    }
+    setApiKeyRegenerating(false);
+  }
+
+  async function handleCopyApiKey() {
+    if (!apiKey) return;
+    await navigator.clipboard.writeText(apiKey);
+    setApiKeyCopied(true);
+    setTimeout(() => setApiKeyCopied(false), 2000);
   }
 
   // Feeds grouped by entity
@@ -1099,6 +1133,52 @@ export default function SourcesPage() {
               </div>
             );
           })}
+        </div>
+
+        {/* ── Chrome Extension ── */}
+        <div className="tbl-wrap" style={{ marginBottom: 32 }}>
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 13, fontWeight: 600 }}>Chrome Extension</div>
+            <div style={{ fontSize: 12, color: "var(--ink-60)" }}>Use this key in the Gito Chrome Extension settings to enable direct ingest from your browser.</div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <input
+              type={apiKeyVisible ? "text" : "password"}
+              readOnly
+              value={apiKey ?? "Loading…"}
+              style={{
+                flex: 1,
+                fontSize: 12,
+                padding: "5px 10px",
+                background: "var(--surface-1)",
+                border: "1px solid var(--border)",
+                borderRadius: 4,
+                color: "var(--ink-100)",
+                fontFamily: "var(--font-mono)",
+              }}
+            />
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => setApiKeyVisible((v) => !v)}
+            >
+              {apiKeyVisible ? "Hide" : "Show"}
+            </button>
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={handleCopyApiKey}
+              disabled={!apiKey}
+            >
+              {apiKeyCopied ? "Copied!" : "Copy key"}
+            </button>
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={handleRegenerateApiKey}
+              disabled={apiKeyRegenerating}
+              style={{ color: "var(--ink-60)" }}
+            >
+              {apiKeyRegenerating ? "Regenerating…" : "Regenerate"}
+            </button>
+          </div>
         </div>
 
         <div className="cron-panel">

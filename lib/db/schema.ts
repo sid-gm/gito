@@ -53,6 +53,7 @@ export const platformEnum = pgEnum("platform", [
 export const companies = pgTable("companies", {
   id:        uuid("id").defaultRandom().primaryKey(),
   name:      text("name").notNull(),
+  apiKey:    text("api_key").unique(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
