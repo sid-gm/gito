@@ -149,6 +149,96 @@ export async function collectReddit(term: string, tabId: number): Promise<Extens
   return (results[0]?.result ?? []) as ExtensionItem[];
 }
 
+export async function collectXThread(postUrl: string, tabId: number, postExternalId?: string): Promise<ExtensionItem[]> {
+  await scrollPage(tabId, 3, 1500);
+  const results = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: (pageUrl: string, rootId: string | null): any[] => {
+      // Derive root ID from URL if not passed in
+      const urlRootId = rootId ?? pageUrl.match(/\/status\/(\d+)/)?.[1] ?? null;
+      const articles = document.querySelectorAll('article[data-testid="tweet"]');
+      return Array.from(articles).map((a: any) => {
+        const body = a.querySelector('[data-testid="tweetText"]')?.textContent ?? "";
+        if (!body) return null;
+        const authorEl = a.querySelector('[data-testid="User-Name"] a[href*="/"]');
+        const author = authorEl?.getAttribute("href")?.replace("/", "") ?? "";
+        const timeEl = a.querySelector("time");
+        const publishedAt = timeEl?.getAttribute("datetime") ?? null;
+        const statusLink = a.querySelector('a[href*="/status/"]');
+        const articleUrl = statusLink
+          ? `https://x.com${new URL(statusLink.href).pathname}`
+          : pageUrl;
+        const articleId = articleUrl.match(/\/status\/(\d+)/)?.[1] ?? null;
+        const isRoot = articleId === urlRootId;
+        return {
+          url: articleUrl,
+          title: body.slice(0, 200),
+          body,
+          author: `@${author}`,
+          publishedAt,
+          platform: "twitter",
+          subtype: isRoot ? "x_post" : "x_reply",
+          externalId: articleId,
+          parentExternalId: isRoot ? null : urlRootId,
+          rootExternalId: urlRootId,
+        };
+      }).filter(Boolean);
+    },
+    args: [postUrl, postExternalId ?? null],
+  });
+  return (results[0]?.result ?? []) as ExtensionItem[];
+}
+
+export async function collectThreadsThread(postUrl: string, tabId: number): Promise<ExtensionItem[]> {
+  await scrollPage(tabId, 3, 1500);
+  const results = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: (pageUrl: string): any[] => {
+      const rootExternalId = pageUrl.match(/\/post\/([A-Za-z0-9_-]+)/)?.[1] ?? null;
+      const articles = Array.from(document.querySelectorAll('div[role="article"], article'));
+      const items: any[] = [];
+      let rootFound = false;
+
+      for (const el of articles) {
+        // Body: prefer the pressable content container, fallback to full text
+        const bodyEl = (el as Element).querySelector("[data-pressable-container]");
+        const body = (bodyEl?.textContent ?? (el as Element).textContent ?? "").trim();
+        if (body.length < 5) continue;
+
+        const authorEl = (el as Element).querySelector('a[href^="/@"]');
+        const author = authorEl?.getAttribute("href")?.replace("/@", "") ?? "";
+
+        const postLinkEl = (el as Element).querySelector('a[href*="/post/"]');
+        const rawHref = postLinkEl?.getAttribute("href") ?? "";
+        // Normalise to threads.net regardless of whether the page loaded as threads.com
+        const articleUrl = rawHref
+          ? `https://www.threads.net${rawHref}`
+          : pageUrl;
+        const externalId = articleUrl.match(/\/post\/([A-Za-z0-9_-]+)/)?.[1] ?? null;
+
+        const isRoot = !rootFound && (externalId === rootExternalId || !rootFound);
+        if (isRoot) rootFound = true;
+
+        items.push({
+          url: articleUrl,
+          title: body.slice(0, 200),
+          body,
+          author,
+          publishedAt: null,
+          platform: "threads",
+          subtype: isRoot ? "threads_post" : "threads_reply",
+          externalId,
+          parentExternalId: isRoot ? null : rootExternalId,
+          rootExternalId,
+        });
+      }
+      return items;
+    },
+    args: [postUrl],
+  });
+  return (results[0]?.result ?? []) as ExtensionItem[];
+}
+
 export function dedupeByExternalId(items: ExtensionItem[]): ExtensionItem[] {
   const seen = new Set<string>();
   return items.filter((i) => {

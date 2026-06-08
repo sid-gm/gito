@@ -2,6 +2,8 @@ import {
   collectX,
   collectThreads,
   collectReddit,
+  collectXThread,
+  collectThreadsThread,
   dedupeByExternalId,
   waitForTabLoad,
   ExtensionItem,
@@ -97,6 +99,36 @@ async function runAutoCollect(config: SearchConfig, account: Account, triggeredB
         allItems.push(...items);
         await chrome.tabs.remove(tabId);
         tabId = null;
+
+        // Drill into each post found on the search page to collect replies
+        if (platform === "twitter" || platform === "threads") {
+          const postUrls = items
+            .filter((i) => i.subtype === "x_post" || i.subtype === "threads_post")
+            .map((i) => ({ url: i.url, externalId: i.externalId }))
+            .filter((v, idx, arr) => arr.findIndex((x) => x.url === v.url) === idx);
+
+          for (const post of postUrls) {
+            let threadTabId: number | null = null;
+            try {
+              console.log(`[Gito auto-collect] drilling into thread: ${post.url}`);
+              const threadTab = await chrome.tabs.create({ url: post.url, active: false });
+              threadTabId = threadTab.id!;
+              await waitForTabLoad(threadTabId, 8000);
+              const threadItems = platform === "twitter"
+                ? await collectXThread(post.url, threadTabId, post.externalId ?? undefined)
+                : await collectThreadsThread(post.url, threadTabId);
+              console.log(`[Gito auto-collect] thread ${post.url}: ${threadItems.length} items`);
+              allItems.push(...threadItems);
+              await chrome.tabs.remove(threadTabId);
+              threadTabId = null;
+            } catch (err) {
+              const msg = `${platform} thread ${post.url}: ${String(err)}`;
+              console.error(`[Gito auto-collect] ${msg}`);
+              errors.push(msg);
+              if (threadTabId !== null) chrome.tabs.remove(threadTabId).catch(() => {});
+            }
+          }
+        }
       } catch (err) {
         const msg = `${platform}/${term}: ${String(err)}`;
         console.error(`[Gito auto-collect] ${msg}`);
