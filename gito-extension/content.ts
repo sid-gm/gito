@@ -88,22 +88,64 @@ function extractThreadsPost(selectedText: string): ExtensionItem {
 function extractRedditPost(selectedText: string): ExtensionItem {
   const url = window.location.href;
   try {
-    const anchor = window.getSelection()?.anchorNode;
-    let container: Element | null = null;
-    if (anchor) {
-      let node: Node | null = anchor instanceof Element ? anchor : anchor.parentElement;
-      while (node && node !== document.body) {
-        if (node instanceof Element && (node.tagName.toLowerCase() === "shreddit-post" || node.matches("[data-post-id]"))) { container = node; break; }
-        node = node.parentElement;
-      }
-    }
-    if (!container) container = document.querySelector("shreddit-post, [data-post-id]");
-    const rawId = url.match(/comments\/([a-z0-9]+)\//i)?.[1] ?? container?.getAttribute("data-post-id");
+    const rawId = url.match(/comments\/([a-z0-9]+)\//i)?.[1];
     const externalId = rawId ? `t3_${rawId}` : undefined;
-    return { url, title: selectedText.slice(0, 200), body: selectedText, platform: "reddit", subtype: "reddit_post", externalId };
+
+    const postEl = document.querySelector("shreddit-post");
+    const author = postEl?.getAttribute("author") ?? undefined;
+    const publishedAt = postEl?.getAttribute("created-timestamp") ?? undefined;
+
+    // Title from shreddit-post attribute or first h1 on page
+    const postTitle = postEl?.getAttribute("post-title")
+      ?? (document.querySelector('h1[slot="title"], [slot="title"] h1, h1') as HTMLElement | null)?.textContent?.trim()
+      ?? selectedText.slice(0, 200);
+
+    // Body from the slot-based text body (light DOM, accessible)
+    const postBodyEl = document.querySelector('shreddit-post-text-body [slot="text-body"]');
+    const postBody = postBodyEl?.textContent?.trim() ?? selectedText;
+
+    return { url, title: postTitle, body: postBody, author, platform: "reddit", subtype: "reddit_post", externalId, publishedAt };
   } catch {
     return { url, title: selectedText.slice(0, 200), body: selectedText, platform: "reddit", subtype: "reddit_post" };
   }
+}
+
+function extractVisibleRedditComments(mainPostExternalId?: string): ExtensionItem[] {
+  const commentEls = Array.from(document.querySelectorAll("shreddit-comment"));
+  const comments: ExtensionItem[] = [];
+
+  for (const el of commentEls) {
+    const thingId = el.getAttribute("thingid");
+    const postId = el.getAttribute("postid");
+
+    // Skip comments that don't belong to this post
+    if (mainPostExternalId && postId && postId !== mainPostExternalId) continue;
+
+    const author = el.getAttribute("author") ?? undefined;
+    const depth = parseInt(el.getAttribute("depth") ?? "0", 10);
+    const permalinkAttr = el.getAttribute("permalink");
+    const commentUrl = permalinkAttr ? `https://www.reddit.com${permalinkAttr}` : window.location.href;
+
+    const commentTextEl = el.querySelector('[slot="comment"]');
+    const body = commentTextEl?.textContent?.trim();
+    if (!body) continue;
+
+    const timeEl = el.querySelector('[slot="commentMeta"] time') as HTMLTimeElement | null;
+    const publishedAt = timeEl?.getAttribute("datetime") ?? undefined;
+
+    comments.push({
+      url: commentUrl,
+      title: body.slice(0, 200),
+      body,
+      author,
+      platform: "reddit",
+      subtype: depth === 0 ? "reddit_comment" : "reddit_reply",
+      externalId: thingId ?? undefined,
+      publishedAt,
+    });
+  }
+
+  return comments;
 }
 
 function extractInstagramPost(selectedText: string): ExtensionItem {
@@ -244,7 +286,7 @@ function showPickerPanel(item: ExtensionItem, anchorRect: DOMRect, entities: Ent
   preview.textContent = item.title ?? item.body ?? item.url;
   preview.title = item.title ?? item.body ?? item.url;
 
-  // Replies checkbox (Twitter/X thread pages only)
+  // Replies/comments checkbox
   let includeRepliesCheckbox: HTMLInputElement | null = null;
   if (replies && replies.length > 0) {
     const repliesRow = document.createElement("label");
@@ -258,7 +300,9 @@ function showPickerPanel(item: ExtensionItem, anchorRect: DOMRect, entities: Ent
     includeRepliesCheckbox.checked = true;
     includeRepliesCheckbox.style.cssText = "cursor:pointer;accent-color:#1a1a1a;";
     const repliesLabel = document.createElement("span");
-    repliesLabel.textContent = `Include ${replies.length} repl${replies.length === 1 ? "y" : "ies"}`;
+    const isReddit = item.platform === "reddit";
+    const noun = isReddit ? "comment" : "repl";
+    repliesLabel.textContent = `Include ${replies.length} ${noun}${replies.length === 1 ? (isReddit ? "" : "y") : (isReddit ? "s" : "ies")}`;
     repliesRow.appendChild(includeRepliesCheckbox);
     repliesRow.appendChild(repliesLabel);
     body.appendChild(repliesRow);
@@ -323,7 +367,12 @@ async function initiateCapture(selectedText: string, anchorRect: DOMRect) {
   const item = extractItem(selectedText);
 
   const isTwitterThread = /x\.com|twitter\.com/.test(window.location.href) && /\/status\/\d+/.test(window.location.href);
-  const replies = isTwitterThread ? extractVisibleReplies(item.externalId) : undefined;
+  const isRedditThread = /reddit\.com/.test(window.location.href) && /\/comments\//.test(window.location.href);
+  const replies = isTwitterThread
+    ? extractVisibleReplies(item.externalId)
+    : isRedditThread
+    ? extractVisibleRedditComments(item.externalId)
+    : undefined;
 
   chrome.runtime.sendMessage({ type: "GET_CONTEXT" }, (response) => {
     if (chrome.runtime.lastError || !response?.ok) {

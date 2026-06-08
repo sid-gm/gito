@@ -100,11 +100,13 @@ export async function POST(req: Request) {
 
   const insertedCount = insertedRows.length;
 
-  // If this batch is a Twitter thread (one x_post + at least one x_reply), cluster them together.
-  const hasPost = items.some((i) => i.subtype === "x_post");
-  const hasReplies = items.some((i) => i.subtype === "x_reply");
+  // Cluster Twitter threads (x_post + x_reply) and Reddit threads (reddit_post + reddit_comment/reddit_reply)
+  const isTwitterThread = items.some((i) => i.subtype === "x_post") && items.some((i) => i.subtype === "x_reply");
+  const isRedditThread =
+    items.some((i) => i.subtype === "reddit_post") &&
+    items.some((i) => i.subtype === "reddit_comment" || i.subtype === "reddit_reply");
 
-  if (hasPost && hasReplies) {
+  if (isTwitterThread || isRedditThread) {
     // Resolve IDs for all items in the batch (including pre-existing duplicates).
     const externalIds = toInsert.map((i) => i.externalId).filter((id): id is string => !!id);
     const resolvedRows = externalIds.length > 0
@@ -121,8 +123,9 @@ export async function POST(req: Request) {
     ]);
 
     if (resolvedIds.size > 0) {
-      const post = items.find((i) => i.subtype === "x_post");
-      const clusterLabel = (post?.title ?? post?.body ?? "Twitter thread").slice(0, 80);
+      const post = items.find((i) => i.subtype === "x_post" || i.subtype === "reddit_post");
+      const defaultLabel = isRedditThread ? "Reddit thread" : "Twitter thread";
+      const clusterLabel = (post?.title ?? post?.body ?? defaultLabel).slice(0, 80);
       const resolvedEntityId = toInsert.find((i) => i.entityId)?.entityId ?? null;
 
       const [newCluster] = await db
