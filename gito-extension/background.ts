@@ -109,43 +109,52 @@ async function runAutoCollect(config: SearchConfig, account: Account, triggeredB
   const unique = dedupeByExternalId(allItems);
   console.log(`[Gito auto-collect] ${unique.length} unique items after dedup`);
 
-  if (unique.length === 0) {
-    await recordRun(account, { runId, ranAt, triggeredBy, config, collected: allItems.length, inserted: 0 });
-    return { collected: allItems.length, inserted: 0, errors };
-  }
+  let inserted = 0;
 
-  const res = await fetch(new URL("/api/items/extension-ingest", account.gitoUrl).href, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${account.apiKey}`,
-    },
-    body: JSON.stringify({ items: unique, collectRunId: runId }),
-  });
+  if (unique.length > 0) {
+    try {
+      const res = await fetch(new URL("/api/items/extension-ingest", account.gitoUrl).href, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${account.apiKey}`,
+        },
+        body: JSON.stringify({ items: unique, collectRunId: runId }),
+      });
 
-  if (!res.ok) throw new Error(`Ingest API returned HTTP ${res.status}`);
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        errors.push(`Ingest failed: HTTP ${res.status} ${text.slice(0, 200)}`);
+        console.error(`[Gito auto-collect] ingest HTTP ${res.status}:`, text);
+      } else {
+        const data = await res.json();
+        inserted = data.inserted ?? 0;
 
-  const data = await res.json();
-  const inserted: number = data.inserted ?? 0;
+        const today = new Date().toISOString().slice(0, 10);
+        const stats = await chrome.storage.local.get(["dailyCount"]) as {
+          dailyCount?: { date: string; count: number };
+        };
+        await chrome.storage.local.set({
+          lastRun: new Date().toISOString(),
+          lastInserted: inserted,
+          failureCount: 0,
+          dailyCount:
+            stats.dailyCount?.date === today
+              ? { date: today, count: stats.dailyCount.count + inserted }
+              : { date: today, count: inserted },
+        });
 
-  const today = new Date().toISOString().slice(0, 10);
-  const stats = await chrome.storage.local.get(["dailyCount"]) as {
-    dailyCount?: { date: string; count: number };
-  };
-  await chrome.storage.local.set({
-    lastRun: new Date().toISOString(),
-    lastInserted: inserted,
-    failureCount: 0,
-    dailyCount:
-      stats.dailyCount?.date === today
-        ? { date: today, count: stats.dailyCount.count + inserted }
-        : { date: today, count: inserted },
-  });
-
-  if (inserted > 0) {
-    chrome.action.setBadgeText({ text: String(inserted) });
-    chrome.action.setBadgeBackgroundColor({ color: "#16a34a" });
-    setTimeout(() => chrome.action.setBadgeText({ text: "" }), 30000);
+        if (inserted > 0) {
+          chrome.action.setBadgeText({ text: String(inserted) });
+          chrome.action.setBadgeBackgroundColor({ color: "#16a34a" });
+          setTimeout(() => chrome.action.setBadgeText({ text: "" }), 30000);
+        }
+      }
+    } catch (err) {
+      const msg = `Ingest error: ${String(err)}`;
+      errors.push(msg);
+      console.error(`[Gito auto-collect] ${msg}`);
+    }
   }
 
   await recordRun(account, { runId, ranAt, triggeredBy, config, collected: allItems.length, inserted });
