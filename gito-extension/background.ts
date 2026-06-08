@@ -63,7 +63,8 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         return;
       }
 
-      const body: Record<string, unknown> = { items: [msg.payload] };
+      const allItems = [msg.payload, ...(msg.replies ?? [])];
+      const body: Record<string, unknown> = { items: allItems };
       if (msg.entityId) body.entityId = msg.entityId;
 
       try {

@@ -13,6 +13,18 @@ interface Entity { id: string; label: string }
 
 // ─── DOM extractors ──────────────────────────────────────────────────────────
 
+function extractTweetFromArticle(article: Element, fallbackText = ""): ExtensionItem {
+  const body = article.querySelector('[data-testid="tweetText"]')?.textContent ?? fallbackText;
+  const authorEl = article.querySelector('[data-testid="User-Name"] a') as HTMLAnchorElement | null;
+  const author = authorEl?.textContent?.replace(/^@/, "") ?? undefined;
+  const timeEl = article.querySelector("time") as HTMLTimeElement | null;
+  const publishedAt = timeEl?.getAttribute("datetime") ?? undefined;
+  const statusLink = article.querySelector('a[href*="/status/"]') as HTMLAnchorElement | null;
+  const canonicalUrl = statusLink ? `https://x.com${new URL(statusLink.href).pathname}` : window.location.href;
+  const externalId = canonicalUrl.match(/\/status\/(\d+)/)?.[1];
+  return { url: canonicalUrl, title: body.slice(0, 200), body, author, platform: "twitter", subtype: "x_post", externalId, publishedAt };
+}
+
 function extractTweet(selectedText: string): ExtensionItem {
   const url = window.location.href;
   try {
@@ -26,20 +38,28 @@ function extractTweet(selectedText: string): ExtensionItem {
       }
     }
     if (!article) article = document.querySelector('article[data-testid="tweet"]');
+    if (!article) return { url, title: selectedText.slice(0, 200), body: selectedText, platform: "twitter", subtype: "x_post" };
 
-    const body = article?.querySelector('[data-testid="tweetText"]')?.textContent ?? selectedText;
-    const authorEl = article?.querySelector('[data-testid="User-Name"] a') as HTMLAnchorElement | null;
-    const author = authorEl?.textContent?.replace(/^@/, "") ?? undefined;
-    const timeEl = article?.querySelector("time") as HTMLTimeElement | null;
-    const publishedAt = timeEl?.getAttribute("datetime") ?? undefined;
-    const statusLink = article?.querySelector('a[href*="/status/"]') as HTMLAnchorElement | null;
-    const canonicalUrl = statusLink ? `https://x.com${new URL(statusLink.href).pathname}` : url;
-    const externalId = canonicalUrl.match(/\/status\/(\d+)/)?.[1];
-
-    return { url: canonicalUrl, title: body.slice(0, 200), body, author, platform: "twitter", subtype: "x_post", externalId, publishedAt };
+    return extractTweetFromArticle(article, selectedText);
   } catch {
     return { url, title: selectedText.slice(0, 200), body: selectedText, platform: "twitter", subtype: "x_post" };
   }
+}
+
+function extractVisibleReplies(mainExternalId?: string): ExtensionItem[] {
+  const articles = Array.from(document.querySelectorAll('article[data-testid="tweet"]'));
+  const replies: ExtensionItem[] = [];
+  for (const article of articles) {
+    const statusLink = article.querySelector('a[href*="/status/"]') as HTMLAnchorElement | null;
+    const articleId = statusLink
+      ? new URL(statusLink.href).pathname.match(/\/status\/(\d+)/)?.[1]
+      : undefined;
+    if (!articleId || articleId === mainExternalId) continue;
+    const item = extractTweetFromArticle(article);
+    item.subtype = "x_reply";
+    replies.push(item);
+  }
+  return replies;
 }
 
 function extractThreadsPost(selectedText: string): ExtensionItem {
@@ -132,6 +152,12 @@ function showToast(text: string, type: "success" | "error") {
   setTimeout(() => el.remove(), 2500);
 }
 
+// ─── Runtime guard ───────────────────────────────────────────────────────────
+
+function runtimeOk(): boolean {
+  try { return !!chrome.runtime?.id; } catch { return false; }
+}
+
 // ─── Entity picker panel ─────────────────────────────────────────────────────
 
 let pickerEl: HTMLElement | null = null;
@@ -141,7 +167,7 @@ function removePickerPanel() {
   pickerEl = null;
 }
 
-function showPickerPanel(item: ExtensionItem, anchorRect: DOMRect, entities: Entity[]) {
+function showPickerPanel(item: ExtensionItem, anchorRect: DOMRect, entities: Entity[], replies?: ExtensionItem[]) {
   removePickerPanel();
 
   const panel = document.createElement("div");
@@ -218,6 +244,26 @@ function showPickerPanel(item: ExtensionItem, anchorRect: DOMRect, entities: Ent
   preview.textContent = item.title ?? item.body ?? item.url;
   preview.title = item.title ?? item.body ?? item.url;
 
+  // Replies checkbox (Twitter/X thread pages only)
+  let includeRepliesCheckbox: HTMLInputElement | null = null;
+  if (replies && replies.length > 0) {
+    const repliesRow = document.createElement("label");
+    repliesRow.style.cssText = `
+      display:flex;align-items:center;gap:6px;
+      margin-bottom:10px;cursor:pointer;
+      font-size:12px;color:#444;
+    `;
+    includeRepliesCheckbox = document.createElement("input");
+    includeRepliesCheckbox.type = "checkbox";
+    includeRepliesCheckbox.checked = true;
+    includeRepliesCheckbox.style.cssText = "cursor:pointer;accent-color:#1a1a1a;";
+    const repliesLabel = document.createElement("span");
+    repliesLabel.textContent = `Include ${replies.length} repl${replies.length === 1 ? "y" : "ies"}`;
+    repliesRow.appendChild(includeRepliesCheckbox);
+    repliesRow.appendChild(repliesLabel);
+    body.appendChild(repliesRow);
+  }
+
   // Send button
   const sendBtn = document.createElement("button");
   sendBtn.textContent = "Send";
@@ -229,11 +275,12 @@ function showPickerPanel(item: ExtensionItem, anchorRect: DOMRect, entities: Ent
 
   sendBtn.addEventListener("click", async () => {
     const entityId = select.value || undefined;
+    const replyItems = (includeRepliesCheckbox?.checked && replies?.length) ? replies : undefined;
     sendBtn.textContent = "Sending…";
     sendBtn.style.opacity = "0.6";
     sendBtn.style.cursor = "not-allowed";
 
-    chrome.runtime.sendMessage({ type: "SEND_ITEM", payload: item, entityId }, (response) => {
+    chrome.runtime.sendMessage({ type: "SEND_ITEM", payload: item, replies: replyItems, entityId }, (response) => {
       removePickerPanel();
       if (chrome.runtime.lastError || !response?.ok) {
         const msg = response?.error === "Not configured"
@@ -241,7 +288,8 @@ function showPickerPanel(item: ExtensionItem, anchorRect: DOMRect, entities: Ent
           : "Failed to send — check API key";
         showToast(msg, "error");
       } else {
-        showToast("✓ Sent to Gito", "success");
+        const total = 1 + (replyItems?.length ?? 0);
+        showToast(total > 1 ? `✓ Sent ${total} items to Gito` : "✓ Sent to Gito", "success");
       }
     });
   });
@@ -274,17 +322,19 @@ function onOutsideClick(e: MouseEvent) {
 async function initiateCapture(selectedText: string, anchorRect: DOMRect) {
   const item = extractItem(selectedText);
 
+  const isTwitterThread = /x\.com|twitter\.com/.test(window.location.href) && /\/status\/\d+/.test(window.location.href);
+  const replies = isTwitterThread ? extractVisibleReplies(item.externalId) : undefined;
+
   chrome.runtime.sendMessage({ type: "GET_CONTEXT" }, (response) => {
     if (chrome.runtime.lastError || !response?.ok) {
       if (response?.error === "Not configured") {
         showToast("Configure Gito extension first", "error");
       } else {
-        // No entities available, send directly
-        showPickerPanel(item, anchorRect, []);
+        showPickerPanel(item, anchorRect, [], replies);
       }
       return;
     }
-    showPickerPanel(item, anchorRect, response.entities ?? []);
+    showPickerPanel(item, anchorRect, response.entities ?? [], replies);
   });
 }
 
