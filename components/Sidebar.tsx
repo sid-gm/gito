@@ -8,9 +8,10 @@ import { cx, Dot } from "@/components/primitives";
 import { useCompany } from "@/components/CompanyContext";
 
 const SOURCES_NAV = [
-  { href: "/analyst",        label: "Feed",    glyph: "≡" },
-  { href: "/analyst/sources",label: "Sources", glyph: "◴" },
-  { href: "/analyst/submit", label: "Manual",  glyph: "✎" },
+  { href: "/analyst",                  label: "Feed",           glyph: "≡" },
+  { href: "/analyst/extension-runs",   label: "Extension runs", glyph: "⬡" },
+  { href: "/analyst/sources",          label: "Sources",        glyph: "◴" },
+  { href: "/analyst/submit",           label: "Manual",         glyph: "✎" },
 ];
 
 

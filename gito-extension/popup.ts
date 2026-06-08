@@ -32,6 +32,8 @@ const entityList = document.getElementById("entity-list")!;
 const setupError = document.getElementById("setup-error")!;
 
 // Auto-collect elements
+const runNowBtn = document.getElementById("btn-run-now") as HTMLButtonElement;
+const viewRunsBtn = document.getElementById("btn-view-runs") as HTMLAnchorElement;
 const acTerms = document.getElementById("ac-terms") as HTMLInputElement;
 const acX = document.getElementById("ac-x") as HTMLInputElement;
 const acThreads = document.getElementById("ac-threads") as HTMLInputElement;
@@ -128,6 +130,40 @@ acInterval.addEventListener("change", async () => {
   await chrome.storage.sync.set({ autoCollect: readAutoCollectForm() });
 });
 
+runNowBtn.addEventListener("click", async () => {
+  runNowBtn.disabled = true;
+  runNowBtn.textContent = "Running…";
+  acStatus.textContent = "";
+
+  const response = await chrome.runtime.sendMessage({ type: "RUN_COLLECT_NOW" }) as {
+    ok: boolean;
+    collected?: number;
+    inserted?: number;
+    errors?: string[];
+    error?: string;
+  };
+
+  runNowBtn.disabled = false;
+  runNowBtn.textContent = "Run now";
+
+  if (!response.ok) {
+    acError.textContent = response.error ?? "Collection failed.";
+    acError.style.display = "block";
+  } else {
+    acError.style.display = "none";
+    const parts: string[] = [];
+    parts.push(`${response.inserted ?? 0} new items inserted`);
+    if ((response.collected ?? 0) > (response.inserted ?? 0)) {
+      parts.push(`${response.collected} collected`);
+    }
+    if (response.errors?.length) {
+      parts.push(`${response.errors.length} error(s)`);
+    }
+    acStatus.textContent = parts.join(" · ");
+    await loadAutoCollect();
+  }
+});
+
 acEnabled.addEventListener("change", async () => {
   const config = readAutoCollectForm();
   if (config.enabled) {
@@ -191,6 +227,7 @@ async function loadState() {
       }
     }
 
+    viewRunsBtn.href = `${active.gitoUrl}/analyst/extension-runs`;
     await loadAutoCollect();
   } else {
     setupEl.style.display = "block";

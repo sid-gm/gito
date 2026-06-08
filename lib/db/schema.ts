@@ -88,6 +88,17 @@ export const newsTimelineDays = pgTable("news_timeline_days", {
   updatedAt:      timestamp("updated_at").defaultNow().notNull(),
 }, (t) => [unique("news_timeline_days_feed_date_unique").on(t.rssFeedId, t.periodDate)]);
 
+export const extensionCollectRuns = pgTable("extension_collect_runs", {
+  id:             uuid("id").primaryKey(),
+  companyId:      uuid("company_id").references(() => companies.id, { onDelete: "cascade" }).notNull(),
+  triggeredBy:    text("triggered_by").notNull(), // "auto" | "manual"
+  ranAt:          timestamp("ran_at").notNull(),
+  searchTerms:    text("search_terms").array().notNull().default([]),
+  platforms:      text("platforms").array().notNull().default([]),
+  itemsCollected: integer("items_collected").notNull().default(0),
+  itemsInserted:  integer("items_inserted").notNull().default(0),
+});
+
 export const ingestedItems = pgTable(
   "ingested_items",
   {
@@ -96,6 +107,7 @@ export const ingestedItems = pgTable(
       onDelete: "set null",
     }),
     rssFeedId: uuid("rss_feed_id").references(() => rssFeeds.id, { onDelete: "set null" }),
+    collectRunId: uuid("collect_run_id").references(() => extensionCollectRuns.id, { onDelete: "set null" }),
     platform: platformEnum("platform").notNull(),
     externalId: text("external_id"),
     url: text("url"),
@@ -262,6 +274,8 @@ export type RssFeed = typeof rssFeeds.$inferSelect;
 export type NewRssFeed = typeof rssFeeds.$inferInsert;
 export type NewsTimelineDay = typeof newsTimelineDays.$inferSelect;
 export type NewNewsTimelineDay = typeof newsTimelineDays.$inferInsert;
+export type ExtensionCollectRun = typeof extensionCollectRuns.$inferSelect;
+export type NewExtensionCollectRun = typeof extensionCollectRuns.$inferInsert;
 
 export type ClusterClassification = "unclassified" | "narrative" | "noise";
 export type NarrativeStage = "relaxed" | "emerging" | "developing" | "peaked" | "revival" | "declining";

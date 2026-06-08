@@ -29,6 +29,7 @@ const itemSchema = z.object({
 const bodySchema = z.object({
   items: z.array(itemSchema).min(1).max(100),
   entityId: z.string().uuid().optional(),
+  collectRunId: z.string().uuid().optional(),
 });
 
 export async function POST(req: Request) {
@@ -49,7 +50,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400, headers: CORS });
   }
 
-  const { items, entityId } = parsed.data;
+  const { items, entityId, collectRunId } = parsed.data;
 
   let entities: { id: string; label: string }[] = [];
   if (!entityId) {
@@ -88,6 +89,7 @@ export async function POST(req: Request) {
       entityId: matchedEntityId,
       subtype: item.subtype ?? null,
       rawJson: null,
+      collectRunId: collectRunId ?? null,
     };
   });
 

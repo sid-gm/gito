@@ -207,6 +207,26 @@
       border-radius: 5px; padding: 6px 8px; margin-bottom: 4px;
       display: none;
     }
+
+    .run-action-row {
+      display: flex; gap: 6px; margin-bottom: 8px;
+    }
+    .btn-run-now {
+      flex: 1; padding: 7px;
+      background: transparent; border: 1px solid #d4cfc6;
+      border-radius: 6px; font-size: 12px; font-weight: 500;
+      color: #444; cursor: pointer; text-align: center;
+    }
+    .btn-run-now:hover:not(:disabled) { border-color: #1a1a1a; color: #1a1a1a; }
+    .btn-run-now:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-view-runs {
+      flex: 1; padding: 7px;
+      background: transparent; border: 1px solid #d4cfc6;
+      border-radius: 6px; font-size: 12px; font-weight: 500;
+      color: #444; cursor: pointer; text-align: center;
+      text-decoration: none; display: flex; align-items: center; justify-content: center;
+    }
+    .btn-view-runs:hover { border-color: #1a1a1a; color: #1a1a1a; }
   </style>
 </head>
 <body>
@@ -277,6 +297,10 @@
         </label>
       </div>
 
+      <div class="run-action-row">
+        <button class="btn-run-now" id="btn-run-now">Run now</button>
+        <a class="btn-view-runs" id="btn-view-runs" href="#" target="_blank">View runs ↗</a>
+      </div>
       <div class="ac-status" id="ac-status"></div>
       <div class="ac-error" id="ac-error"></div>
 
