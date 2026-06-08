@@ -2,7 +2,6 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Gito Extension</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -15,8 +14,9 @@
       color: #1a1a1a;
     }
 
+    /* ── Header ── */
     .header {
-      padding: 14px 16px 10px;
+      padding: 10px 12px;
       border-bottom: 1px solid #e8e4dc;
       display: flex;
       align-items: center;
@@ -24,120 +24,122 @@
     }
 
     .header-logo {
-      width: 20px;
-      height: 20px;
+      width: 20px; height: 20px;
       background: #1a1a1a;
       border-radius: 4px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: #faf9f6;
-      font-weight: 700;
-      font-size: 11px;
+      display: flex; align-items: center; justify-content: center;
+      color: #faf9f6; font-weight: 700; font-size: 11px;
+      flex-shrink: 0;
     }
 
-    .header-title {
-      font-weight: 600;
-      font-size: 14px;
+    .company-switcher {
+      flex: 1;
+      position: relative;
     }
 
-    .content { padding: 16px; }
-
-    /* Setup state */
-    .setup-label {
-      font-size: 11px;
-      font-weight: 500;
-      color: #666;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-      margin-bottom: 4px;
-    }
-
-    input {
+    .company-select {
       width: 100%;
-      padding: 7px 10px;
-      border: 1px solid #d4cfc6;
-      border-radius: 6px;
+      appearance: none;
+      background: transparent;
+      border: none;
       font-size: 13px;
-      background: #fff;
+      font-weight: 600;
       color: #1a1a1a;
-      margin-bottom: 10px;
+      cursor: pointer;
+      padding-right: 16px;
       outline: none;
     }
 
+    .company-select:disabled { color: #888; cursor: default; }
+
+    .company-caret {
+      position: absolute; right: 0; top: 50%;
+      transform: translateY(-50%);
+      font-size: 9px; color: #888;
+      pointer-events: none;
+    }
+
+    .btn-add-account {
+      background: none; border: none; cursor: pointer;
+      font-size: 16px; color: #888; line-height: 1;
+      padding: 2px;
+      flex-shrink: 0;
+    }
+    .btn-add-account:hover { color: #1a1a1a; }
+
+    /* ── Content ── */
+    .content { padding: 14px; }
+
+    /* Setup form */
+    .setup-label {
+      font-size: 11px; font-weight: 500; color: #666;
+      text-transform: uppercase; letter-spacing: 0.04em;
+      margin-bottom: 4px;
+    }
+
+    input[type="url"], input[type="password"], input[type="text"] {
+      width: 100%; padding: 7px 10px;
+      border: 1px solid #d4cfc6; border-radius: 6px;
+      font-size: 13px; background: #fff; color: #1a1a1a;
+      margin-bottom: 10px; outline: none;
+    }
     input:focus { border-color: #1a1a1a; }
 
     .help-text {
-      font-size: 11px;
-      color: #888;
-      margin-top: -6px;
-      margin-bottom: 12px;
-      line-height: 1.5;
+      font-size: 11px; color: #888;
+      margin-top: -6px; margin-bottom: 12px; line-height: 1.5;
     }
 
-    button {
-      width: 100%;
-      padding: 8px;
-      border: none;
-      border-radius: 6px;
-      font-size: 13px;
-      font-weight: 500;
-      cursor: pointer;
+    .error-msg { color: #dc2626; font-size: 12px; margin-bottom: 8px; }
+
+    button.btn-primary {
+      width: 100%; padding: 8px; border: none; border-radius: 6px;
+      font-size: 13px; font-weight: 500; cursor: pointer;
+      background: #1a1a1a; color: #faf9f6;
     }
+    button.btn-primary:hover { background: #333; }
+    button.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
 
-    .btn-primary {
-      background: #1a1a1a;
-      color: #faf9f6;
+    button.btn-secondary {
+      width: 100%; padding: 8px;
+      background: transparent; border: 1px solid #d4cfc6;
+      border-radius: 6px; font-size: 13px; font-weight: 500;
+      color: #666; cursor: pointer;
     }
-
-    .btn-primary:hover { background: #333; }
-
-    .btn-secondary {
-      background: transparent;
-      border: 1px solid #d4cfc6;
-      color: #666;
-    }
-
-    .btn-secondary:hover { border-color: #999; color: #333; }
+    button.btn-secondary:hover { border-color: #999; color: #333; }
 
     /* Configured state */
-    .config-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 8px 10px;
-      background: #fff;
-      border: 1px solid #e8e4dc;
-      border-radius: 6px;
-      margin-bottom: 8px;
+    .stats-box {
+      text-align: center; padding: 12px;
+      background: #fff; border: 1px solid #e8e4dc;
+      border-radius: 6px; margin-bottom: 10px;
     }
+    .stats-count { font-size: 28px; font-weight: 700; line-height: 1; margin-bottom: 2px; }
+    .stats-label { font-size: 11px; color: #888; }
 
+    .config-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 6px 10px; background: #fff;
+      border: 1px solid #e8e4dc; border-radius: 6px; margin-bottom: 6px;
+    }
     .config-label { font-size: 11px; color: #888; }
     .config-value { font-size: 12px; font-weight: 500; font-family: monospace; }
 
-    .stats-box {
-      text-align: center;
-      padding: 12px;
-      background: #fff;
-      border: 1px solid #e8e4dc;
-      border-radius: 6px;
-      margin-bottom: 12px;
+    .entities-section { margin-bottom: 10px; }
+    .entities-label {
+      font-size: 11px; font-weight: 500; color: #666;
+      text-transform: uppercase; letter-spacing: 0.04em;
+      margin-bottom: 6px;
     }
-
-    .stats-count {
-      font-size: 28px;
-      font-weight: 700;
-      line-height: 1;
-      margin-bottom: 2px;
+    .entity-list {
+      display: flex; flex-wrap: wrap; gap: 4px;
     }
-
-    .stats-label { font-size: 11px; color: #888; }
-
-    .error-msg {
-      color: #dc2626;
-      font-size: 12px;
-      margin-bottom: 8px;
+    .entity-chip {
+      font-size: 11px; padding: 2px 8px;
+      background: #fff; border: 1px solid #e8e4dc;
+      border-radius: 20px; color: #444;
     }
+    .entity-empty { font-size: 12px; color: #999; font-style: italic; }
 
     #state-setup, #state-configured { display: none; }
   </style>
@@ -145,7 +147,13 @@
 <body>
   <div class="header">
     <div class="header-logo">G</div>
-    <span class="header-title">Gito</span>
+    <div class="company-switcher">
+      <select class="company-select" id="company-select" disabled>
+        <option value="">Gito</option>
+      </select>
+      <span class="company-caret">▼</span>
+    </div>
+    <button class="btn-add-account" id="btn-add-account" title="Add another company">+</button>
   </div>
 
   <div class="content">
@@ -169,13 +177,9 @@
         <div class="stats-label">items sent today</div>
       </div>
 
-      <div class="config-row">
-        <span class="config-label">Connected to</span>
-        <span class="config-value" id="display-url"></span>
-      </div>
-      <div class="config-row" style="margin-bottom:12px">
-        <span class="config-label">API key</span>
-        <span class="config-value" id="display-key"></span>
+      <div class="entities-section">
+        <div class="entities-label">Tracked entities</div>
+        <div class="entity-list" id="entity-list"></div>
       </div>
 
       <button class="btn-secondary" id="btn-disconnect">Disconnect</button>
