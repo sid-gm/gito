@@ -78,7 +78,7 @@ async function runAutoCollect(config: SearchConfig, account: Account, triggeredB
           platform === "twitter"
             ? `https://x.com/search?q=${encodeURIComponent(term)}&f=live`
             : platform === "threads"
-            ? `https://www.threads.net/search?q=${encodeURIComponent(term)}&serp_type=default`
+            ? `https://www.threads.net/search?q=${encodeURIComponent(term)}&serp_type=default&filter=recent`
             : `https://www.reddit.com/search/?q=${encodeURIComponent(term)}&sort=new`;
 
         console.log(`[Gito auto-collect] opening tab: ${searchUrl}`);
