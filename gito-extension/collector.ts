@@ -239,6 +239,41 @@ export async function collectThreadsThread(postUrl: string, tabId: number): Prom
   return (results[0]?.result ?? []) as ExtensionItem[];
 }
 
+export async function collectXProfile(handle: string, tabId: number): Promise<ExtensionItem[]> {
+  await scrollPage(tabId);
+  const results = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: (): any[] => {
+      const articles = document.querySelectorAll('article[data-testid="tweet"]');
+      return Array.from(articles).map((a: any) => {
+        const body = a.querySelector('[data-testid="tweetText"]')?.textContent ?? "";
+        if (!body) return null;
+        const authorEl = a.querySelector('[data-testid="User-Name"] a[href*="/"]');
+        const author = authorEl?.getAttribute("href")?.replace("/", "") ?? "";
+        const timeEl = a.querySelector("time");
+        const publishedAt = timeEl?.getAttribute("datetime") ?? null;
+        const statusLink = a.querySelector('a[href*="/status/"]');
+        const url = statusLink
+          ? `https://x.com${new URL(statusLink.href).pathname}`
+          : window.location.href;
+        const externalIdMatch = url.match(/\/status\/(\d+)/);
+        return {
+          url,
+          title: (body as string).slice(0, 200),
+          body,
+          author: `@${author}`,
+          publishedAt,
+          platform: "twitter",
+          subtype: "x_post",
+          externalId: externalIdMatch ? externalIdMatch[1] : null,
+        };
+      }).filter(Boolean);
+    },
+    args: [],
+  });
+  return (results[0]?.result ?? []) as ExtensionItem[];
+}
+
 export function dedupeByExternalId(items: ExtensionItem[]): ExtensionItem[] {
   const seen = new Set<string>();
   return items.filter((i) => {

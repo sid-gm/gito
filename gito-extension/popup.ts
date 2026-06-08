@@ -5,6 +5,8 @@ interface Account {
   companyId: string;
   companyName: string;
   entities: { id: string; label: string }[];
+  trackedThreads: Array<{ url: string; platform: string; externalId?: string | null }>;
+  twitterAccounts: string[];
 }
 
 interface StorageData {
@@ -289,7 +291,13 @@ saveBtn.addEventListener("click", async () => {
       return;
     }
 
-    const ctx = await res.json() as { companyId: string; companyName: string; entities: { id: string; label: string }[] };
+    const ctx = await res.json() as {
+      companyId: string;
+      companyName: string;
+      entities: { id: string; label: string }[];
+      trackedThreads?: Array<{ url: string; platform: string; externalId?: string | null }>;
+      twitterAccounts?: string[];
+    };
 
     const data = await chrome.storage.sync.get(["accounts", "activeAccountId"]) as StorageData;
     const accounts = data.accounts ?? [];
@@ -302,6 +310,8 @@ saveBtn.addEventListener("click", async () => {
       companyId: ctx.companyId,
       companyName: ctx.companyName,
       entities: ctx.entities,
+      trackedThreads: ctx.trackedThreads ?? [],
+      twitterAccounts: ctx.twitterAccounts ?? [],
     };
 
     const existing = accounts.findIndex((a) => a.companyId === ctx.companyId);

@@ -4,10 +4,17 @@ import {
   collectReddit,
   collectXThread,
   collectThreadsThread,
+  collectXProfile,
   dedupeByExternalId,
   waitForTabLoad,
   ExtensionItem,
 } from "./collector";
+
+interface TrackedThread {
+  url: string;
+  platform: string;
+  externalId?: string | null;
+}
 
 interface Account {
   id: string;
@@ -16,6 +23,8 @@ interface Account {
   companyId: string;
   companyName: string;
   entities: { id: string; label: string }[];
+  trackedThreads: TrackedThread[];
+  twitterAccounts: string[];
 }
 
 interface SearchConfig {
@@ -135,6 +144,52 @@ async function runAutoCollect(config: SearchConfig, account: Account, triggeredB
         errors.push(msg);
         if (tabId !== null) chrome.tabs.remove(tabId).catch(() => {});
       }
+    }
+  }
+
+  // TICKET-5: Collect from explicitly tracked thread URLs
+  for (const thread of (account.trackedThreads ?? [])) {
+    if (thread.platform !== "twitter" && thread.platform !== "threads") continue;
+    let tabId: number | null = null;
+    try {
+      console.log(`[Gito auto-collect] tracked thread: ${thread.url}`);
+      const tab = await chrome.tabs.create({ url: thread.url, active: false });
+      tabId = tab.id!;
+      await waitForTabLoad(tabId, 8000);
+      const threadItems = thread.platform === "twitter"
+        ? await collectXThread(thread.url, tabId, thread.externalId ?? undefined)
+        : await collectThreadsThread(thread.url, tabId);
+      console.log(`[Gito auto-collect] tracked thread ${thread.url}: ${threadItems.length} items`);
+      allItems.push(...threadItems);
+      await chrome.tabs.remove(tabId);
+      tabId = null;
+    } catch (err) {
+      const msg = `tracked thread ${thread.url}: ${String(err)}`;
+      console.error(`[Gito auto-collect] ${msg}`);
+      errors.push(msg);
+      if (tabId !== null) chrome.tabs.remove(tabId).catch(() => {});
+    }
+  }
+
+  // TICKET-6: Collect latest tweets from tracked Twitter account profiles
+  for (const handle of (account.twitterAccounts ?? [])) {
+    let tabId: number | null = null;
+    try {
+      const profileUrl = `https://x.com/${handle}`;
+      console.log(`[Gito auto-collect] twitter profile: @${handle}`);
+      const tab = await chrome.tabs.create({ url: profileUrl, active: false });
+      tabId = tab.id!;
+      await waitForTabLoad(tabId, 8000);
+      const profileItems = await collectXProfile(handle, tabId);
+      console.log(`[Gito auto-collect] @${handle}: ${profileItems.length} items`);
+      allItems.push(...profileItems);
+      await chrome.tabs.remove(tabId);
+      tabId = null;
+    } catch (err) {
+      const msg = `twitter profile @${handle}: ${String(err)}`;
+      console.error(`[Gito auto-collect] ${msg}`);
+      errors.push(msg);
+      if (tabId !== null) chrome.tabs.remove(tabId).catch(() => {});
     }
   }
 
