@@ -1,0 +1,12 @@
+{
+  "name": "gito-extension",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "bash build.sh"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.268",
+    "esbuild": "^0.20.0"
+  }
+}
