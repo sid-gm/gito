@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { trackedEntities, ingestedItems, clusters, clusterItems } from "@/lib/db/schema";
 import type { NewIngestedItem } from "@/lib/db/schema";
 import { verifyExtensionKey } from "@/lib/extension-auth";
-import { eq, inArray } from "drizzle-orm";
+import { eq, inArray, and } from "drizzle-orm";
 import { z } from "zod";
 
 const CORS = {
@@ -24,6 +24,8 @@ const itemSchema = z.object({
   platform: z.enum(["twitter", "reddit", "instagram", "threads", "manual"]),
   subtype: z.string().optional(),
   externalId: z.string().optional(),
+  parentExternalId: z.string().optional(),
+  rootExternalId: z.string().optional(),
 });
 
 const bodySchema = z.object({
@@ -101,6 +103,39 @@ export async function POST(req: Request) {
     .returning({ id: ingestedItems.id });
 
   const insertedCount = insertedRows.length;
+
+  // Resolve parentId / rootPostId for items that supplied parentExternalId / rootExternalId
+  const itemsWithParent = items.filter((i) => i.parentExternalId || i.rootExternalId);
+  if (itemsWithParent.length > 0) {
+    const toResolve = [...new Set([
+      ...itemsWithParent.map((i) => i.externalId).filter(Boolean),
+      ...itemsWithParent.map((i) => i.parentExternalId).filter(Boolean),
+      ...itemsWithParent.map((i) => i.rootExternalId).filter(Boolean),
+    ])] as string[];
+
+    const resolved = toResolve.length > 0
+      ? await db
+          .select({ id: ingestedItems.id, externalId: ingestedItems.externalId })
+          .from(ingestedItems)
+          .where(inArray(ingestedItems.externalId, toResolve))
+      : [];
+
+    const eidToId = new Map(resolved.map((r) => [r.externalId!, r.id]));
+
+    for (const item of itemsWithParent) {
+      if (!item.externalId) continue;
+      const itemId = eidToId.get(item.externalId);
+      if (!itemId) continue;
+      const parentId = item.parentExternalId ? (eidToId.get(item.parentExternalId) ?? null) : null;
+      const rootPostId = item.rootExternalId ? (eidToId.get(item.rootExternalId) ?? null) : null;
+      if (parentId || rootPostId) {
+        await db
+          .update(ingestedItems)
+          .set({ ...(parentId ? { parentId } : {}), ...(rootPostId ? { rootPostId } : {}) })
+          .where(and(eq(ingestedItems.id, itemId)));
+      }
+    }
+  }
 
   // Cluster Twitter threads (x_post + x_reply) and Reddit threads (reddit_post + reddit_comment/reddit_reply)
   const isTwitterThread = items.some((i) => i.subtype === "x_post") && items.some((i) => i.subtype === "x_reply");

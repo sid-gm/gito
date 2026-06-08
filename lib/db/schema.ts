@@ -11,6 +11,7 @@ import {
   primaryKey,
   boolean,
 } from "drizzle-orm/pg-core";
+import type { AnyPgColumn } from "drizzle-orm/pg-core";
 
 export const entityTypeEnum = pgEnum("entity_type", [
   "keyword",
@@ -117,6 +118,8 @@ export const ingestedItems = pgTable(
     publishedAt: timestamp("published_at"),
     rawJson: jsonb("raw_json"),
     subtype: text("subtype"),
+    parentId: uuid("parent_id").references((): AnyPgColumn => ingestedItems.id, { onDelete: "set null" }),
+    rootPostId: uuid("root_post_id").references((): AnyPgColumn => ingestedItems.id, { onDelete: "set null" }),
     showInNewsTimeline: boolean("show_in_news_timeline").default(false).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
@@ -237,6 +240,19 @@ export const trackedUserHandles = pgTable("tracked_user_handles", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (t) => [unique("tracked_user_handles_unique").on(t.companyId, t.platform, t.username)]);
 
+export const trackedThreads = pgTable("tracked_threads", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  companyId: uuid("company_id").references(() => companies.id, { onDelete: "cascade" }),
+  platform: platformEnum("platform").notNull(),
+  postUrl: text("post_url").notNull(),
+  postExternalId: text("post_external_id"),
+  entityId: uuid("entity_id").references(() => trackedEntities.id, { onDelete: "set null" }),
+  label: text("label"),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  lastCollectedAt: timestamp("last_collected_at"),
+}, (t) => [unique("tracked_threads_company_url_unique").on(t.companyId, t.postUrl)]);
+
 export const clusterReports = pgTable("cluster_reports", {
   id: uuid("id").defaultRandom().primaryKey(),
   clusterId: uuid("cluster_id")
@@ -270,6 +286,8 @@ export type NewRedditSubreddit = typeof redditSubreddits.$inferInsert;
 export type TrackedUserHandle = typeof trackedUserHandles.$inferSelect;
 export type NewTrackedUserHandle = typeof trackedUserHandles.$inferInsert;
 export type ClusterReport = typeof clusterReports.$inferSelect;
+export type TrackedThread = typeof trackedThreads.$inferSelect;
+export type NewTrackedThread = typeof trackedThreads.$inferInsert;
 export type RssFeed = typeof rssFeeds.$inferSelect;
 export type NewRssFeed = typeof rssFeeds.$inferInsert;
 export type NewsTimelineDay = typeof newsTimelineDays.$inferSelect;

@@ -77,6 +77,28 @@ export async function POST() {
       ADD COLUMN IF NOT EXISTS analyst_summary TEXT
     `);
 
+    await db.execute(sql`
+      ALTER TABLE ingested_items
+      ADD COLUMN IF NOT EXISTS parent_id UUID REFERENCES ingested_items(id) ON DELETE SET NULL,
+      ADD COLUMN IF NOT EXISTS root_post_id UUID REFERENCES ingested_items(id) ON DELETE SET NULL
+    `);
+
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS tracked_threads (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        company_id UUID REFERENCES companies(id) ON DELETE CASCADE,
+        platform "platform" NOT NULL,
+        post_url TEXT NOT NULL,
+        post_external_id TEXT,
+        entity_id UUID REFERENCES tracked_entities(id) ON DELETE SET NULL,
+        label TEXT,
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        last_collected_at TIMESTAMPTZ,
+        CONSTRAINT tracked_threads_company_url_unique UNIQUE (company_id, post_url)
+      )
+    `);
+
     return NextResponse.json({ ok: true, message: "Migration applied" });
   } catch (err) {
     console.error("[POST /api/migrate]", err);
