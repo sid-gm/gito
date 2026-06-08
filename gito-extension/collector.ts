@@ -7,9 +7,25 @@ export interface ExtensionItem {
   platform: "twitter" | "threads" | "reddit";
   subtype: string;
   externalId: string | null;
+  parentExternalId?: string | null;
+  rootExternalId?: string | null;
+}
+
+const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+export async function scrollPage(tabId: number, steps = 3, delayMs = 1500): Promise<void> {
+  for (let i = 0; i < steps; i++) {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => { window.scrollBy(0, 700); },
+      args: [],
+    });
+    await delay(delayMs);
+  }
 }
 
 export async function collectX(term: string, tabId: number): Promise<ExtensionItem[]> {
+  await scrollPage(tabId);
   const results = await chrome.scripting.executeScript({
     target: { tabId },
     func: (searchTerm: string): any[] => {
@@ -41,6 +57,7 @@ export async function collectX(term: string, tabId: number): Promise<ExtensionIt
 }
 
 export async function collectThreads(term: string, tabId: number): Promise<ExtensionItem[]> {
+  await scrollPage(tabId);
   const results = await chrome.scripting.executeScript({
     target: { tabId },
     func: (): any[] => {
@@ -72,6 +89,7 @@ export async function collectThreads(term: string, tabId: number): Promise<Exten
 }
 
 export async function collectReddit(term: string, tabId: number): Promise<ExtensionItem[]> {
+  await scrollPage(tabId);
   const results = await chrome.scripting.executeScript({
     target: { tabId },
     func: (): any[] => {
