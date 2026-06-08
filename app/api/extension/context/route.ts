@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { companies, trackedEntities } from "@/lib/db/schema";
+import { companies, trackedEntities, trackedThreads, twitterHandles } from "@/lib/db/schema";
 import { verifyExtensionKey } from "@/lib/extension-auth";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -34,8 +34,28 @@ export async function GET(req: Request) {
     .where(eq(trackedEntities.companyId, companyId))
     .orderBy(trackedEntities.label);
 
+  const threads = await db
+    .select({
+      url: trackedThreads.postUrl,
+      platform: trackedThreads.platform,
+      externalId: trackedThreads.postExternalId,
+    })
+    .from(trackedThreads)
+    .where(and(eq(trackedThreads.companyId, companyId), eq(trackedThreads.isActive, true)));
+
+  const handles = await db
+    .select({ handle: twitterHandles.handle })
+    .from(twitterHandles)
+    .where(eq(twitterHandles.companyId, companyId));
+
   return NextResponse.json(
-    { companyId: company.id, companyName: company.name, entities },
+    {
+      companyId: company.id,
+      companyName: company.name,
+      entities,
+      trackedThreads: threads,
+      twitterAccounts: handles.map((h) => h.handle),
+    },
     { headers: CORS }
   );
 }
