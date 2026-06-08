@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { trackedEntities } from "@/lib/db/schema";
+import { trackedEntities, ingestedItems, clusters, clusterItems } from "@/lib/db/schema";
 import type { NewIngestedItem } from "@/lib/db/schema";
-import { upsertItems } from "@/lib/collectors/ingest";
 import { verifyExtensionKey } from "@/lib/extension-auth";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 
 const CORS = {
@@ -92,6 +91,58 @@ export async function POST(req: Request) {
     };
   });
 
-  const inserted = await upsertItems(toInsert);
-  return NextResponse.json({ inserted, skipped: items.length - inserted }, { headers: CORS });
+  // Insert all items
+  const insertedRows = await db
+    .insert(ingestedItems)
+    .values(toInsert)
+    .onConflictDoNothing({ target: [ingestedItems.platform, ingestedItems.externalId] })
+    .returning({ id: ingestedItems.id });
+
+  const insertedCount = insertedRows.length;
+
+  // If this batch is a Twitter thread (one x_post + at least one x_reply), cluster them together.
+  const hasPost = items.some((i) => i.subtype === "x_post");
+  const hasReplies = items.some((i) => i.subtype === "x_reply");
+
+  if (hasPost && hasReplies) {
+    // Resolve IDs for all items in the batch (including pre-existing duplicates).
+    const externalIds = toInsert.map((i) => i.externalId).filter((id): id is string => !!id);
+    const resolvedRows = externalIds.length > 0
+      ? await db
+          .select({ id: ingestedItems.id })
+          .from(ingestedItems)
+          .where(inArray(ingestedItems.externalId, externalIds))
+      : [];
+
+    // Fall back to the freshly inserted IDs for items that had no externalId.
+    const resolvedIds = new Set([
+      ...resolvedRows.map((r) => r.id),
+      ...insertedRows.map((r) => r.id),
+    ]);
+
+    if (resolvedIds.size > 0) {
+      const post = items.find((i) => i.subtype === "x_post");
+      const clusterLabel = (post?.title ?? post?.body ?? "Twitter thread").slice(0, 80);
+      const resolvedEntityId = toInsert.find((i) => i.entityId)?.entityId ?? null;
+
+      const [newCluster] = await db
+        .insert(clusters)
+        .values({
+          entityId: resolvedEntityId,
+          label: clusterLabel,
+          itemCount: resolvedIds.size,
+          firstSeenAt: now,
+          lastSeenAt: now,
+          classification: "unclassified",
+        })
+        .returning({ id: clusters.id });
+
+      await db
+        .insert(clusterItems)
+        .values([...resolvedIds].map((itemId) => ({ clusterId: newCluster.id, itemId, similarity: 1.0 })))
+        .onConflictDoNothing();
+    }
+  }
+
+  return NextResponse.json({ inserted: insertedCount, skipped: items.length - insertedCount }, { headers: CORS });
 }
