@@ -142,6 +142,71 @@
     .entity-empty { font-size: 12px; color: #999; font-style: italic; }
 
     #state-setup, #state-configured { display: none; }
+
+    /* ── Auto-collect section ── */
+    .section-divider {
+      display: flex; align-items: center; gap: 8px;
+      margin: 14px 0 10px;
+    }
+    .section-divider::before, .section-divider::after {
+      content: ""; flex: 1; height: 1px; background: #e8e4dc;
+    }
+    .section-title {
+      font-size: 10px; font-weight: 600; color: #888;
+      text-transform: uppercase; letter-spacing: 0.06em;
+      white-space: nowrap;
+    }
+
+    .platform-checks {
+      display: flex; gap: 12px; margin-bottom: 10px;
+    }
+    .check-label {
+      display: flex; align-items: center; gap: 4px;
+      font-size: 12px; color: #333; cursor: pointer;
+    }
+    .check-label input[type="checkbox"] { cursor: pointer; accent-color: #1a1a1a; }
+
+    .interval-select {
+      width: 100%; padding: 7px 10px;
+      border: 1px solid #d4cfc6; border-radius: 6px;
+      font-size: 13px; background: #fff; color: #1a1a1a;
+      margin-bottom: 10px; outline: none; cursor: pointer;
+    }
+    .interval-select:focus { border-color: #1a1a1a; }
+
+    .toggle-row {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 8px;
+    }
+    .toggle-label { font-size: 12px; font-weight: 500; color: #333; }
+
+    .toggle-switch {
+      position: relative; display: inline-block;
+      width: 36px; height: 20px; flex-shrink: 0;
+    }
+    .toggle-switch input { opacity: 0; width: 0; height: 0; }
+    .toggle-knob {
+      position: absolute; cursor: pointer;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: #d4cfc6; border-radius: 20px; transition: .2s;
+    }
+    .toggle-knob::before {
+      position: absolute; content: "";
+      height: 14px; width: 14px; left: 3px; bottom: 3px;
+      background: #fff; border-radius: 50%; transition: .2s;
+    }
+    .toggle-switch input:checked + .toggle-knob { background: #16a34a; }
+    .toggle-switch input:checked + .toggle-knob::before { transform: translateX(16px); }
+
+    .ac-status {
+      font-size: 11px; color: #666; line-height: 1.5; margin-bottom: 4px;
+    }
+    .ac-error {
+      font-size: 11px; color: #dc2626; line-height: 1.5;
+      background: #fef2f2; border: 1px solid #fecaca;
+      border-radius: 5px; padding: 6px 8px; margin-bottom: 4px;
+      display: none;
+    }
   </style>
 </head>
 <body>
@@ -181,6 +246,39 @@
         <div class="entities-label">Tracked entities</div>
         <div class="entity-list" id="entity-list"></div>
       </div>
+
+      <div class="section-divider">
+        <span class="section-title">Auto-collect</span>
+      </div>
+
+      <p class="setup-label">Search terms</p>
+      <input type="text" id="ac-terms" placeholder="lurie, daniel lurie, SF mayor" />
+
+      <p class="setup-label">Platforms</p>
+      <div class="platform-checks">
+        <label class="check-label"><input type="checkbox" id="ac-x" /> X</label>
+        <label class="check-label"><input type="checkbox" id="ac-threads" /> Threads</label>
+        <label class="check-label"><input type="checkbox" id="ac-reddit" /> Reddit</label>
+      </div>
+
+      <p class="setup-label">Interval</p>
+      <select id="ac-interval" class="interval-select">
+        <option value="30">Every 30 min</option>
+        <option value="60" selected>Every hour</option>
+        <option value="120">Every 2 hours</option>
+        <option value="240">Every 4 hours</option>
+      </select>
+
+      <div class="toggle-row">
+        <span class="toggle-label">Enable auto-collect</span>
+        <label class="toggle-switch">
+          <input type="checkbox" id="ac-enabled" />
+          <span class="toggle-knob"></span>
+        </label>
+      </div>
+
+      <div class="ac-status" id="ac-status"></div>
+      <div class="ac-error" id="ac-error"></div>
 
       <button class="btn-secondary" id="btn-disconnect">Disconnect</button>
     </div>

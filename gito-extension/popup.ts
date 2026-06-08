@@ -12,6 +12,13 @@ interface StorageData {
   activeAccountId?: string;
 }
 
+interface SearchConfig {
+  terms: string[];
+  platforms: Array<"twitter" | "threads" | "reddit">;
+  intervalMinutes: number;
+  enabled: boolean;
+}
+
 const setupEl = document.getElementById("state-setup")!;
 const configuredEl = document.getElementById("state-configured")!;
 const urlInput = document.getElementById("input-url") as HTMLInputElement;
@@ -23,6 +30,115 @@ const companySelect = document.getElementById("company-select") as HTMLSelectEle
 const dailyCount = document.getElementById("daily-count")!;
 const entityList = document.getElementById("entity-list")!;
 const setupError = document.getElementById("setup-error")!;
+
+// Auto-collect elements
+const acTerms = document.getElementById("ac-terms") as HTMLInputElement;
+const acX = document.getElementById("ac-x") as HTMLInputElement;
+const acThreads = document.getElementById("ac-threads") as HTMLInputElement;
+const acReddit = document.getElementById("ac-reddit") as HTMLInputElement;
+const acInterval = document.getElementById("ac-interval") as HTMLSelectElement;
+const acEnabled = document.getElementById("ac-enabled") as HTMLInputElement;
+const acStatus = document.getElementById("ac-status")!;
+const acError = document.getElementById("ac-error")!;
+
+function readAutoCollectForm(): SearchConfig {
+  const terms = acTerms.value
+    .split(",")
+    .map((t) => t.trim())
+    .filter((t) => t.length > 0);
+  const platforms: Array<"twitter" | "threads" | "reddit"> = [];
+  if (acX.checked) platforms.push("twitter");
+  if (acThreads.checked) platforms.push("threads");
+  if (acReddit.checked) platforms.push("reddit");
+  return {
+    terms,
+    platforms,
+    intervalMinutes: parseInt(acInterval.value, 10),
+    enabled: acEnabled.checked,
+  };
+}
+
+function formatRelativeTime(isoString: string): string {
+  const diff = Date.now() - new Date(isoString).getTime();
+  const minutes = Math.floor(diff / 60000);
+  if (minutes < 1) return "just now";
+  if (minutes === 1) return "1 min ago";
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.floor(minutes / 60);
+  return hours === 1 ? "1 hour ago" : `${hours} hours ago`;
+}
+
+async function loadAutoCollect() {
+  const syncData = await chrome.storage.sync.get(["autoCollect"]) as { autoCollect?: SearchConfig };
+  const config: SearchConfig = syncData.autoCollect ?? {
+    terms: [],
+    platforms: ["twitter", "threads", "reddit"],
+    intervalMinutes: 60,
+    enabled: false,
+  };
+
+  acTerms.value = config.terms.join(", ");
+  acX.checked = config.platforms.includes("twitter");
+  acThreads.checked = config.platforms.includes("threads");
+  acReddit.checked = config.platforms.includes("reddit");
+  acInterval.value = String(config.intervalMinutes);
+  acEnabled.checked = config.enabled;
+
+  const localData = await chrome.storage.local.get(["lastRun", "lastInserted", "failureCount"]) as {
+    lastRun?: string;
+    lastInserted?: number;
+    failureCount?: number;
+  };
+
+  const failureCount = localData.failureCount ?? 0;
+  if (failureCount >= 3) {
+    acError.textContent = "Auto-collect paused — 3 consecutive errors. Fix connection and re-enable.";
+    acError.style.display = "block";
+  } else {
+    acError.style.display = "none";
+  }
+
+  const statusParts: string[] = [];
+  if (localData.lastRun) {
+    statusParts.push(`Last run: ${formatRelativeTime(localData.lastRun)} · ${localData.lastInserted ?? 0} new items`);
+  }
+  if (config.enabled) {
+    const alarm = await chrome.alarms.get("gito-collect");
+    if (alarm) {
+      const minsUntil = Math.max(0, Math.round((alarm.scheduledTime - Date.now()) / 60000));
+      statusParts.push(`Next run: in ${minsUntil} min`);
+    }
+  }
+  acStatus.textContent = statusParts.join(" · ");
+}
+
+acTerms.addEventListener("change", async () => {
+  await chrome.storage.sync.set({ autoCollect: readAutoCollectForm() });
+});
+acX.addEventListener("change", async () => {
+  await chrome.storage.sync.set({ autoCollect: readAutoCollectForm() });
+});
+acThreads.addEventListener("change", async () => {
+  await chrome.storage.sync.set({ autoCollect: readAutoCollectForm() });
+});
+acReddit.addEventListener("change", async () => {
+  await chrome.storage.sync.set({ autoCollect: readAutoCollectForm() });
+});
+acInterval.addEventListener("change", async () => {
+  await chrome.storage.sync.set({ autoCollect: readAutoCollectForm() });
+});
+
+acEnabled.addEventListener("change", async () => {
+  const config = readAutoCollectForm();
+  if (config.enabled) {
+    await chrome.storage.local.set({ failureCount: 0 });
+    chrome.alarms.create("gito-collect", { periodInMinutes: config.intervalMinutes });
+  } else {
+    chrome.alarms.clear("gito-collect");
+  }
+  await chrome.storage.sync.set({ autoCollect: config });
+  await loadAutoCollect();
+});
 
 function todayKey(): string {
   return `count_${new Date().toISOString().slice(0, 10)}`;
@@ -74,6 +190,8 @@ async function loadState() {
         entityList.appendChild(chip);
       }
     }
+
+    await loadAutoCollect();
   } else {
     setupEl.style.display = "block";
     configuredEl.style.display = "none";
@@ -167,6 +285,7 @@ saveBtn.addEventListener("click", async () => {
 });
 
 disconnectBtn.addEventListener("click", async () => {
+  chrome.alarms.clear("gito-collect");
   const data = await chrome.storage.sync.get(["accounts", "activeAccountId"]) as StorageData;
   const accounts = (data.accounts ?? []).filter((a) => a.id !== data.activeAccountId);
   const nextActive = accounts[0]?.id ?? null;

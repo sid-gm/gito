@@ -3,7 +3,7 @@
   "name": "Gito — Send to Gito",
   "version": "1.0.0",
   "description": "One-click capture of social posts into Gito.",
-  "permissions": ["contextMenus", "storage", "activeTab", "scripting"],
+  "permissions": ["contextMenus", "storage", "activeTab", "scripting", "alarms", "tabs"],
   "host_permissions": ["<all_urls>"],
   "background": { "service_worker": "background.js" },
   "content_scripts": [{
