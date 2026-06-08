@@ -227,7 +227,7 @@ async function loadState() {
       }
     }
 
-    viewRunsBtn.href = `${active.gitoUrl}/analyst/extension-runs`;
+    viewRunsBtn.href = "https://usegito.com/analyst/extension-runs";
     await loadAutoCollect();
   } else {
     setupEl.style.display = "block";

@@ -157,7 +157,7 @@ async function recordRun(
   opts: { runId: string; ranAt: string; triggeredBy: "auto" | "manual"; config: SearchConfig; collected: number; inserted: number }
 ): Promise<void> {
   try {
-    await fetch(new URL("/api/extension-runs", account.gitoUrl).href, {
+    const res = await fetch(new URL("/api/extension-runs", account.gitoUrl).href, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -173,6 +173,10 @@ async function recordRun(
         itemsInserted: opts.inserted,
       }),
     });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      console.error(`[Gito auto-collect] recordRun HTTP ${res.status}:`, text);
+    }
   } catch (err) {
     console.error("[Gito auto-collect] failed to record run:", err);
   }
