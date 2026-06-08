@@ -511,6 +511,7 @@ export default function SourcesPage() {
 
         {/* ── Tracked Entities ── */}
         <div className="tbl-wrap" style={{ marginBottom: 32 }}>
+          <div style={{ padding: "18px 20px 0" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
             <div>
               <div style={{ fontSize: 13, fontWeight: 600 }}>Tracked entities</div>
@@ -585,6 +586,7 @@ export default function SourcesPage() {
               </div>
             </form>
           )}
+          </div>
 
           <table className="tbl tbl-entities">
             <thead>
@@ -1137,6 +1139,7 @@ export default function SourcesPage() {
 
         {/* ── Chrome Extension ── */}
         <div className="tbl-wrap" style={{ marginBottom: 32 }}>
+          <div style={{ padding: "18px 20px" }}>
           <div style={{ marginBottom: 12 }}>
             <div style={{ fontSize: 13, fontWeight: 600 }}>Chrome Extension</div>
             <div style={{ fontSize: 12, color: "var(--ink-60)" }}>Use this key in the Gito Chrome Extension settings to enable direct ingest from your browser.</div>
@@ -1178,6 +1181,7 @@ export default function SourcesPage() {
             >
               {apiKeyRegenerating ? "Regenerating…" : "Regenerate"}
             </button>
+          </div>
           </div>
         </div>
 
