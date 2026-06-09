@@ -39,6 +39,13 @@ function relativeTime(iso: string | null) {
   return `${Math.floor(h / 24)}d ago`;
 }
 
+function absTime(iso: string | null) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" }) +
+    " · " + d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+}
+
 function fillSeries(
   sparse: { date: string; count: number }[],
   slots: number,
@@ -71,6 +78,7 @@ export default function FeedPage() {
   const [sessionIngestedUrls, setSessionIngestedUrls] = useState<Set<string>>(new Set());
   const [platformCounts, setPlatformCounts] = useState<Record<string, number>>({ all: 0 });
   const [totalSpark, setTotalSpark] = useState<number[]>([]);
+  const [sortBy, setSortBy] = useState<"publishedAt" | "createdAt">("publishedAt");
 
   const runCluster = useCallback(async () => {
     setClusterRunning(true);
@@ -135,9 +143,17 @@ export default function FeedPage() {
     );
   }, [items, query]);
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const sorted = useMemo(() => {
+    return [...filtered].sort((a, b) => {
+      const aVal = sortBy === "publishedAt" ? (a.publishedAt ?? a.createdAt) : a.createdAt;
+      const bVal = sortBy === "publishedAt" ? (b.publishedAt ?? b.createdAt) : b.createdAt;
+      return new Date(bVal).getTime() - new Date(aVal).getTime();
+    });
+  }, [filtered, sortBy]);
+
+  const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
   const safePage = Math.min(page, totalPages);
-  const paginated = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
+  const paginated = sorted.slice((safePage - 1) * pageSize, safePage * pageSize);
 
   const displayItems = useMemo(
     () =>
@@ -272,10 +288,28 @@ export default function FeedPage() {
 
         <div className="result-meta">
           <span>
-            <strong>{filtered.length}</strong> of {items.length} items
+            <strong>{sorted.length}</strong> of {items.length} items
           </span>
           <span className="dim">·</span>
-          <span className="dim">Deduplicated on ingest · sorted by recency</span>
+          <span className="dim">Deduplicated on ingest</span>
+          <span className="dim">·</span>
+          <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span className="dim">Sort</span>
+            <div className="seg seg-mono">
+              <button
+                className={cx("seg-btn", sortBy === "publishedAt" && "seg-btn-on")}
+                onClick={() => { setSortBy("publishedAt"); setPage(1); }}
+              >
+                Published at
+              </button>
+              <button
+                className={cx("seg-btn", sortBy === "createdAt" && "seg-btn-on")}
+                onClick={() => { setSortBy("createdAt"); setPage(1); }}
+              >
+                Ingested at
+              </button>
+            </div>
+          </span>
           <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
             <span className="dim">Show</span>
             <div className="seg">
@@ -303,7 +337,7 @@ export default function FeedPage() {
           <FeedTable items={displayItems} entities={entities} />
         )}
 
-        {!loading && filtered.length > 0 && (
+        {!loading && sorted.length > 0 && (
           <div className="result-meta" style={{ marginTop: 12, justifyContent: "center", gap: 12 }}>
             <button
               className="btn btn-sm"
@@ -400,6 +434,14 @@ function FeedRow({ item, entities, onIngestThread }: { item: FeedItem; entities:
           {item.author && <span className="meta-mono">{item.author}</span>}
           {ent && <EntityBadge label={ent.label} type={ent.entityType} />}
           <span className="meta-sent">
+            <span className="meta-sent-label">published</span>
+            <span className="meta-mono dim" title={item.publishedAt ?? undefined}>{absTime(item.publishedAt)}</span>
+          </span>
+          <span className="meta-sent">
+            <span className="meta-sent-label">ingested</span>
+            <span className="meta-mono dim" title={item.createdAt}>{absTime(item.createdAt)}</span>
+          </span>
+          <span className="meta-sent">
             <span className="meta-sent-label">sentiment</span>
             <SentimentBar value={sentiment} />
             <span className="meta-mono dim">{sentiment.toFixed(2)}</span>
@@ -445,7 +487,8 @@ function FeedTable({ items, entities }: { items: FeedItem[]; entities: Entity[] 
         <thead>
           <tr>
             <th style={{ width: 70 }}>Src</th>
-            <th style={{ width: 80 }}>Time</th>
+            <th style={{ width: 140 }}>Published</th>
+            <th style={{ width: 140 }}>Ingested</th>
             <th>Title</th>
             <th style={{ width: 200 }}>Entity</th>
             <th style={{ width: 120 }}>Sentiment</th>
@@ -465,7 +508,8 @@ function FeedTable({ items, entities }: { items: FeedItem[]; entities: Entity[] 
                     </span>
                   )}
                 </td>
-                <td className="mono dim">{relativeTime(i.publishedAt ?? i.createdAt)}</td>
+                <td className="mono dim" title={i.publishedAt ?? undefined}>{absTime(i.publishedAt)}</td>
+                <td className="mono dim" title={i.createdAt}>{absTime(i.createdAt)}</td>
                 <td className="tbl-title">
                   {hnHref(i) ? (
                     <a href={hnHref(i)!} target="_blank" rel="noopener noreferrer">
