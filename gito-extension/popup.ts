@@ -7,6 +7,7 @@ interface Account {
   entities: { id: string; label: string }[];
   trackedThreads: Array<{ url: string; platform: string; externalId?: string | null }>;
   twitterAccounts: string[];
+  redditSubreddits: Array<{ subredditName: string; keywordFilters: string[] }>;
 }
 
 interface StorageData {
@@ -298,6 +299,7 @@ saveBtn.addEventListener("click", async () => {
       entities: { id: string; label: string }[];
       trackedThreads?: Array<{ url: string; platform: string; externalId?: string | null }>;
       twitterAccounts?: string[];
+      redditSubreddits?: Array<{ subredditName: string; keywordFilters: string[] }>;
     };
 
     const data = await chrome.storage.sync.get(["accounts", "activeAccountId"]) as StorageData;
@@ -313,6 +315,7 @@ saveBtn.addEventListener("click", async () => {
       entities: ctx.entities,
       trackedThreads: ctx.trackedThreads ?? [],
       twitterAccounts: ctx.twitterAccounts ?? [],
+      redditSubreddits: ctx.redditSubreddits ?? [],
     };
 
     const existing = accounts.findIndex((a) => a.companyId === ctx.companyId);

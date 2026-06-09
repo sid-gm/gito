@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { companies, trackedEntities, trackedThreads, twitterHandles } from "@/lib/db/schema";
+import { companies, trackedEntities, trackedThreads, twitterHandles, redditSubreddits } from "@/lib/db/schema";
 import { verifyExtensionKey } from "@/lib/extension-auth";
 import { and, eq } from "drizzle-orm";
 
@@ -48,6 +48,11 @@ export async function GET(req: Request) {
     .from(twitterHandles)
     .where(eq(twitterHandles.companyId, companyId));
 
+  const subreddits = await db
+    .select({ subredditName: redditSubreddits.subredditName, keywordFilters: redditSubreddits.keywordFilters })
+    .from(redditSubreddits)
+    .where(eq(redditSubreddits.companyId, companyId));
+
   return NextResponse.json(
     {
       companyId: company.id,
@@ -55,6 +60,7 @@ export async function GET(req: Request) {
       entities,
       trackedThreads: threads,
       twitterAccounts: handles.map((h) => h.handle),
+      redditSubreddits: subreddits,
     },
     { headers: CORS }
   );
