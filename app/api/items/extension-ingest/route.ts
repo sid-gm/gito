@@ -63,7 +63,7 @@ export async function POST(req: Request) {
   }
 
   const now = new Date();
-  const safeDate = (s: string | undefined): Date => {
+  const safeDate = (s: string | null | undefined): Date => {
     if (!s) return now;
     const d = new Date(s);
     return isNaN(d.getTime()) ? now : d;
