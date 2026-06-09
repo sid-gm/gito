@@ -7,6 +7,7 @@ import { classifyCluster, classifyItemSignals } from "@/lib/ai/classify";
 import { analyzeEntitySentiment } from "@/lib/ai/sentiment";
 import { computeNarrativeStage, NEWS_PLATFORMS } from "@/lib/narrative-stage";
 import { linkNewsForAllEntities } from "@/lib/ai/link-news";
+import { assignClustersToStorylines } from "@/lib/ai/storylines";
 
 export const maxDuration = 300;
 
@@ -282,5 +283,25 @@ export async function GET(req: Request) {
     console.error("[cron/classify] news linking:", err);
   }
 
-  return NextResponse.json({ ok: true, classified, stageRefreshed, signalsTagged, sentimentBackfilled, newsLinked });
+  // Classification is the admission moment for the storyline (arc) layer
+  let storylinesAssigned = 0;
+  let storylinesCreated = 0;
+  try {
+    const storylineResult = await assignClustersToStorylines(15);
+    storylinesAssigned = storylineResult.assigned;
+    storylinesCreated = storylineResult.created;
+  } catch (err) {
+    console.error("[cron/classify] storyline assignment:", err);
+  }
+
+  return NextResponse.json({
+    ok: true,
+    classified,
+    stageRefreshed,
+    signalsTagged,
+    sentimentBackfilled,
+    newsLinked,
+    storylinesAssigned,
+    storylinesCreated,
+  });
 }

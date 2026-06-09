@@ -5,6 +5,9 @@ import { openai } from "@ai-sdk/openai";
 import { db } from "@/lib/db";
 import { clusters, clusterItems, clusterPeriodNarratives, ingestedItems, trackedEntities } from "@/lib/db/schema";
 import { verifyCronSecret } from "@/lib/cron-auth";
+import { refreshStaleLenses } from "@/lib/ai/storylines";
+
+export const maxDuration = 300;
 
 const ORIGINAL_SUBTYPES = ["x_post", "reddit_thread", "ig_post"];
 
@@ -186,5 +189,13 @@ Write an updated 1-2 sentence summary of public reaction to this story, noting w
     }
   }
 
-  return NextResponse.json({ ok: true, updated });
+  // Refresh storyline lenses whose member activity moved past the cached digest
+  let lensesRefreshed = 0;
+  try {
+    lensesRefreshed = await refreshStaleLenses(5);
+  } catch (err) {
+    console.error("[summarize-narratives] lens refresh:", err);
+  }
+
+  return NextResponse.json({ ok: true, updated, lensesRefreshed });
 }

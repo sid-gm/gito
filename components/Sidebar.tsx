@@ -217,6 +217,13 @@ export function Sidebar() {
           <span className="nav-label">Cluster Review</span>
         </Link>
         <Link
+          href="/analyst/storylines"
+          className={cx("nav-item nav-item-sub", path.startsWith("/analyst/storylines") && "nav-item-on")}
+        >
+          <span className="nav-glyph">∿</span>
+          <span className="nav-label">Storylines</span>
+        </Link>
+        <Link
           href="/analyst/narratives"
           className={cx("nav-item nav-item-sub", path === "/analyst/narratives" && "nav-item-on")}
         >

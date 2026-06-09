@@ -81,6 +81,8 @@ type Cluster = {
   sentimentScore: number | null;
   sentimentLabel: string | null;
   suggestedKeywords: string[] | null;
+  storylineId: string | null;
+  storylineTitle: string | null;
   topItems: ClusterItem[];
   platforms: string[];
   trackedEntities: Array<{ id: string; label: string }>;
@@ -1063,7 +1065,18 @@ export default function ClustersPage() {
                     </div>
                   </div>
 
-                  <div className="cluster-card-meta">{shortDate(cluster.firstSeenAt)} → {relativeTime(cluster.lastSeenAt)}</div>
+                  <div className="cluster-card-meta" style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <span>{shortDate(cluster.firstSeenAt)} → {relativeTime(cluster.lastSeenAt)}</span>
+                    {cluster.storylineId && (
+                      <a
+                        href={`/analyst/storylines/${cluster.storylineId}`}
+                        title={`Part of storyline: ${cluster.storylineTitle ?? ""}`}
+                        style={{ fontSize: 10, fontFamily: "var(--font-mono)", padding: "1px 8px", borderRadius: 99, background: "color-mix(in oklch, var(--accent) 10%, var(--paper))", color: "var(--accent)", border: "1px solid color-mix(in oklch, var(--accent) 25%, transparent)", whiteSpace: "nowrap", textDecoration: "none", maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis" }}
+                      >
+                        ∿ {cluster.storylineTitle ?? "Storyline"}
+                      </a>
+                    )}
+                  </div>
 
                   {/* Narrative summary */}
                   {cluster.narrativeSummary && cluster.effectiveClassification === "narrative" && (

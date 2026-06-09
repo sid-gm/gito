@@ -128,6 +128,30 @@ export async function POST() {
       )
     `);
 
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS storylines (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        entity_id UUID NOT NULL REFERENCES tracked_entities(id) ON DELETE CASCADE,
+        title TEXT NOT NULL,
+        summary TEXT,
+        status TEXT NOT NULL DEFAULT 'open',
+        origin_cluster_id UUID REFERENCES clusters(id) ON DELETE SET NULL,
+        first_seen_at TIMESTAMP NOT NULL,
+        last_seen_at TIMESTAMP NOT NULL,
+        news_sentiment_score REAL,
+        social_sentiment_score REAL,
+        platform_lens JSONB,
+        lens_generated_at TIMESTAMP,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+      )
+    `);
+
+    await db.execute(sql`
+      ALTER TABLE clusters
+      ADD COLUMN IF NOT EXISTS storyline_id UUID REFERENCES storylines(id) ON DELETE SET NULL
+    `);
+
     return NextResponse.json({ ok: true, message: "Migration applied" });
   } catch (err) {
     console.error("[POST /api/migrate]", err);

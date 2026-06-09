@@ -154,6 +154,30 @@ export const clusters = pgTable("clusters", {
   sentimentAnalyzedAt: timestamp("sentiment_analyzed_at"),
   // LLM-suggested keywords when the cluster was formed
   suggestedKeywords: jsonb("suggested_keywords").$type<string[]>(),
+  // Narrative arc this cluster belongs to (clusters are the event layer)
+  storylineId: uuid("storyline_id").references((): AnyPgColumn => storylines.id, { onDelete: "set null" }),
+});
+
+// Narrative arcs above clusters: a storyline groups related event clusters
+// over days/weeks ("billionaire policy backlash") with origin tracing and
+// cached per-platform lens digests.
+export const storylines = pgTable("storylines", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  entityId: uuid("entity_id")
+    .references(() => trackedEntities.id, { onDelete: "cascade" })
+    .notNull(),
+  title: text("title").notNull(),
+  summary: text("summary"),
+  status: text("status").default("open").notNull(), // open | closed
+  originClusterId: uuid("origin_cluster_id").references((): AnyPgColumn => clusters.id, { onDelete: "set null" }),
+  firstSeenAt: timestamp("first_seen_at").notNull(),
+  lastSeenAt: timestamp("last_seen_at").notNull(),
+  newsSentimentScore: real("news_sentiment_score"),
+  socialSentimentScore: real("social_sentiment_score"),
+  platformLens: jsonb("platform_lens").$type<Record<string, { digest: string; quote: string | null }>>(),
+  lensGeneratedAt: timestamp("lens_generated_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
 // Tracks merge history — one row per absorbed cluster
@@ -314,6 +338,8 @@ export type ClusterMerge = typeof clusterMerges.$inferSelect;
 export type ClusterNewsLink = typeof clusterNewsLinks.$inferSelect;
 export type NewClusterNewsLink = typeof clusterNewsLinks.$inferInsert;
 export type ClusterMergeSuggestion = typeof clusterMergeSuggestions.$inferSelect;
+export type Storyline = typeof storylines.$inferSelect;
+export type NewStoryline = typeof storylines.$inferInsert;
 export type TwitterHandle = typeof twitterHandles.$inferSelect;
 export type NewTwitterHandle = typeof twitterHandles.$inferInsert;
 export type ThreadsFilter = typeof threadsFilters.$inferSelect;

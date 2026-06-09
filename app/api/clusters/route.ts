@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { and, asc, avg, count, desc, eq, gte, inArray, isNull, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { clusters, clusterItems, clusterNewsLinks, ingestedItems, trackedEntities } from "@/lib/db/schema";
+import { clusters, clusterItems, clusterNewsLinks, ingestedItems, storylines, trackedEntities } from "@/lib/db/schema";
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
@@ -114,8 +114,11 @@ export async function GET(req: Request) {
       sentimentScore: clusters.sentimentScore,
       sentimentLabel: clusters.sentimentLabel,
       suggestedKeywords: clusters.suggestedKeywords,
+      storylineId: clusters.storylineId,
+      storylineTitle: storylines.title,
     })
     .from(clusters)
+    .leftJoin(storylines, eq(clusters.storylineId, storylines.id))
     .where(and(...baseConditions))
     .orderBy(...orderBy);
 
