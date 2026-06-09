@@ -288,13 +288,20 @@ export function dedupeByExternalId(items: ExtensionItem[]): ExtensionItem[] {
 
 export function waitForTabLoad(tabId: number, timeoutMs: number): Promise<void> {
   return new Promise((resolve) => {
-    const timer = setTimeout(resolve, timeoutMs);
-    chrome.tabs.onUpdated.addListener(function listener(id, info) {
+    let done = false;
+    function finish() {
+      if (done) return;
+      done = true;
+      chrome.tabs.onUpdated.removeListener(onUpdated);
+      resolve();
+    }
+    const timer = setTimeout(finish, timeoutMs);
+    function onUpdated(id: number, info: chrome.tabs.TabChangeInfo) {
       if (id === tabId && info.status === "complete") {
         clearTimeout(timer);
-        chrome.tabs.onUpdated.removeListener(listener);
-        setTimeout(resolve, 2000);
+        setTimeout(finish, 2000);
       }
-    });
+    }
+    chrome.tabs.onUpdated.addListener(onUpdated);
   });
 }

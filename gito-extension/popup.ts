@@ -143,6 +143,7 @@ runNowBtn.addEventListener("click", async () => {
     inserted?: number;
     errors?: string[];
     error?: string;
+    pendingSessions?: number;
   };
 
   runNowBtn.disabled = false;
@@ -154,9 +155,9 @@ runNowBtn.addEventListener("click", async () => {
   } else {
     acError.style.display = "none";
     const parts: string[] = [];
-    parts.push(`${response.inserted ?? 0} new items inserted`);
-    if ((response.collected ?? 0) > (response.inserted ?? 0)) {
-      parts.push(`${response.collected} collected`);
+    parts.push(`${response.inserted ?? 0} new items (session 1)`);
+    if ((response.pendingSessions ?? 0) > 0) {
+      parts.push(`${response.pendingSessions} more session${response.pendingSessions === 1 ? "" : "s"} running in background`);
     }
     if (response.errors?.length) {
       parts.push(`${response.errors.length} error(s)`);

@@ -34,6 +34,37 @@ interface SearchConfig {
   enabled: boolean;
 }
 
+// ---------------------------------------------------------------------------
+// Queue types — persisted in chrome.storage.local between SW invocations
+// ---------------------------------------------------------------------------
+
+type QueueEntry =
+  | { type: "keyword"; term: string }
+  | { type: "tracked" };            // processes all tracked threads + Twitter profiles
+
+interface ActiveRunState {
+  runId: string;
+  ranAt: string;
+  triggeredBy: "auto" | "manual";
+  platforms: Array<"twitter" | "threads" | "reddit">;
+  terms: string[];
+  totalCollected: number;
+  totalInserted: number;
+  errors: string[];
+}
+
+interface StoredQueue {
+  entries: QueueEntry[];
+  state: ActiveRunState;
+}
+
+const QUEUE_KEY = "gitoCollectQueue";
+const MAX_THREAD_DRILLS = 5;
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
 async function getActiveAccount(): Promise<Account | null> {
   const data = await chrome.storage.sync.get(["accounts", "activeAccountId"]) as {
     accounts?: Account[];
@@ -42,22 +73,6 @@ async function getActiveAccount(): Promise<Account | null> {
   const accounts = data.accounts ?? [];
   return accounts.find((a) => a.id === data.activeAccountId) ?? accounts[0] ?? null;
 }
-
-chrome.runtime.onInstalled.addListener(() => {
-  chrome.contextMenus.create({
-    id: "send-to-gito",
-    title: "Send to Gito",
-    contexts: ["selection"],
-  });
-});
-
-chrome.contextMenus.onClicked.addListener((info, tab) => {
-  if (info.menuItemId !== "send-to-gito" || !tab?.id) return;
-  chrome.scripting.executeScript({
-    target: { tabId: tab.id },
-    func: () => (window as any).__gitoSendSelection?.(),
-  });
-});
 
 function todayKey(): string {
   return `count_${new Date().toISOString().slice(0, 10)}`;
@@ -69,183 +84,32 @@ async function incrementDailyCount() {
   await chrome.storage.local.set({ [key]: (local[key] ?? 0) + 1 });
 }
 
-interface CollectResult {
-  collected: number;
-  inserted: number;
-  errors: string[];
-}
-
-async function runAutoCollect(config: SearchConfig, account: Account, triggeredBy: "auto" | "manual"): Promise<CollectResult> {
-  const runId: string = crypto.randomUUID();
-  const ranAt = new Date().toISOString();
-  const allItems: ExtensionItem[] = [];
-  const errors: string[] = [];
-
-  for (const term of config.terms) {
-    for (const platform of config.platforms) {
-      let tabId: number | null = null;
-      try {
-        const searchUrl =
-          platform === "twitter"
-            ? `https://x.com/search?q=${encodeURIComponent(term)}&f=live`
-            : platform === "threads"
-            ? `https://www.threads.net/search?q=${encodeURIComponent(term)}&serp_type=default&filter=recent`
-            : `https://www.reddit.com/search/?q=${encodeURIComponent(term)}&sort=new`;
-
-        console.log(`[Gito auto-collect] opening tab: ${searchUrl}`);
-        const tab = await chrome.tabs.create({ url: searchUrl, active: false });
-        tabId = tab.id!;
-        await waitForTabLoad(tabId, 8000);
-
-        const items =
-          platform === "twitter"
-            ? await collectX(term, tabId)
-            : platform === "threads"
-            ? await collectThreads(term, tabId)
-            : await collectReddit(term, tabId);
-
-        console.log(`[Gito auto-collect] ${platform}/${term}: ${items.length} items`);
-        allItems.push(...items);
-        await chrome.tabs.remove(tabId);
-        tabId = null;
-
-        // Drill into each post found on the search page to collect replies
-        if (platform === "twitter" || platform === "threads") {
-          const postUrls = items
-            .filter((i) => i.subtype === "x_post" || i.subtype === "threads_post")
-            .map((i) => ({ url: i.url, externalId: i.externalId }))
-            .filter((v, idx, arr) => arr.findIndex((x) => x.url === v.url) === idx);
-
-          for (const post of postUrls) {
-            let threadTabId: number | null = null;
-            try {
-              console.log(`[Gito auto-collect] drilling into thread: ${post.url}`);
-              const threadTab = await chrome.tabs.create({ url: post.url, active: false });
-              threadTabId = threadTab.id!;
-              await waitForTabLoad(threadTabId, 8000);
-              const threadItems = platform === "twitter"
-                ? await collectXThread(post.url, threadTabId, post.externalId ?? undefined)
-                : await collectThreadsThread(post.url, threadTabId);
-              console.log(`[Gito auto-collect] thread ${post.url}: ${threadItems.length} items`);
-              allItems.push(...threadItems);
-              await chrome.tabs.remove(threadTabId);
-              threadTabId = null;
-            } catch (err) {
-              const msg = `${platform} thread ${post.url}: ${String(err)}`;
-              console.error(`[Gito auto-collect] ${msg}`);
-              errors.push(msg);
-              if (threadTabId !== null) chrome.tabs.remove(threadTabId).catch(() => {});
-            }
-          }
-        }
-      } catch (err) {
-        const msg = `${platform}/${term}: ${String(err)}`;
-        console.error(`[Gito auto-collect] ${msg}`);
-        errors.push(msg);
-        if (tabId !== null) chrome.tabs.remove(tabId).catch(() => {});
-      }
+// Send a batch of items to the ingest API immediately.
+async function ingestBatch(
+  items: ExtensionItem[],
+  account: Account,
+  runId: string,
+): Promise<{ inserted: number; error?: string }> {
+  if (items.length === 0) return { inserted: 0 };
+  const unique = dedupeByExternalId(items);
+  try {
+    const res = await fetch(new URL("/api/items/extension-ingest", account.gitoUrl).href, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${account.apiKey}`,
+      },
+      body: JSON.stringify({ items: unique, collectRunId: runId }),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      return { inserted: 0, error: `Ingest failed: HTTP ${res.status} ${text.slice(0, 200)}` };
     }
+    const data = await res.json();
+    return { inserted: data.inserted ?? 0 };
+  } catch (err) {
+    return { inserted: 0, error: `Ingest error: ${String(err)}` };
   }
-
-  // TICKET-5: Collect from explicitly tracked thread URLs
-  for (const thread of (account.trackedThreads ?? [])) {
-    if (thread.platform !== "twitter" && thread.platform !== "threads") continue;
-    let tabId: number | null = null;
-    try {
-      console.log(`[Gito auto-collect] tracked thread: ${thread.url}`);
-      const tab = await chrome.tabs.create({ url: thread.url, active: false });
-      tabId = tab.id!;
-      await waitForTabLoad(tabId, 8000);
-      const threadItems = thread.platform === "twitter"
-        ? await collectXThread(thread.url, tabId, thread.externalId ?? undefined)
-        : await collectThreadsThread(thread.url, tabId);
-      console.log(`[Gito auto-collect] tracked thread ${thread.url}: ${threadItems.length} items`);
-      allItems.push(...threadItems);
-      await chrome.tabs.remove(tabId);
-      tabId = null;
-    } catch (err) {
-      const msg = `tracked thread ${thread.url}: ${String(err)}`;
-      console.error(`[Gito auto-collect] ${msg}`);
-      errors.push(msg);
-      if (tabId !== null) chrome.tabs.remove(tabId).catch(() => {});
-    }
-  }
-
-  // TICKET-6: Collect latest tweets from tracked Twitter account profiles
-  for (const handle of (account.twitterAccounts ?? [])) {
-    let tabId: number | null = null;
-    try {
-      const profileUrl = `https://x.com/${handle}`;
-      console.log(`[Gito auto-collect] twitter profile: @${handle}`);
-      const tab = await chrome.tabs.create({ url: profileUrl, active: false });
-      tabId = tab.id!;
-      await waitForTabLoad(tabId, 8000);
-      const profileItems = await collectXProfile(handle, tabId);
-      console.log(`[Gito auto-collect] @${handle}: ${profileItems.length} items`);
-      allItems.push(...profileItems);
-      await chrome.tabs.remove(tabId);
-      tabId = null;
-    } catch (err) {
-      const msg = `twitter profile @${handle}: ${String(err)}`;
-      console.error(`[Gito auto-collect] ${msg}`);
-      errors.push(msg);
-      if (tabId !== null) chrome.tabs.remove(tabId).catch(() => {});
-    }
-  }
-
-  const unique = dedupeByExternalId(allItems);
-  console.log(`[Gito auto-collect] ${unique.length} unique items after dedup`);
-
-  let inserted = 0;
-
-  if (unique.length > 0) {
-    try {
-      const res = await fetch(new URL("/api/items/extension-ingest", account.gitoUrl).href, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${account.apiKey}`,
-        },
-        body: JSON.stringify({ items: unique, collectRunId: runId }),
-      });
-
-      if (!res.ok) {
-        const text = await res.text().catch(() => "");
-        errors.push(`Ingest failed: HTTP ${res.status} ${text.slice(0, 200)}`);
-        console.error(`[Gito auto-collect] ingest HTTP ${res.status}:`, text);
-      } else {
-        const data = await res.json();
-        inserted = data.inserted ?? 0;
-
-        const today = new Date().toISOString().slice(0, 10);
-        const stats = await chrome.storage.local.get(["dailyCount"]) as {
-          dailyCount?: { date: string; count: number };
-        };
-        await chrome.storage.local.set({
-          lastRun: new Date().toISOString(),
-          lastInserted: inserted,
-          failureCount: 0,
-          dailyCount:
-            stats.dailyCount?.date === today
-              ? { date: today, count: stats.dailyCount.count + inserted }
-              : { date: today, count: inserted },
-        });
-
-        if (inserted > 0) {
-          chrome.action.setBadgeText({ text: String(inserted) });
-          chrome.action.setBadgeBackgroundColor({ color: "#16a34a" });
-          setTimeout(() => chrome.action.setBadgeText({ text: "" }), 30000);
-        }
-      }
-    } catch (err) {
-      const msg = `Ingest error: ${String(err)}`;
-      errors.push(msg);
-      console.error(`[Gito auto-collect] ${msg}`);
-    }
-  }
-
-  await recordRun(account, { runId, ranAt, triggeredBy, config, collected: allItems.length, inserted });
-  return { collected: allItems.length, inserted, errors };
 }
 
 async function recordRun(
@@ -271,39 +135,358 @@ async function recordRun(
     });
     if (!res.ok) {
       const text = await res.text().catch(() => "");
-      console.error(`[Gito auto-collect] recordRun HTTP ${res.status}:`, text);
+      console.error(`[Gito] recordRun HTTP ${res.status}:`, text);
     }
   } catch (err) {
-    console.error("[Gito auto-collect] failed to record run:", err);
+    console.error("[Gito] failed to record run:", err);
   }
 }
 
-chrome.alarms.onAlarm.addListener(async (alarm) => {
-  if (alarm.name !== "gito-collect") return;
+// ---------------------------------------------------------------------------
+// Per-entry processors
+// ---------------------------------------------------------------------------
 
-  const syncData = await chrome.storage.sync.get(["autoCollect", "accounts", "activeAccountId"]) as {
-    autoCollect?: SearchConfig;
-    accounts?: Account[];
-    activeAccountId?: string;
+interface SessionResult {
+  collected: number;
+  inserted: number;
+  errors: string[];
+}
+
+async function processKeywordEntry(
+  term: string,
+  state: ActiveRunState,
+  account: Account,
+): Promise<SessionResult> {
+  let collected = 0;
+  let inserted = 0;
+  const errors: string[] = [];
+
+  for (const platform of state.platforms) {
+    let tabId: number | null = null;
+    let searchItems: ExtensionItem[] = [];
+    try {
+      const searchUrl =
+        platform === "twitter"
+          ? `https://x.com/search?q=${encodeURIComponent(term)}&f=live`
+          : platform === "threads"
+          ? `https://www.threads.net/search?q=${encodeURIComponent(term)}&serp_type=default&filter=recent`
+          : `https://www.reddit.com/search/?q=${encodeURIComponent(term)}&sort=new`;
+
+      console.log(`[Gito] opening tab: ${searchUrl}`);
+      const tab = await chrome.tabs.create({ url: searchUrl, active: false });
+      tabId = tab.id!;
+      await waitForTabLoad(tabId, 8000);
+
+      searchItems =
+        platform === "twitter"
+          ? await collectX(term, tabId)
+          : platform === "threads"
+          ? await collectThreads(term, tabId)
+          : await collectReddit(term, tabId);
+
+      console.log(`[Gito] ${platform}/${term}: ${searchItems.length} items`);
+      await chrome.tabs.remove(tabId);
+      tabId = null;
+    } catch (err) {
+      const msg = `${platform}/${term}: ${String(err)}`;
+      console.error(`[Gito] ${msg}`);
+      errors.push(msg);
+      if (tabId !== null) chrome.tabs.remove(tabId).catch(() => {});
+      searchItems = [];
+    }
+
+    if (searchItems.length > 0) {
+      collected += searchItems.length;
+      const { inserted: n, error } = await ingestBatch(searchItems, account, state.runId);
+      if (error) { errors.push(error); console.error(`[Gito] ${error}`); }
+      inserted += n;
+    }
+
+    // Drill into individual thread pages (capped to keep this session short).
+    if (platform === "twitter" || platform === "threads") {
+      const postUrls = searchItems
+        .filter((i) => i.subtype === "x_post" || i.subtype === "threads_post")
+        .map((i) => ({ url: i.url, externalId: i.externalId }))
+        .filter((v, idx, arr) => arr.findIndex((x) => x.url === v.url) === idx)
+        .slice(0, MAX_THREAD_DRILLS);
+
+      for (const post of postUrls) {
+        let threadTabId: number | null = null;
+        try {
+          console.log(`[Gito] drilling into thread: ${post.url}`);
+          const threadTab = await chrome.tabs.create({ url: post.url, active: false });
+          threadTabId = threadTab.id!;
+          await waitForTabLoad(threadTabId, 8000);
+          const threadItems = platform === "twitter"
+            ? await collectXThread(post.url, threadTabId, post.externalId ?? undefined)
+            : await collectThreadsThread(post.url, threadTabId);
+          console.log(`[Gito] thread ${post.url}: ${threadItems.length} items`);
+          await chrome.tabs.remove(threadTabId);
+          threadTabId = null;
+
+          if (threadItems.length > 0) {
+            collected += threadItems.length;
+            const { inserted: n, error } = await ingestBatch(threadItems, account, state.runId);
+            if (error) { errors.push(error); console.error(`[Gito] ${error}`); }
+            inserted += n;
+          }
+        } catch (err) {
+          const msg = `${platform} thread ${post.url}: ${String(err)}`;
+          console.error(`[Gito] ${msg}`);
+          errors.push(msg);
+          if (threadTabId !== null) chrome.tabs.remove(threadTabId).catch(() => {});
+        }
+      }
+    }
+  }
+
+  return { collected, inserted, errors };
+}
+
+async function processTrackedEntry(
+  state: ActiveRunState,
+  account: Account,
+): Promise<SessionResult> {
+  let collected = 0;
+  let inserted = 0;
+  const errors: string[] = [];
+
+  for (const thread of (account.trackedThreads ?? [])) {
+    if (thread.platform !== "twitter" && thread.platform !== "threads") continue;
+    let tabId: number | null = null;
+    try {
+      console.log(`[Gito] tracked thread: ${thread.url}`);
+      const tab = await chrome.tabs.create({ url: thread.url, active: false });
+      tabId = tab.id!;
+      await waitForTabLoad(tabId, 8000);
+      const threadItems = thread.platform === "twitter"
+        ? await collectXThread(thread.url, tabId, thread.externalId ?? undefined)
+        : await collectThreadsThread(thread.url, tabId);
+      console.log(`[Gito] tracked thread ${thread.url}: ${threadItems.length} items`);
+      await chrome.tabs.remove(tabId);
+      tabId = null;
+
+      if (threadItems.length > 0) {
+        collected += threadItems.length;
+        const { inserted: n, error } = await ingestBatch(threadItems, account, state.runId);
+        if (error) { errors.push(error); console.error(`[Gito] ${error}`); }
+        inserted += n;
+      }
+    } catch (err) {
+      const msg = `tracked thread ${thread.url}: ${String(err)}`;
+      console.error(`[Gito] ${msg}`);
+      errors.push(msg);
+      if (tabId !== null) chrome.tabs.remove(tabId).catch(() => {});
+    }
+  }
+
+  for (const handle of (account.twitterAccounts ?? [])) {
+    let tabId: number | null = null;
+    try {
+      const profileUrl = `https://x.com/${handle}`;
+      console.log(`[Gito] twitter profile: @${handle}`);
+      const tab = await chrome.tabs.create({ url: profileUrl, active: false });
+      tabId = tab.id!;
+      await waitForTabLoad(tabId, 8000);
+      const profileItems = await collectXProfile(handle, tabId);
+      console.log(`[Gito] @${handle}: ${profileItems.length} items`);
+      await chrome.tabs.remove(tabId);
+      tabId = null;
+
+      if (profileItems.length > 0) {
+        collected += profileItems.length;
+        const { inserted: n, error } = await ingestBatch(profileItems, account, state.runId);
+        if (error) { errors.push(error); console.error(`[Gito] ${error}`); }
+        inserted += n;
+      }
+    } catch (err) {
+      const msg = `twitter profile @${handle}: ${String(err)}`;
+      console.error(`[Gito] ${msg}`);
+      errors.push(msg);
+      if (tabId !== null) chrome.tabs.remove(tabId).catch(() => {});
+    }
+  }
+
+  return { collected, inserted, errors };
+}
+
+// ---------------------------------------------------------------------------
+// Queue engine
+// ---------------------------------------------------------------------------
+
+// Kick off a new run. Writes the full queue to storage, then processes the
+// first entry immediately in the current SW invocation.
+async function startCollectRun(
+  config: SearchConfig,
+  account: Account,
+  triggeredBy: "auto" | "manual",
+): Promise<SessionResult> {
+  const entries: QueueEntry[] = [
+    ...config.terms.map((term): QueueEntry => ({ type: "keyword", term })),
+    { type: "tracked" },
+  ];
+
+  const state: ActiveRunState = {
+    runId: crypto.randomUUID(),
+    ranAt: new Date().toISOString(),
+    triggeredBy,
+    platforms: config.platforms,
+    terms: config.terms,
+    totalCollected: 0,
+    totalInserted: 0,
+    errors: [],
   };
 
-  const config = syncData.autoCollect;
-  if (!config?.enabled || !config.terms?.length) return;
+  // Write the full queue (minus the first entry, which we're about to process).
+  const [first, ...remaining] = entries;
+  await chrome.storage.local.set({ [QUEUE_KEY]: { entries: remaining, state } as StoredQueue });
 
-  const accounts = syncData.accounts ?? [];
-  const account = accounts.find((a) => a.id === syncData.activeAccountId) ?? accounts[0] ?? null;
-  if (!account) return;
+  // Process the first entry now, in this SW invocation.
+  return processEntry(first, state, account, remaining);
+}
 
-  try {
-    await runAutoCollect(config, account, "auto");
-  } catch (err) {
-    console.error("[Gito auto-collect] run failed:", err);
-    const localData = await chrome.storage.local.get(["failureCount"]) as { failureCount?: number };
-    const newCount = (localData.failureCount ?? 0) + 1;
-    await chrome.storage.local.set({ failureCount: newCount });
-    if (newCount >= 3) {
-      await chrome.alarms.clear("gito-collect");
-      await chrome.storage.sync.set({ autoCollect: { ...config, enabled: false } });
+// Process one queue entry, then either schedule the next alarm or finalise.
+async function processEntry(
+  entry: QueueEntry,
+  state: ActiveRunState,
+  account: Account,
+  remaining: QueueEntry[],
+): Promise<SessionResult> {
+  const result = entry.type === "keyword"
+    ? await processKeywordEntry(entry.term, state, account)
+    : await processTrackedEntry(state, account);
+
+  const updatedState: ActiveRunState = {
+    ...state,
+    totalCollected: state.totalCollected + result.collected,
+    totalInserted: state.totalInserted + result.inserted,
+    errors: [...state.errors, ...result.errors],
+  };
+
+  if (remaining.length > 0) {
+    // Persist updated state + remaining queue, then hand off to the next alarm.
+    await chrome.storage.local.set({ [QUEUE_KEY]: { entries: remaining, state: updatedState } as StoredQueue });
+    const label = remaining[0].type === "keyword" ? `"${remaining[0].term}"` : "tracked threads";
+    console.log(`[Gito] session done — scheduling next session (${label}) in 30s`);
+    // Chrome clamps delayInMinutes to a minimum of 0.5 (30 seconds).
+    chrome.alarms.create("gito-collect-next", { delayInMinutes: 0.5 });
+  } else {
+    // All sessions complete — finalise.
+    await chrome.storage.local.remove([QUEUE_KEY]);
+    await finaliseRun(updatedState, account);
+  }
+
+  return result;
+}
+
+// Called when the "gito-collect-next" alarm fires to continue the queue.
+async function continueQueue(account: Account): Promise<void> {
+  const data = await chrome.storage.local.get([QUEUE_KEY]) as { [key: string]: StoredQueue };
+  const queued = data[QUEUE_KEY];
+
+  if (!queued || queued.entries.length === 0) {
+    await chrome.storage.local.remove([QUEUE_KEY]);
+    return;
+  }
+
+  const [current, ...remaining] = queued.entries;
+  await processEntry(current, queued.state, account, remaining);
+}
+
+async function finaliseRun(state: ActiveRunState, account: Account): Promise<void> {
+  console.log(`[Gito] run complete — ${state.totalInserted} inserted across ${state.terms.length} keywords`);
+
+  const today = new Date().toISOString().slice(0, 10);
+  const stats = await chrome.storage.local.get(["dailyCount"]) as {
+    dailyCount?: { date: string; count: number };
+  };
+  await chrome.storage.local.set({
+    lastRun: new Date().toISOString(),
+    lastInserted: state.totalInserted,
+    failureCount: 0,
+    dailyCount:
+      stats.dailyCount?.date === today
+        ? { date: today, count: stats.dailyCount.count + state.totalInserted }
+        : { date: today, count: state.totalInserted },
+  });
+
+  if (state.totalInserted > 0) {
+    chrome.action.setBadgeText({ text: String(state.totalInserted) });
+    chrome.action.setBadgeBackgroundColor({ color: "#16a34a" });
+    setTimeout(() => chrome.action.setBadgeText({ text: "" }), 30000);
+  }
+
+  await recordRun(account, {
+    runId: state.runId,
+    ranAt: state.ranAt,
+    triggeredBy: state.triggeredBy,
+    config: { terms: state.terms, platforms: state.platforms, intervalMinutes: 0, enabled: true },
+    collected: state.totalCollected,
+    inserted: state.totalInserted,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Chrome event listeners
+// ---------------------------------------------------------------------------
+
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.contextMenus.create({
+    id: "send-to-gito",
+    title: "Send to Gito",
+    contexts: ["selection"],
+  });
+});
+
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+  if (info.menuItemId !== "send-to-gito" || !tab?.id) return;
+  chrome.scripting.executeScript({
+    target: { tabId: tab.id },
+    func: () => (window as any).__gitoSendSelection?.(),
+  });
+});
+
+chrome.alarms.onAlarm.addListener(async (alarm) => {
+  // Scheduled periodic collect — starts a fresh run for the full config.
+  if (alarm.name === "gito-collect") {
+    const syncData = await chrome.storage.sync.get(["autoCollect", "accounts", "activeAccountId"]) as {
+      autoCollect?: SearchConfig;
+      accounts?: Account[];
+      activeAccountId?: string;
+    };
+    const config = syncData.autoCollect;
+    if (!config?.enabled || !config.terms?.length) return;
+
+    const accounts = syncData.accounts ?? [];
+    const account = accounts.find((a) => a.id === syncData.activeAccountId) ?? accounts[0] ?? null;
+    if (!account) return;
+
+    try {
+      await startCollectRun(config, account, "auto");
+    } catch (err) {
+      console.error("[Gito] run failed:", err);
+      const localData = await chrome.storage.local.get(["failureCount"]) as { failureCount?: number };
+      const newCount = (localData.failureCount ?? 0) + 1;
+      await chrome.storage.local.set({ failureCount: newCount });
+      if (newCount >= 3) {
+        await chrome.alarms.clear("gito-collect");
+        await chrome.storage.sync.set({ autoCollect: { ...config, enabled: false } });
+      }
+    }
+    return;
+  }
+
+  // Inter-session alarm — continues an in-progress queue.
+  if (alarm.name === "gito-collect-next") {
+    const account = await getActiveAccount();
+    if (!account) {
+      await chrome.storage.local.remove([QUEUE_KEY]);
+      return;
+    }
+    try {
+      await continueQueue(account);
+    } catch (err) {
+      console.error("[Gito] session failed:", err);
     }
   }
 });
@@ -328,8 +511,18 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         return;
       }
       try {
-        const result = await runAutoCollect(config, account, "manual");
-        sendResponse({ ok: true, ...result });
+        // Process first keyword now, remaining sessions continue via alarms.
+        // totalSessions = number of keywords + 1 for tracked/profiles.
+        const totalSessions = config.terms.length + 1;
+        const firstResult = await startCollectRun(config, account, "manual");
+        sendResponse({
+          ok: true,
+          collected: firstResult.collected,
+          inserted: firstResult.inserted,
+          errors: firstResult.errors,
+          // Let the popup know more sessions are running in the background.
+          pendingSessions: totalSessions - 1,
+        });
       } catch (err) {
         sendResponse({ ok: false, error: String(err) });
       }
