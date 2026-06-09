@@ -337,6 +337,17 @@ async function startCollectRun(
     errors: [],
   };
 
+  // Create the run record immediately so the FK constraint is satisfied for all
+  // incremental ingest calls that reference this runId.
+  await recordRun(account, {
+    runId: state.runId,
+    ranAt: state.ranAt,
+    triggeredBy,
+    config: { terms: config.terms, platforms: config.platforms, intervalMinutes: 0, enabled: true },
+    collected: 0,
+    inserted: 0,
+  });
+
   // Write the full queue (minus the first entry, which we're about to process).
   const [first, ...remaining] = entries;
   await chrome.storage.local.set({ [QUEUE_KEY]: { entries: remaining, state } as StoredQueue });

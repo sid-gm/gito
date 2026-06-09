@@ -23,9 +23,9 @@ const itemSchema = z.object({
   publishedAt: z.string().optional(),
   platform: z.enum(["twitter", "reddit", "instagram", "threads", "manual"]),
   subtype: z.string().optional(),
-  externalId: z.string().optional(),
-  parentExternalId: z.string().optional(),
-  rootExternalId: z.string().optional(),
+  externalId: z.string().nullish(),
+  parentExternalId: z.string().nullish(),
+  rootExternalId: z.string().nullish(),
 });
 
 const bodySchema = z.object({

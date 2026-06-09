@@ -45,7 +45,10 @@ export async function POST(req: Request) {
   await db
     .insert(extensionCollectRuns)
     .values({ id, companyId, triggeredBy, ranAt: new Date(ranAt), searchTerms, platforms, itemsCollected, itemsInserted })
-    .onConflictDoNothing();
+    .onConflictDoUpdate({
+      target: extensionCollectRuns.id,
+      set: { itemsCollected, itemsInserted },
+    });
 
   return NextResponse.json({ ok: true }, { headers: CORS });
 }
