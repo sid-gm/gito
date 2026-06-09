@@ -1,20 +1,25 @@
 import { NextResponse } from "next/server";
-import { and, desc, eq, gte, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import { generateText } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { db } from "@/lib/db";
 import { clusters, clusterItems, ingestedItems } from "@/lib/db/schema";
 import { verifyCronSecret } from "@/lib/cron-auth";
+import { suggestMergesForAllEntities } from "@/lib/ai/merge-suggestions";
+
+export const maxDuration = 300;
 
 export async function GET(req: Request) {
   const authError = verifyCronSecret(req);
   if (authError) return authError;
 
+  // Unlabeled clusters (singletons included) are invisible to Phase 1 matching,
+  // so every cluster must get a label or the same story fragments into duplicates.
   const unnamed = await db
     .select()
     .from(clusters)
-    .where(and(isNull(clusters.label), isNull(clusters.archivedAt), gte(clusters.itemCount, 2)))
-    .limit(20);
+    .where(and(isNull(clusters.label), isNull(clusters.archivedAt)))
+    .limit(40);
 
   let named = 0;
   for (const cluster of unnamed) {
@@ -46,5 +51,16 @@ export async function GET(req: Request) {
     }
   }
 
-  return NextResponse.json({ ok: true, named });
+  // Daily hygiene: propose merges for duplicate clusters, retire stale proposals
+  let mergeSuggestions = 0;
+  let staled = 0;
+  try {
+    const result = await suggestMergesForAllEntities();
+    mergeSuggestions = result.suggested;
+    staled = result.staled;
+  } catch (err) {
+    console.error("[name-clusters] merge suggestions:", err);
+  }
+
+  return NextResponse.json({ ok: true, named, mergeSuggestions, staled });
 }

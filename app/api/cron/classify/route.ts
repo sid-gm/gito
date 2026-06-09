@@ -6,6 +6,9 @@ import { verifyCronSecret } from "@/lib/cron-auth";
 import { classifyCluster, classifyItemSignals } from "@/lib/ai/classify";
 import { analyzeEntitySentiment } from "@/lib/ai/sentiment";
 import { computeNarrativeStage, NEWS_PLATFORMS } from "@/lib/narrative-stage";
+import { linkNewsForAllEntities } from "@/lib/ai/link-news";
+
+export const maxDuration = 300;
 
 const BATCH_SIZE = 15;
 
@@ -270,5 +273,14 @@ export async function GET(req: Request) {
     }
   }
 
-  return NextResponse.json({ ok: true, classified, stageRefreshed, signalsTagged, sentimentBackfilled });
+  // Link the closest related news articles to narrative clusters with new activity
+  let newsLinked = 0;
+  try {
+    const linkResult = await linkNewsForAllEntities();
+    newsLinked = linkResult.linksCreated;
+  } catch (err) {
+    console.error("[cron/classify] news linking:", err);
+  }
+
+  return NextResponse.json({ ok: true, classified, stageRefreshed, signalsTagged, sentimentBackfilled, newsLinked });
 }

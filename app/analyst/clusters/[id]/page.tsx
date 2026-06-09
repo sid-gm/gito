@@ -67,10 +67,20 @@ type PeriodNarrative = {
   analystNarrative: string | null;
 };
 
+type NewsLink = {
+  id: string;
+  headline: string;
+  url: string | null;
+  publishedAt: string | null;
+  relationship: string; // 'driving' | 'related'
+  explanation: string | null;
+};
+
 type ExpandedData = {
   items: ClusterItem[];
   merges: Record<string, MergeInfo>;
   periodNarratives: Record<string, PeriodNarrative>;
+  newsLinks?: NewsLink[];
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -625,6 +635,38 @@ export default function ClusterDetailPage() {
               </>
             )}
           </div>
+        )}
+
+        {/* ── Related news (linked context — never part of cluster membership) ── */}
+        {(expanded.newsLinks?.length ?? 0) > 0 && (
+          <>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", fontFamily: "var(--font-mono)", fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--ink-50)", padding: "0 0 8px", marginBottom: 10, borderBottom: "1px solid var(--border-soft)" }}>
+              <span>▤ Related news</span>
+              <span style={{ fontSize: 10, color: "var(--ink-40)" }}>{expanded.newsLinks!.length} linked</span>
+            </div>
+            <div style={{ border: "1px solid var(--border-soft)", borderRadius: 8, padding: "10px 14px", background: "color-mix(in oklch, var(--ink) 3%, var(--paper))", marginBottom: 24, display: "flex", flexDirection: "column", gap: 9 }}>
+              {expanded.newsLinks!.map((n) => (
+                <div key={n.id} style={{ fontSize: 12.5, lineHeight: 1.45 }}>
+                  <div style={{ display: "flex", alignItems: "baseline", gap: 7, flexWrap: "wrap" }}>
+                    <span style={{ fontFamily: "var(--font-mono)", fontSize: 8.5, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: n.relationship === "driving" ? "var(--accent)" : "var(--ink-40)", border: `1px solid ${n.relationship === "driving" ? "var(--accent)" : "var(--ink-20)"}`, borderRadius: 3, padding: "0 4px", flexShrink: 0 }}>
+                      {n.relationship}
+                    </span>
+                    {n.url ? (
+                      <a href={n.url} target="_blank" rel="noopener noreferrer" style={{ color: "var(--ink-80)", fontWeight: 500 }}>
+                        {cleanTitle(n.headline)}
+                      </a>
+                    ) : (
+                      <span style={{ color: "var(--ink-80)", fontWeight: 500 }}>{cleanTitle(n.headline)}</span>
+                    )}
+                    <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--ink-30)" }}>{shortDate(n.publishedAt)}</span>
+                  </div>
+                  {n.explanation && (
+                    <div style={{ fontSize: 11.5, color: "var(--ink-50)", marginTop: 1 }}>{n.explanation}</div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </>
         )}
 
         {/* ── Items ──────────────────────────────────────────────────────────── */}

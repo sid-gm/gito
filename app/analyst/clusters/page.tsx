@@ -44,10 +44,20 @@ type ClusterItem = {
 
 type PeriodNarrative = { aiNarrative: string | null; analystNarrative: string | null };
 
+type NewsLink = {
+  id: string;
+  headline: string;
+  url: string | null;
+  publishedAt: string | null;
+  relationship: string; // 'driving' | 'related'
+  explanation: string | null;
+};
+
 type ExpandedData = {
   items: ClusterItem[];
   merges: Record<string, MergeInfo>;
   periodNarratives: Record<string, PeriodNarrative>;
+  newsLinks?: NewsLink[];
 };
 
 type Cluster = {
@@ -74,11 +84,21 @@ type Cluster = {
   topItems: ClusterItem[];
   platforms: string[];
   trackedEntities: Array<{ id: string; label: string }>;
+  newsLinkCount: number;
 };
 
 type Stats = { total: number; avgSize: string; itemsClustered: number; totalItems: number };
 type Entity = { id: string; label: string };
 type Point = { x: number; y: number };
+
+type MergeSuggestion = {
+  id: string;
+  entityId: string;
+  suggestedLabel: string | null;
+  confidence: number | null;
+  reason: string | null;
+  clusters: Array<{ id: string; label: string | null; itemCount: number; effectiveClassification: string }>;
+};
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -150,6 +170,41 @@ function WaveHeader({ label, isFirst }: { label: string; isFirst: boolean }) {
       borderTop: isFirst ? "none" : "1px solid var(--border-soft)", marginTop: isFirst ? 0 : 6,
     }}>
       {label}
+    </div>
+  );
+}
+
+// News is never part of cluster membership — it renders in its own block so the
+// social conversation and the related coverage stay visually separate.
+function RelatedNewsBlock({ links }: { links: NewsLink[] }) {
+  if (links.length === 0) return null;
+  return (
+    <div style={{ margin: "6px 0 10px", padding: "8px 10px", background: "color-mix(in oklch, var(--ink) 3%, var(--paper))", border: "1px solid var(--border-soft)", borderRadius: 6 }}>
+      <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--ink-40)", marginBottom: 6 }}>
+        ▤ Related news
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+        {links.map((n) => (
+          <div key={n.id} style={{ fontSize: 12, lineHeight: 1.45 }}>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 6, flexWrap: "wrap" }}>
+              <span style={{ fontFamily: "var(--font-mono)", fontSize: 8.5, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: n.relationship === "driving" ? "var(--accent)" : "var(--ink-40)", border: `1px solid ${n.relationship === "driving" ? "var(--accent)" : "var(--ink-20)"}`, borderRadius: 3, padding: "0 4px", flexShrink: 0 }}>
+                {n.relationship}
+              </span>
+              {n.url ? (
+                <a href={n.url} target="_blank" rel="noopener noreferrer" style={{ color: "var(--ink-80)", fontWeight: 500 }}>
+                  {cleanTitle(n.headline)}
+                </a>
+              ) : (
+                <span style={{ color: "var(--ink-80)", fontWeight: 500 }}>{cleanTitle(n.headline)}</span>
+              )}
+              <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--ink-30)" }}>{shortDate(n.publishedAt)}</span>
+            </div>
+            {n.explanation && (
+              <div style={{ fontSize: 11.5, color: "var(--ink-50)", marginTop: 1 }}>{n.explanation}</div>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -280,6 +335,10 @@ export default function ClustersPage() {
 
   const [threadDialogOpen, setThreadDialogOpen] = useState(false);
 
+  // Merge suggestions (LLM-proposed, analyst-approved)
+  const [suggestions, setSuggestions] = useState<MergeSuggestion[]>([]);
+  const [suggestionBusyId, setSuggestionBusyId] = useState<string | null>(null);
+
   // Merge mode
   const [mergeMode, setMergeMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -317,10 +376,64 @@ export default function ClustersPage() {
     setLoading(false);
   }, [entityId, sort, hideSingletons, activeCompanyId]);
 
+  const fetchSuggestions = useCallback(async () => {
+    if (!activeCompanyId) return;
+    try {
+      const res = await fetch(`/api/merge-suggestions?companyId=${activeCompanyId}`);
+      const data = await res.json();
+      setSuggestions(data.suggestions ?? []);
+    } catch {
+      setSuggestions([]);
+    }
+  }, [activeCompanyId]);
+
   useEffect(() => {
     if (activeCompanyId) fetch(`/api/entities?companyId=${activeCompanyId}`).then((r) => r.json()).then(setEntities);
   }, [activeCompanyId]);
   useEffect(() => { fetchClusters(); }, [fetchClusters]);
+  useEffect(() => { fetchSuggestions(); }, [fetchSuggestions]);
+
+  const acceptSuggestion = async (s: MergeSuggestion) => {
+    setSuggestionBusyId(s.id);
+    try {
+      const classSet = [...new Set(s.clusters.map((c) => c.effectiveClassification))];
+      const classification = classSet.length === 1 ? classSet[0] : "unclassified";
+      await fetch("/api/clusters/merge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          clusterIds: s.clusters.map((c) => c.id),
+          label: s.suggestedLabel ?? s.clusters.find((c) => c.label)?.label ?? null,
+          classification,
+        }),
+      });
+      await fetch(`/api/merge-suggestions/${s.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "accepted" }),
+      });
+      setSuggestions((prev) => prev.filter((x) => x.id !== s.id));
+      fetchClusters();
+    } catch (err) {
+      console.error("[merge-suggestion accept]", err);
+    } finally {
+      setSuggestionBusyId(null);
+    }
+  };
+
+  const dismissSuggestion = async (s: MergeSuggestion) => {
+    setSuggestionBusyId(s.id);
+    try {
+      await fetch(`/api/merge-suggestions/${s.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "dismissed" }),
+      });
+      setSuggestions((prev) => prev.filter((x) => x.id !== s.id));
+    } finally {
+      setSuggestionBusyId(null);
+    }
+  };
 
   // ── Lasso: global mousemove/mouseup listeners while dragging ────────────────
   useEffect(() => {
@@ -540,6 +653,7 @@ export default function ClustersPage() {
 
     return (
       <div className="cluster-card-items">
+        {(data.newsLinks?.length ?? 0) > 0 && <RelatedNewsBlock links={data.newsLinks!} />}
         {dayGroups.map(([day, dayItems], gi) => {
           const pn = periodNarratives[day];
           const periodText = pn?.analystNarrative ?? pn?.aiNarrative ?? null;
@@ -796,6 +910,60 @@ export default function ClustersPage() {
           </div>
         )}
 
+        {suggestions.length > 0 && (
+          <div style={{ padding: "10px 12px", background: "color-mix(in oklch, var(--accent) 6%, var(--paper))", border: "1px solid color-mix(in oklch, var(--accent) 25%, transparent)", borderRadius: 6, marginBottom: 8 }}>
+            <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--accent)", marginBottom: 8 }}>
+              Suggested merges · {suggestions.length}
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {suggestions.slice(0, 5).map((s) => (
+                <div key={s.id} style={{ display: "flex", alignItems: "flex-start", gap: 10, fontSize: 13 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 500, lineHeight: 1.4 }}>
+                      {s.clusters.map((c, i) => (
+                        <span key={c.id}>
+                          {i > 0 && <span style={{ color: "var(--ink-30)", margin: "0 5px" }}>+</span>}
+                          {c.label ?? "Unnamed"}
+                          <span style={{ fontFamily: "var(--font-mono)", fontSize: 10.5, color: "var(--ink-40)" }}> ({c.itemCount})</span>
+                        </span>
+                      ))}
+                    </div>
+                    <div style={{ fontSize: 12, color: "var(--ink-50)", marginTop: 1 }}>
+                      {s.reason}
+                      {s.confidence != null && (
+                        <span style={{ fontFamily: "var(--font-mono)", fontSize: 10.5, color: "var(--ink-40)" }}> · {Math.round(s.confidence * 100)}%</span>
+                      )}
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                    <button
+                      className="btn"
+                      style={{ fontSize: 11, padding: "3px 10px" }}
+                      disabled={suggestionBusyId === s.id}
+                      onClick={() => acceptSuggestion(s)}
+                    >
+                      {suggestionBusyId === s.id ? "Merging…" : "Merge"}
+                    </button>
+                    <button
+                      className="btn-ghost btn"
+                      style={{ fontSize: 11, padding: "3px 10px" }}
+                      disabled={suggestionBusyId === s.id}
+                      onClick={() => dismissSuggestion(s)}
+                    >
+                      Dismiss
+                    </button>
+                  </div>
+                </div>
+              ))}
+              {suggestions.length > 5 && (
+                <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--ink-40)" }}>
+                  + {suggestions.length - 5} more pending
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         <StageKey />
 
         <div className="toolbar" style={{ flexWrap: "wrap", gap: 8 }}>
@@ -886,6 +1054,11 @@ export default function ClustersPage() {
                       )}
                       <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                         <span className="cluster-card-count">{cluster.itemCount} items</span>
+                        {cluster.newsLinkCount > 0 && (
+                          <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--ink-40)" }} title="Related news articles linked to this cluster">
+                            ▤ {cluster.newsLinkCount} news
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>

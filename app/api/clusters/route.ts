@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { and, asc, avg, count, desc, eq, gte, inArray, isNull, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { clusters, clusterItems, ingestedItems, trackedEntities } from "@/lib/db/schema";
+import { clusters, clusterItems, clusterNewsLinks, ingestedItems, trackedEntities } from "@/lib/db/schema";
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
@@ -186,6 +186,16 @@ export async function GET(req: Request) {
     return [...seen.values()];
   }
 
+  const newsLinkCounts =
+    clusterIds.length > 0
+      ? await db
+          .select({ clusterId: clusterNewsLinks.clusterId, cnt: count(clusterNewsLinks.id) })
+          .from(clusterNewsLinks)
+          .where(inArray(clusterNewsLinks.clusterId, clusterIds))
+          .groupBy(clusterNewsLinks.clusterId)
+      : [];
+  const newsCountByCluster = new Map(newsLinkCounts.map((r) => [r.clusterId, r.cnt]));
+
   const itemsByCluster = new Map<string, typeof allItems>();
   for (const item of allItems) {
     if (!itemsByCluster.has(item.clusterId)) itemsByCluster.set(item.clusterId, []);
@@ -211,6 +221,7 @@ export async function GET(req: Request) {
       topItems: displayable.slice(0, 3),
       platforms,
       trackedEntities: clusterTrackedEntities,
+      newsLinkCount: newsCountByCluster.get(cluster.id) ?? 0,
     };
   });
 

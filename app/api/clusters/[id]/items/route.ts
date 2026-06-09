@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { clusterItems, clusterMerges, clusterPeriodNarratives, ingestedItems } from "@/lib/db/schema";
+import { clusterItems, clusterMerges, clusterNewsLinks, clusterPeriodNarratives, ingestedItems } from "@/lib/db/schema";
 
 function dedupeItems<T extends { externalId: string | null; url: string | null; title: string | null; similarity: number }>(items: T[]): T[] {
   const seen = new Map<string, T>();
@@ -108,7 +108,26 @@ export async function GET(
     periodNarratives[row.periodDate] = { aiNarrative: row.aiNarrative, analystNarrative: row.analystNarrative };
   }
 
-  return NextResponse.json({ items: displayable, merges, periodNarratives });
+  // Related news (linked, never part of cluster membership)
+  const newsLinkRows = await db
+    .select({
+      id: clusterNewsLinks.id,
+      headline: clusterNewsLinks.headline,
+      url: clusterNewsLinks.url,
+      publishedAt: clusterNewsLinks.publishedAt,
+      relationship: clusterNewsLinks.relationship,
+      explanation: clusterNewsLinks.explanation,
+    })
+    .from(clusterNewsLinks)
+    .where(eq(clusterNewsLinks.clusterId, id))
+    .orderBy(desc(clusterNewsLinks.publishedAt));
+
+  const newsLinks = newsLinkRows.map((n) => ({
+    ...n,
+    publishedAt: n.publishedAt?.toISOString() ?? null,
+  }));
+
+  return NextResponse.json({ items: displayable, merges, periodNarratives, newsLinks });
 }
 
 export async function POST(

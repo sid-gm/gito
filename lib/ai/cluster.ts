@@ -4,6 +4,7 @@ import { openai } from "@ai-sdk/openai";
 export type ItemToCluster = {
   id: string;
   title: string | null;
+  body: string | null;
   publishedAt: Date | null;
 };
 
@@ -12,6 +13,8 @@ export type ActiveCluster = {
   label: string | null;
   itemCount: number;
   lastSeenAt: Date;
+  suggestedKeywords: string[] | null;
+  narrativeSummary: string | null;
 };
 
 export type Phase1Result = {
@@ -27,7 +30,30 @@ export type ClusterGroup = {
 };
 
 const PHASE1_BATCH = 40; // items per LLM call
-const PHASE1_CLUSTER_LIMIT = 30; // most recent labeled clusters shown to LLM
+const PHASE1_CLUSTER_LIMIT = 75; // most recent labeled clusters shown to LLM
+
+// Tweets/threads posts often carry the whole message in a short title — append a
+// body snippet so the LLM has enough signal to match the item to a story.
+function formatItemLine(item: ItemToCluster, index: number): string {
+  const date = item.publishedAt ? item.publishedAt.toISOString().split("T")[0] : null;
+  let text = `"${item.title ?? "(no title)"}"`;
+  if ((item.title ?? "").length < 60 && item.body?.trim()) {
+    text += ` | ${item.body.trim().replace(/\s+/g, " ").slice(0, 140)}`;
+  }
+  return `[${index + 1}] ${text}${date ? ` (${date})` : ""}`;
+}
+
+function formatClusterLine(cluster: ActiveCluster, index: number): string {
+  const parts = [`[${index + 1}] "${cluster.label}"`];
+  const keywords = (cluster.suggestedKeywords ?? []).slice(0, 5);
+  if (keywords.length > 0) parts.push(`keywords: ${keywords.join(", ")}`);
+  parts.push(`last seen ${cluster.lastSeenAt.toISOString().split("T")[0]}`);
+  parts.push(`${cluster.itemCount} items`);
+  if (cluster.narrativeSummary) {
+    parts.push(cluster.narrativeSummary.split(". ")[0].slice(0, 140));
+  }
+  return parts.join(" — ");
+}
 
 // Phase 1: assign items to existing labeled clusters (batched).
 // Items without a clear match are returned in `unmatched`.
@@ -47,19 +73,12 @@ export async function matchToExistingClusters(
   const matched = new Map<string, string>();
   const unmatched: ItemToCluster[] = [];
 
-  const clusterList = labeled
-    .map((c, i) => `[${i + 1}] "${c.label}" (${c.itemCount} items)`)
-    .join("\n");
+  const clusterList = labeled.map(formatClusterLine).join("\n");
 
   for (let offset = 0; offset < items.length; offset += PHASE1_BATCH) {
     const batch = items.slice(offset, offset + PHASE1_BATCH);
 
-    const itemList = batch
-      .map((item, i) => {
-        const date = item.publishedAt ? item.publishedAt.toISOString().split("T")[0] : null;
-        return `[${i + 1}] "${item.title ?? "(no title)"}"${date ? ` (${date})` : ""}`;
-      })
-      .join("\n");
+    const itemList = batch.map(formatItemLine).join("\n");
 
     const prompt = `You are classifying news articles, tweets, and posts into existing story clusters.
 
@@ -83,7 +102,7 @@ Example: {"1": 2, "2": "new", "3": 1}`;
       const { text } = await generateText({
         model: openai("gpt-4o-mini"),
         prompt,
-        maxOutputTokens: 300,
+        maxOutputTokens: 400,
       });
 
       const raw = text.trim().replace(/```json\n?|\n?```/g, "").trim();
@@ -114,22 +133,15 @@ Example: {"1": 2, "2": "new", "3": 1}`;
 }
 
 // Phase 2: group unmatched items into new clusters, generating labels and keywords.
-// Singletons get label=null and keywords=[].
+// Every group gets a label — including singletons, so the next wave of items about
+// the same story can match them in Phase 1 instead of spawning a duplicate cluster.
 export async function groupNewItems(
   entityLabel: string,
   items: ItemToCluster[]
 ): Promise<ClusterGroup[]> {
   if (items.length === 0) return [];
-  if (items.length === 1) {
-    return [{ itemIds: [items[0].id], label: null, keywords: [] }];
-  }
 
-  const itemList = items
-    .map((item, i) => {
-      const date = item.publishedAt ? item.publishedAt.toISOString().split("T")[0] : null;
-      return `[${i + 1}] "${item.title ?? "(no title)"}"${date ? ` (${date})` : ""}`;
-    })
-    .join("\n");
+  const itemList = items.map(formatItemLine).join("\n");
 
   const prompt = `You are grouping news articles, tweets, and posts about "${entityLabel}" into story clusters.
 
@@ -143,11 +155,10 @@ Rules:
 - A bizarre or off-topic story (e.g. a casting call, satire, unrelated mention) should never be grouped with a legitimate news story even if they share a name.
 - When in doubt, keep items in separate groups.
 
-For groups with 2 or more items: provide a concise 3-6 word label and 3-5 search keywords to track this story.
-Singletons (1 item): set label to null and keywords to [].
+For EVERY group, including groups with a single item, provide a concise 3-6 word label and 3-5 search keywords to track this story.
 
 Respond ONLY with valid JSON:
-{"groups": [{"items": [1, 3], "label": "Brief Story Title", "keywords": ["keyword1", "keyword2"]}, {"items": [2], "label": null, "keywords": []}]}`;
+{"groups": [{"items": [1, 3], "label": "Brief Story Title", "keywords": ["keyword1", "keyword2"]}, {"items": [2], "label": "Other Story Title", "keywords": ["keyword3"]}]}`;
 
   try {
     const { text } = await generateText({

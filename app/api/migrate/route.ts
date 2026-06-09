@@ -99,6 +99,35 @@ export async function POST() {
       )
     `);
 
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS cluster_news_links (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        cluster_id UUID NOT NULL REFERENCES clusters(id) ON DELETE CASCADE,
+        news_item_id UUID REFERENCES ingested_items(id) ON DELETE SET NULL,
+        headline TEXT NOT NULL,
+        url TEXT,
+        published_at TIMESTAMP,
+        relationship TEXT NOT NULL,
+        explanation TEXT,
+        confidence REAL,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW()
+      )
+    `);
+
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS cluster_merge_suggestions (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        entity_id UUID NOT NULL REFERENCES tracked_entities(id) ON DELETE CASCADE,
+        cluster_ids JSONB NOT NULL,
+        suggested_label TEXT,
+        confidence REAL,
+        reason TEXT,
+        status TEXT NOT NULL DEFAULT 'pending',
+        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        resolved_at TIMESTAMP
+      )
+    `);
+
     return NextResponse.json({ ok: true, message: "Migration applied" });
   } catch (err) {
     console.error("[POST /api/migrate]", err);

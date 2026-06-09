@@ -209,6 +209,39 @@ export const clusterPeriodNarratives = pgTable(
   (t) => [unique("cluster_period_unique").on(t.clusterId, t.periodDate)]
 );
 
+// News articles linked to a cluster of social discussion — news stays OUT of
+// cluster membership; this records "the closest related news" with an explanation.
+// headline/url/publishedAt are denormalized so links survive the 7-day news purge.
+export const clusterNewsLinks = pgTable("cluster_news_links", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  clusterId: uuid("cluster_id")
+    .references(() => clusters.id, { onDelete: "cascade" })
+    .notNull(),
+  newsItemId: uuid("news_item_id").references(() => ingestedItems.id, { onDelete: "set null" }),
+  headline: text("headline").notNull(),
+  url: text("url"),
+  publishedAt: timestamp("published_at"),
+  relationship: text("relationship").notNull(), // 'driving' | 'related'
+  explanation: text("explanation"),
+  confidence: real("confidence"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// LLM-proposed cluster merges awaiting analyst review (no auto-merge)
+export const clusterMergeSuggestions = pgTable("cluster_merge_suggestions", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  entityId: uuid("entity_id")
+    .references(() => trackedEntities.id, { onDelete: "cascade" })
+    .notNull(),
+  clusterIds: jsonb("cluster_ids").$type<string[]>().notNull(),
+  suggestedLabel: text("suggested_label"),
+  confidence: real("confidence"),
+  reason: text("reason"),
+  status: text("status").default("pending").notNull(), // pending | accepted | dismissed | stale
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  resolvedAt: timestamp("resolved_at"),
+});
+
 export const redditSubreddits = pgTable("reddit_subreddits", {
   id: uuid("id").defaultRandom().primaryKey(),
   companyId: uuid("company_id").references(() => companies.id, { onDelete: "cascade" }),
@@ -278,6 +311,9 @@ export type NewCluster = typeof clusters.$inferInsert;
 export type ClusterItem = typeof clusterItems.$inferSelect;
 export type ClusterPeriodNarrative = typeof clusterPeriodNarratives.$inferSelect;
 export type ClusterMerge = typeof clusterMerges.$inferSelect;
+export type ClusterNewsLink = typeof clusterNewsLinks.$inferSelect;
+export type NewClusterNewsLink = typeof clusterNewsLinks.$inferInsert;
+export type ClusterMergeSuggestion = typeof clusterMergeSuggestions.$inferSelect;
 export type TwitterHandle = typeof twitterHandles.$inferSelect;
 export type NewTwitterHandle = typeof twitterHandles.$inferInsert;
 export type ThreadsFilter = typeof threadsFilters.$inferSelect;

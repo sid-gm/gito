@@ -21,6 +21,7 @@ export async function runClustering(limit: number): Promise<ClusterRunResult> {
       id: ingestedItems.id,
       entityId: ingestedItems.entityId,
       title: ingestedItems.title,
+      body: ingestedItems.body,
       publishedAt: ingestedItems.publishedAt,
       currentClusterId: clusterItems.clusterId,
     })
@@ -67,6 +68,8 @@ export async function runClustering(limit: number): Promise<ClusterRunResult> {
         label: clusters.label,
         itemCount: clusters.itemCount,
         lastSeenAt: clusters.lastSeenAt,
+        suggestedKeywords: clusters.suggestedKeywords,
+        narrativeSummary: clusters.narrativeSummary,
       })
       .from(clusters)
       .where(and(eq(clusters.entityId, entityId), isNull(clusters.archivedAt)));
@@ -169,6 +172,8 @@ export async function runClustering(limit: number): Promise<ClusterRunResult> {
           label: group.label,
           itemCount: group.itemIds.length,
           lastSeenAt: now,
+          suggestedKeywords: group.keywords.length > 0 ? group.keywords : null,
+          narrativeSummary: null,
         });
 
         if (group.itemIds.length >= 2) {
