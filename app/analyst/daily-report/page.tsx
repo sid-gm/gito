@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo, useCallback } from "react";
 import { useCompany } from "@/components/CompanyContext";
 import { cx, Dot, PlatformChip } from "@/components/primitives";
 import { StagePill } from "@/components/StagePill";
+import { DailyBriefPanel } from "@/components/daily-brief/DailyBriefPanel";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -557,6 +558,15 @@ export default function DailyReportPage() {
             </span>
           </div>
         </div>
+
+        {/* Executive brief — the "what do I need to know" layer above the visualization */}
+        {activeCompanyId && (
+          <DailyBriefPanel
+            companyId={activeCompanyId}
+            dateKey={data.dateKey}
+            canRegenerate={shiftDate(data.dateKey, 1) >= data.todayKey}
+          />
+        )}
 
         {/* Two-column layout */}
         <div className="dr-stage">

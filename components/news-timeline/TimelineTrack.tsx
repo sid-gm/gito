@@ -62,7 +62,7 @@ function FeedHeader({ feed, stats, showAvg }: {
 }
 
 // ── Feed rail (chip lane + chart band + dots) ─────────────────────────────
-function FeedRail({ feed, days, colW, win, density, style, onHover, onLeave, onDayClick, selectedDay }: {
+function FeedRail({ feed, days, colW, win, density, style, onHover, onLeave, onDayClick, selectedDay, markers }: {
   feed: NtlFeed;
   days: NtlDay[];
   colW: number;
@@ -73,6 +73,7 @@ function FeedRail({ feed, days, colW, win, density, style, onHover, onLeave, onD
   onLeave: () => void;
   onDayClick: (feed: NtlFeed, day: NtlDay) => void;
   selectedDay: { feedId: string; date: string } | null;
+  markers?: Record<string, "divergence" | "swing">;
 }) {
   const N = days.length;
   const expCount = expandedCount(win, density);
@@ -145,13 +146,24 @@ function FeedRail({ feed, days, colW, win, density, style, onHover, onLeave, onD
               const r = dotRadius(d.itemCount);
               const isToday = i === N - 1;
               const isSelected = selectedDay?.feedId === feed.feedId && selectedDay?.date === d.date;
+              const marker = markers?.[d.date];
               return (
-                <div
-                  key={d.date}
-                  className={cx("ntl-dot", `ntl-dot-${slug}`, isToday && "ntl-dot-recent", isSelected && "ntl-dot-active")}
-                  style={{ left: cx0, top: y, width: r * 2, height: r * 2 }}
-                  onClick={(e) => { e.stopPropagation(); onDayClick(feed, d); }}
-                />
+                <React.Fragment key={d.date}>
+                  <div
+                    className={cx("ntl-dot", `ntl-dot-${slug}`, isToday && "ntl-dot-recent", isSelected && "ntl-dot-active")}
+                    style={{ left: cx0, top: y, width: r * 2, height: r * 2 }}
+                    onClick={(e) => { e.stopPropagation(); onDayClick(feed, d); }}
+                  />
+                  {marker && (
+                    <div
+                      title={marker === "divergence" ? "News and social sentiment diverge — click for why" : "Sentiment swing vs previous day — click for why"}
+                      style={{ position: "absolute", left: cx0, top: 4, transform: "translateX(-50%)", fontSize: 9, lineHeight: 1, color: "var(--warn)", zIndex: 3, cursor: "pointer", fontFamily: "var(--font-mono)" }}
+                      onClick={(e) => { e.stopPropagation(); onDayClick(feed, d); }}
+                    >
+                      ◆
+                    </div>
+                  )}
+                </React.Fragment>
               );
             })}
           </div>
@@ -310,7 +322,7 @@ function VerticalView({ feeds, focusId, onFocus, win, density, onDayClick, selec
 }
 
 // ── NewsTimeline section ───────────────────────────────────────────────────
-export function NewsTimeline({ feeds, win, feedFilter, style, arrangement, density, showAvg, pop, scrollRef, onHover, onLeave, onDayClick, selectedDay }: {
+export function NewsTimeline({ feeds, win, feedFilter, style, arrangement, density, showAvg, pop, scrollRef, onHover, onLeave, onDayClick, selectedDay, markers }: {
   feeds: NtlFeed[];
   win: WindowKey;
   feedFilter: string;
@@ -324,6 +336,7 @@ export function NewsTimeline({ feeds, win, feedFilter, style, arrangement, densi
   onLeave: () => void;
   onDayClick?: (feed: NtlFeed, day: NtlDay) => void;
   selectedDay?: { feedId: string; date: string } | null;
+  markers?: Record<string, "divergence" | "swing">;
 }) {
   const expCount = expandedCount(win, density);
   const colW = expCount > 0 ? NTL_EXPANDED_COLW : NTL_COLW[win];
@@ -373,7 +386,7 @@ export function NewsTimeline({ feeds, win, feedFilter, style, arrangement, densi
                 <CombinedTimeline feeds={viewFeeds} colW={colW} win={win} onHover={onHover} onLeave={onLeave} onDayClick={clickHandler} selectedDay={selDay} />
               ) : (
                 tabFeeds.map((f) => (
-                  <FeedRail key={f.feedId} feed={f} days={f._wdays ?? []} colW={colW} win={win} density={density} style={style} onHover={onHover} onLeave={onLeave} onDayClick={clickHandler} selectedDay={selDay} />
+                  <FeedRail key={f.feedId} feed={f} days={f._wdays ?? []} colW={colW} win={win} density={density} style={style} onHover={onHover} onLeave={onLeave} onDayClick={clickHandler} selectedDay={selDay} markers={markers} />
                 ))
               )}
             </div>

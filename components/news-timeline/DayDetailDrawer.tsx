@@ -95,10 +95,27 @@ export function DayDetailDrawer({ selected, onClose, source = "news" }: {
   const [last, setLast] = useState<{ feed: NtlFeed; day: NtlDay } | null>(null);
   const [items, setItems] = useState<NtlDayItem[]>([]);
   const [loadingItems, setLoadingItems] = useState(false);
+  const [insight, setInsight] = useState<{
+    driverSummary: string | null;
+    newsScore: number | null;
+    socialScore: number | null;
+    divergence: number | null;
+  } | null>(null);
 
   useEffect(() => {
     if (selected) setLast(selected);
   }, [selected]);
+
+  // Entity-level "what changed" insight for the day (shared by news + social drawers)
+  useEffect(() => {
+    if (!selected) return;
+    setInsight(null);
+    const params = new URLSearchParams({ entityId: selected.feed.entityId, date: selected.day.date });
+    fetch(`/api/entity-day-insights?${params}`)
+      .then((r) => r.json())
+      .then((d) => setInsight(d.insights?.[0] ?? null))
+      .catch(() => {});
+  }, [selected?.feed.entityId, selected?.day.date]);
 
   useEffect(() => {
     if (!selected) return;
@@ -200,6 +217,19 @@ export function DayDetailDrawer({ selected, onClose, source = "news" }: {
             </span>
           )}
         </div>
+
+        {/* what changed — entity-level driver insight */}
+        {insight?.driverSummary && (
+          <div className="ntl-dw-block">
+            <div className="ntl-dw-label">What changed</div>
+            <p className="ntl-dw-summary">{insight.driverSummary}</p>
+            {insight.newsScore != null && insight.socialScore != null && (
+              <p style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--ink-50)", margin: "4px 0 0" }}>
+                news {fmtScore(insight.newsScore)} · social {fmtScore(insight.socialScore)} · Δ {Math.abs(insight.divergence ?? insight.newsScore - insight.socialScore).toFixed(2)}
+              </p>
+            )}
+          </div>
+        )}
 
         {/* summary */}
         <div className="ntl-dw-block">

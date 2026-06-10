@@ -5,6 +5,9 @@ import { openai } from "@ai-sdk/openai";
 import { db } from "@/lib/db";
 import { rssFeeds, trackedEntities, ingestedItems, newsTimelineDays } from "@/lib/db/schema";
 import { verifyCronSecret } from "@/lib/cron-auth";
+import { buildDayInsightsForAllEntities } from "@/lib/ai/day-insights";
+
+export const maxDuration = 300;
 
 const PAIR_LIMIT = 30;
 
@@ -133,5 +136,14 @@ export async function GET(req: Request) {
     }
   }
 
-  return NextResponse.json({ ok: true, processed });
+  // Day insights must build after fresh news summaries exist for the day
+  let insightDays = 0;
+  try {
+    const insightResult = await buildDayInsightsForAllEntities(14);
+    insightDays = insightResult.daysWritten;
+  } catch (err) {
+    console.error("[summarize-news-timeline] day insights:", err);
+  }
+
+  return NextResponse.json({ ok: true, processed, insightDays });
 }

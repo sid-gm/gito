@@ -14,6 +14,22 @@ const WIN_OPTS: { key: WindowKey; label: string }[] = [
   { key: "90d", label: "90 days" },
 ];
 
+type DayInsight = {
+  entityId: string;
+  periodDate: string;
+  newsScore: number | null;
+  socialScore: number | null;
+  divergence: number | null;
+  driverSummary: string | null;
+};
+
+const DIVERGENCE_THRESHOLD = 0.4; // |news − social| flags a divergence day
+const SWING_THRESHOLD = 0.5; // |day − previous valued day| flags a swing day
+
+function fmtInsightScore(v: number | null): string {
+  return v == null ? "—" : `${v >= 0 ? "+" : ""}${v.toFixed(2)}`;
+}
+
 export default function NarrativesPage() {
   const { activeCompanyId } = useCompany();
 
@@ -37,6 +53,9 @@ export default function NarrativesPage() {
   const [socialSelectedDay, setSocialSelectedDay] = useState<SelectedDayState>(null);
   const socialScrollRef = useRef<HTMLDivElement | null>(null);
 
+  // Day insights ("why did sentiment move")
+  const [insights, setInsights] = useState<DayInsight[]>([]);
+
   useEffect(() => {
     if (!activeCompanyId) return;
 
@@ -54,7 +73,43 @@ export default function NarrativesPage() {
       .then((r) => r.json())
       .then((d) => { setSocialData(d); setSocialLoading(false); })
       .catch(() => setSocialLoading(false));
+
+    fetch(`/api/entity-day-insights?${params}`)
+      .then((r) => r.json())
+      .then((d) => setInsights(d.insights ?? []))
+      .catch(() => setInsights([]));
   }, [activeCompanyId]);
+
+  // Per-entity divergence/swing markers + latest gap insight
+  const insightsByEntity = useMemo(() => {
+    const map = new Map<string, { markers: Record<string, "divergence" | "swing">; latest: DayInsight | null }>();
+    const grouped = new Map<string, DayInsight[]>();
+    for (const ins of insights) {
+      if (!grouped.has(ins.entityId)) grouped.set(ins.entityId, []);
+      grouped.get(ins.entityId)!.push(ins);
+    }
+    for (const [entityId, rows] of grouped) {
+      rows.sort((a, b) => a.periodDate.localeCompare(b.periodDate));
+      const markers: Record<string, "divergence" | "swing"> = {};
+      let lastNews: number | null = null;
+      let lastSocial: number | null = null;
+      for (const row of rows) {
+        const swing =
+          (row.newsScore != null && lastNews != null && Math.abs(row.newsScore - lastNews) >= SWING_THRESHOLD) ||
+          (row.socialScore != null && lastSocial != null && Math.abs(row.socialScore - lastSocial) >= SWING_THRESHOLD);
+        if (row.divergence != null && Math.abs(row.divergence) >= DIVERGENCE_THRESHOLD) {
+          markers[row.periodDate] = "divergence";
+        } else if (swing) {
+          markers[row.periodDate] = "swing";
+        }
+        if (row.newsScore != null) lastNews = row.newsScore;
+        if (row.socialScore != null) lastSocial = row.socialScore;
+      }
+      const latest = [...rows].reverse().find((r) => r.driverSummary || r.divergence != null) ?? rows[rows.length - 1] ?? null;
+      map.set(entityId, { markers, latest });
+    }
+    return map;
+  }, [insights]);
 
   useEffect(() => {
     const containers = Array.from(
@@ -220,12 +275,25 @@ export default function NarrativesPage() {
         {entities.map((entity) => {
           const newsFeeds = allNewsFeeds.filter((f) => f.entityId === entity.id);
           const socialFeed = socialData?.feeds.find((f) => f.entityId === entity.id);
+          const entityInsights = insightsByEntity.get(entity.id);
+          const latest = entityInsights?.latest ?? null;
 
           return (
             <div key={entity.id} className="ntl-entity-group">
               <div className="ntl-entity-header">
                 <EntityBadge label={entity.label} type={entity.type} />
               </div>
+
+              {/* News vs social gap — latest day with insight */}
+              {latest && (latest.newsScore != null || latest.socialScore != null) && (
+                <div style={{ padding: "8px 12px", background: "color-mix(in oklch, var(--accent) 6%, var(--paper))", border: "1px solid color-mix(in oklch, var(--accent) 22%, transparent)", borderRadius: 6, fontSize: 13, color: "var(--ink-60)", margin: "0 0 10px", display: "flex", gap: 10, alignItems: "baseline", flexWrap: "wrap" }}>
+                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, whiteSpace: "nowrap" }}>
+                    {latest.periodDate} · news <strong>{fmtInsightScore(latest.newsScore)}</strong> · social <strong>{fmtInsightScore(latest.socialScore)}</strong>
+                    {latest.divergence != null && <> · Δ <strong style={{ color: Math.abs(latest.divergence) >= DIVERGENCE_THRESHOLD ? "var(--warn)" : "inherit" }}>{Math.abs(latest.divergence).toFixed(2)}</strong></>}
+                  </span>
+                  {latest.driverSummary && <span style={{ lineHeight: 1.45 }}>{latest.driverSummary}</span>}
+                </div>
+              )}
 
               {/* News Timeline */}
               <section className="ntl-section">
@@ -253,6 +321,7 @@ export default function NarrativesPage() {
                   onLeave={onLeave}
                   onDayClick={onDayClick}
                   selectedDay={selectedDay ? { feedId: selectedDay.feed.feedId, date: selectedDay.day.date } : null}
+                  markers={entityInsights?.markers}
                 />
               </section>
 
@@ -282,6 +351,7 @@ export default function NarrativesPage() {
                   onLeave={onSocialLeave}
                   onDayClick={onSocialDayClick}
                   selectedDay={socialSelectedDay ? { feedId: socialSelectedDay.feed.feedId, date: socialSelectedDay.day.date } : null}
+                  markers={entityInsights?.markers}
                 />
               </section>
             </div>

@@ -4,6 +4,7 @@ import { generateText } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { db } from "@/lib/db";
 import { rssFeeds, trackedEntities, ingestedItems, newsTimelineDays, clusters, clusterItems } from "@/lib/db/schema";
+import { buildEntityDayInsights } from "@/lib/ai/day-insights";
 
 type Story = {
   label: string;
@@ -237,5 +238,16 @@ export async function POST(req: Request) {
     }
   }
 
-  return NextResponse.json({ ok: true, processed, skipped, total, socialProcessed, socialTotal });
+  // Rebuild day insights for the company's entities after summaries refresh
+  let insightDays = 0;
+  for (const eid of entityIds) {
+    try {
+      const insightResult = await buildEntityDayInsights(eid, 14, force);
+      insightDays += insightResult.daysWritten;
+    } catch (err) {
+      console.error(`[summarize-news-timeline] day insights ${eid}:`, err);
+    }
+  }
+
+  return NextResponse.json({ ok: true, processed, skipped, total, socialProcessed, socialTotal, insightDays });
 }

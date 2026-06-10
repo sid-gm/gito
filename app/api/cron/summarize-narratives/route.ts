@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { clusters, clusterItems, clusterPeriodNarratives, ingestedItems, trackedEntities } from "@/lib/db/schema";
 import { verifyCronSecret } from "@/lib/cron-auth";
 import { refreshStaleLenses } from "@/lib/ai/storylines";
+import { buildDailyBriefsForAllCompanies } from "@/lib/ai/daily-brief";
 
 export const maxDuration = 300;
 
@@ -197,5 +198,14 @@ Write an updated 1-2 sentence summary of public reaction to this story, noting w
     console.error("[summarize-narratives] lens refresh:", err);
   }
 
-  return NextResponse.json({ ok: true, updated, lensesRefreshed });
+  // Keep today's executive brief fresh through the day (skips when unchanged)
+  let briefsGenerated = 0;
+  try {
+    const briefResult = await buildDailyBriefsForAllCompanies();
+    briefsGenerated = briefResult.generated;
+  } catch (err) {
+    console.error("[summarize-narratives] daily briefs:", err);
+  }
+
+  return NextResponse.json({ ok: true, updated, lensesRefreshed, briefsGenerated });
 }

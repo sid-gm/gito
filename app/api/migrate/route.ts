@@ -152,6 +152,35 @@ export async function POST() {
       ADD COLUMN IF NOT EXISTS storyline_id UUID REFERENCES storylines(id) ON DELETE SET NULL
     `);
 
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS entity_day_insights (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        entity_id UUID NOT NULL REFERENCES tracked_entities(id) ON DELETE CASCADE,
+        period_date TEXT NOT NULL,
+        news_score REAL,
+        social_score REAL,
+        divergence REAL,
+        driver_summary TEXT,
+        top_cluster_ids JSONB,
+        generated_at TIMESTAMP,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        CONSTRAINT entity_day_insights_entity_date_unique UNIQUE (entity_id, period_date)
+      )
+    `);
+
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS daily_briefs (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+        period_date TEXT NOT NULL,
+        snapshot_data JSONB NOT NULL,
+        generated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        CONSTRAINT daily_briefs_company_date_unique UNIQUE (company_id, period_date)
+      )
+    `);
+
     return NextResponse.json({ ok: true, message: "Migration applied" });
   } catch (err) {
     console.error("[POST /api/migrate]", err);

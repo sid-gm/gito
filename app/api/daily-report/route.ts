@@ -2,8 +2,7 @@ import { NextResponse } from "next/server";
 import { and, desc, eq, gte, inArray, isNull, lt } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { clusters, clusterItems, ingestedItems, trackedEntities, companies } from "@/lib/db/schema";
-
-const TZ = "America/Los_Angeles";
+import { TZ, getPacificParts, pacificDateKey, pacificMidnightFromStr } from "@/lib/pacific-time";
 
 function getTzAbbr(d: Date): string {
   return (
@@ -11,37 +10,6 @@ function getTzAbbr(d: Date): string {
       .formatToParts(d)
       .find((p) => p.type === "timeZoneName")?.value ?? "PT"
   );
-}
-
-function getPacificParts(d: Date) {
-  const fmt = new Intl.DateTimeFormat("en-US", {
-    timeZone: TZ,
-    year: "numeric", month: "2-digit", day: "2-digit",
-    hour: "2-digit", minute: "2-digit", hour12: false,
-  });
-  const parts = Object.fromEntries(fmt.formatToParts(d).map((p) => [p.type, p.value]));
-  return {
-    year: parseInt(parts.year),
-    month: parseInt(parts.month),
-    day: parseInt(parts.day),
-    hour: parseInt(parts.hour === "24" ? "0" : parts.hour),
-    minute: parseInt(parts.minute),
-  };
-}
-
-// Returns the UTC Date representing midnight Pacific for a given YYYY-MM-DD (Pacific) string.
-// Tries UTC-7 (PDT) then UTC-8 (PST) and picks whichever lands at hour 0 in Pacific.
-function pacificMidnightFromStr(dateStr: string): Date {
-  for (const utcHour of [7, 8]) {
-    const candidate = new Date(`${dateStr}T${String(utcHour).padStart(2, "0")}:00:00.000Z`);
-    if (
-      candidate.toLocaleDateString("en-CA", { timeZone: TZ }) === dateStr &&
-      getPacificParts(candidate).hour === 0
-    ) {
-      return candidate;
-    }
-  }
-  return new Date(`${dateStr}T08:00:00.000Z`); // fallback: PST
 }
 
 function formatDate(d: Date): string {
@@ -83,14 +51,14 @@ export async function GET(req: Request) {
 
   const now = new Date();
   const tz = getTzAbbr(now);
-  const todayKey = now.toLocaleDateString("en-CA", { timeZone: TZ });
+  const todayKey = pacificDateKey(now);
   const requestedKey = dateParam ?? todayKey;
   const isToday = requestedKey === todayKey;
 
   const dayStart = pacificMidnightFromStr(requestedKey);
   // +25h safely clears any DST transition before finding next midnight
   const dayEnd = pacificMidnightFromStr(
-    new Date(dayStart.getTime() + 25 * 60 * 60 * 1000).toLocaleDateString("en-CA", { timeZone: TZ }),
+    pacificDateKey(new Date(dayStart.getTime() + 25 * 60 * 60 * 1000)),
   );
   const currentHour = isToday ? getPacificParts(now).hour : 23;
 

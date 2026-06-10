@@ -233,6 +233,29 @@ export const clusterPeriodNarratives = pgTable(
   (t) => [unique("cluster_period_unique").on(t.clusterId, t.periodDate)]
 );
 
+// Per-entity per-day insight: news vs social sentiment gap and an LLM line on
+// what drove the day's sentiment — powers "why did sentiment move" on the
+// Global Narratives page.
+export const entityDayInsights = pgTable(
+  "entity_day_insights",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    entityId: uuid("entity_id")
+      .references(() => trackedEntities.id, { onDelete: "cascade" })
+      .notNull(),
+    periodDate: text("period_date").notNull(), // "YYYY-MM-DD" UTC
+    newsScore: real("news_score"),
+    socialScore: real("social_score"),
+    divergence: real("divergence"), // newsScore - socialScore when both present
+    driverSummary: text("driver_summary"),
+    topClusterIds: jsonb("top_cluster_ids").$type<string[]>(),
+    generatedAt: timestamp("generated_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (t) => [unique("entity_day_insights_entity_date_unique").on(t.entityId, t.periodDate)]
+);
+
 // News articles linked to a cluster of social discussion — news stays OUT of
 // cluster membership; this records "the closest related news" with an explanation.
 // headline/url/publishedAt are denormalized so links survive the 7-day news purge.
@@ -310,6 +333,23 @@ export const trackedThreads = pgTable("tracked_threads", {
   lastCollectedAt: timestamp("last_collected_at"),
 }, (t) => [unique("tracked_threads_company_url_unique").on(t.companyId, t.postUrl)]);
 
+// Daily Executive Brief: per-company per-Pacific-day LLM snapshot answering
+// "what do I need to pay attention to today and what should I do about it"
+export const dailyBriefs = pgTable(
+  "daily_briefs",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    companyId: uuid("company_id")
+      .references(() => companies.id, { onDelete: "cascade" })
+      .notNull(),
+    periodDate: text("period_date").notNull(), // "YYYY-MM-DD" Pacific (matches daily report)
+    snapshotData: jsonb("snapshot_data").notNull(),
+    generatedAt: timestamp("generated_at").defaultNow().notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (t) => [unique("daily_briefs_company_date_unique").on(t.companyId, t.periodDate)]
+);
+
 export const clusterReports = pgTable("cluster_reports", {
   id: uuid("id").defaultRandom().primaryKey(),
   clusterId: uuid("cluster_id")
@@ -340,6 +380,8 @@ export type NewClusterNewsLink = typeof clusterNewsLinks.$inferInsert;
 export type ClusterMergeSuggestion = typeof clusterMergeSuggestions.$inferSelect;
 export type Storyline = typeof storylines.$inferSelect;
 export type NewStoryline = typeof storylines.$inferInsert;
+export type EntityDayInsight = typeof entityDayInsights.$inferSelect;
+export type DailyBrief = typeof dailyBriefs.$inferSelect;
 export type TwitterHandle = typeof twitterHandles.$inferSelect;
 export type NewTwitterHandle = typeof twitterHandles.$inferInsert;
 export type ThreadsFilter = typeof threadsFilters.$inferSelect;
