@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { clusterPeriodNarratives } from "@/lib/db/schema";
+import { clusters, clusterPeriodNarratives } from "@/lib/db/schema";
 
 export async function PATCH(
   req: Request,
@@ -22,5 +22,10 @@ export async function PATCH(
       set: { analystNarrative: narrative, updatedAt: now },
     });
 
-  return NextResponse.json({ ok: true });
+  await db
+    .update(clusters)
+    .set({ analystReviewedAt: now })
+    .where(eq(clusters.id, id));
+
+  return NextResponse.json({ ok: true, analystReviewedAt: now.toISOString() });
 }

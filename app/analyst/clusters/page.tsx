@@ -628,16 +628,20 @@ export default function ClustersPage() {
 
   const savePeriodNarrative = async (clusterId: string, date: string, narrative: string) => {
     setSavingPeriod(true);
-    await fetch(`/api/clusters/${clusterId}/period-narrative`, {
+    const res = await fetch(`/api/clusters/${clusterId}/period-narrative`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ date, narrative }),
     });
+    const data = await res.json();
     setExpandedData((prev) => {
       const d = prev[clusterId];
       if (!d) return prev;
       return { ...prev, [clusterId]: { ...d, periodNarratives: { ...d.periodNarratives, [date]: { ...(d.periodNarratives[date] ?? { aiNarrative: null }), analystNarrative: narrative } } } };
     });
+    if (data.analystReviewedAt) {
+      setClusterList((prev) => prev.map((c) => c.id === clusterId ? { ...c, analystReviewedAt: data.analystReviewedAt } : c));
+    }
     setSavingPeriod(false);
     setEditingPeriod(null);
   };
