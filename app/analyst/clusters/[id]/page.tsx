@@ -28,6 +28,7 @@ type Cluster = {
   platformCount: number | null;
   analystClassification: string | null;
   analystNote: string | null;
+  analystReviewedAt: string | null;
   sentimentScore: number | null;
   sentimentLabel: string | null;
   suggestedKeywords: string[] | null;

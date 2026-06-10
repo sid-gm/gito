@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { clusterItems } from "@/lib/db/schema";
+import { clusters, clusterItems } from "@/lib/db/schema";
 
 const schema = z.object({
   note: z.string().nullable().optional(),
@@ -24,10 +24,17 @@ export async function PATCH(
     return NextResponse.json({ error: "nothing to update" }, { status: 400 });
   }
 
+  const now = new Date();
+
   await db
     .update(clusterItems)
     .set(patch)
     .where(and(eq(clusterItems.clusterId, id), eq(clusterItems.itemId, itemId)));
 
-  return NextResponse.json({ ok: true });
+  await db
+    .update(clusters)
+    .set({ analystReviewedAt: now })
+    .where(eq(clusters.id, id));
+
+  return NextResponse.json({ ok: true, analystReviewedAt: now.toISOString() });
 }

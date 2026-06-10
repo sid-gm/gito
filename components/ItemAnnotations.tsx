@@ -10,12 +10,14 @@ export function ItemAnnotations({
   note,
   flag,
   onUpdate,
+  onReviewed,
 }: {
   clusterId: string;
   itemId: string;
   note: string | null;
   flag: AnalystFlag;
   onUpdate: (note: string | null, flag: AnalystFlag) => void;
+  onReviewed?: (analystReviewedAt: string) => void;
 }) {
   const [localNote, setLocalNote] = useState(note);
   const [localFlag, setLocalFlag] = useState<AnalystFlag>(flag);
@@ -36,16 +38,18 @@ export function ItemAnnotations({
       return;
     }
     setSaving(true);
-    await fetch(`/api/clusters/${clusterId}/items/${itemId}/annotate`, {
+    const res = await fetch(`/api/clusters/${clusterId}/items/${itemId}/annotate`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ note: trimmed }),
     });
+    const data = await res.json();
     savedNoteRef.current = trimmed;
     setSaving(false);
     setNoteOpen(false);
     onUpdate(trimmed, localFlag);
-  }, [clusterId, itemId, localNote, localFlag, onUpdate]);
+    if (data.analystReviewedAt) onReviewed?.(data.analystReviewedAt);
+  }, [clusterId, itemId, localNote, localFlag, onUpdate, onReviewed]);
 
   useEffect(() => {
     if (!noteOpen) return;
@@ -62,12 +66,14 @@ export function ItemAnnotations({
     const next: AnalystFlag =
       localFlag === null ? "review" : localFlag === "review" ? "highlight" : null;
     setLocalFlag(next);
-    await fetch(`/api/clusters/${clusterId}/items/${itemId}/annotate`, {
+    const res = await fetch(`/api/clusters/${clusterId}/items/${itemId}/annotate`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ flag: next }),
     });
+    const data = await res.json();
     onUpdate(savedNoteRef.current, next);
+    if (data.analystReviewedAt) onReviewed?.(data.analystReviewedAt);
   };
 
   const flagColor =

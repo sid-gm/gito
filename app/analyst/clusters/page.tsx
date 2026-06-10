@@ -78,6 +78,7 @@ type Cluster = {
   platformCount: number | null;
   analystClassification: string | null;
   analystNote: string | null;
+  analystReviewedAt: string | null;
   sentimentScore: number | null;
   sentimentLabel: string | null;
   suggestedKeywords: string[] | null;
@@ -128,6 +129,12 @@ function relativeTime(iso: string | null) {
 function shortDate(iso: string | null) {
   if (!iso) return "—";
   return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+function reviewedAtLabel(iso: string) {
+  const d = new Date(iso);
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) +
+    " " + d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
 }
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
@@ -729,6 +736,9 @@ export default function ClustersPage() {
               return { ...prev, [clusterId]: { ...d, items: d.items.map((it) => it.itemId === item.itemId ? { ...it, analystNote: note, analystFlag: flag } : it) } };
             });
           }}
+          onReviewed={(ts) => {
+            setClusterList((prev) => prev.map((c) => c.id === clusterId ? { ...c, analystReviewedAt: ts } : c));
+          }}
         />
       </div>
     );
@@ -1014,7 +1024,10 @@ export default function ClustersPage() {
                   key={cluster.id}
                   className="cluster-card"
                   ref={(el) => { if (el) cardRefs.current.set(cluster.id, el); else cardRefs.current.delete(cluster.id); }}
-                  style={isSelected ? { outline: "2px solid var(--accent)", outlineOffset: 2 } : undefined}
+                  style={{
+                    ...(cluster.analystReviewedAt ? { background: "color-mix(in oklch, var(--ink) 5%, var(--paper))" } : {}),
+                    ...(isSelected ? { outline: "2px solid var(--accent)", outlineOffset: 2 } : {}),
+                  }}
                 >
                   {/* Header */}
                   <div className="cluster-card-head" style={{ alignItems: "flex-start", gap: 6 }}>
@@ -1067,6 +1080,11 @@ export default function ClustersPage() {
 
                   <div className="cluster-card-meta" style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                     <span>{shortDate(cluster.firstSeenAt)} → {relativeTime(cluster.lastSeenAt)}</span>
+                    {cluster.analystReviewedAt && (
+                      <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--ink-40)", letterSpacing: "0.04em" }}>
+                        ✎ Analyst reviewed {reviewedAtLabel(cluster.analystReviewedAt)}
+                      </span>
+                    )}
                     {cluster.storylineId && (
                       <a
                         href={`/analyst/storylines/${cluster.storylineId}`}

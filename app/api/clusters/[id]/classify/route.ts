@@ -15,13 +15,15 @@ export async function PATCH(
     return NextResponse.json({ error: "Invalid classification" }, { status: 400 });
   }
 
-  await db
-    .update(clusters)
-    .set({
-      analystClassification: body.classification,
-      analystNote: body.note ?? null,
-    })
-    .where(eq(clusters.id, id));
+  const patch: Record<string, unknown> = {
+    analystClassification: body.classification,
+    analystNote: body.note ?? null,
+  };
+  if (body.note != null && body.note.trim() !== "") {
+    patch.analystReviewedAt = new Date();
+  }
 
-  return NextResponse.json({ ok: true });
+  await db.update(clusters).set(patch).where(eq(clusters.id, id));
+
+  return NextResponse.json({ ok: true, analystReviewedAt: patch.analystReviewedAt instanceof Date ? (patch.analystReviewedAt as Date).toISOString() : null });
 }

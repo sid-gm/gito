@@ -147,6 +147,7 @@ export const clusters = pgTable("clusters", {
   classificationConfidence: real("classification_confidence"),
   analystClassification: text("analyst_classification"), // 'narrative' | 'noise'
   analystNote: text("analyst_note"),
+  analystReviewedAt: timestamp("analyst_reviewed_at"),
   classifiedAt: timestamp("classified_at"),
   // Sentiment fields
   sentimentScore: real("sentiment_score"),

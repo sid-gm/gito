@@ -27,6 +27,7 @@ export async function GET(
       platformCount: clusters.platformCount,
       analystClassification: clusters.analystClassification,
       analystNote: clusters.analystNote,
+      analystReviewedAt: clusters.analystReviewedAt,
       sentimentScore: clusters.sentimentScore,
       sentimentLabel: clusters.sentimentLabel,
       suggestedKeywords: clusters.suggestedKeywords,
