@@ -7,7 +7,6 @@ interface Account {
   entities: { id: string; label: string }[];
   trackedThreads: Array<{ url: string; platform: string; externalId?: string | null }>;
   twitterAccounts: string[];
-  redditSubreddits: Array<{ subredditName: string; keywordFilters: string[] }>;
 }
 
 interface StorageData {
@@ -17,7 +16,7 @@ interface StorageData {
 
 interface SearchConfig {
   terms: string[];
-  platforms: Array<"twitter" | "threads" | "reddit">;
+  platforms: Array<"twitter" | "threads">;
   intervalMinutes: number;
   enabled: boolean;
 }
@@ -40,7 +39,6 @@ const viewRunsBtn = document.getElementById("btn-view-runs") as HTMLAnchorElemen
 const acTerms = document.getElementById("ac-terms") as HTMLInputElement;
 const acX = document.getElementById("ac-x") as HTMLInputElement;
 const acThreads = document.getElementById("ac-threads") as HTMLInputElement;
-const acReddit = document.getElementById("ac-reddit") as HTMLInputElement;
 const acInterval = document.getElementById("ac-interval") as HTMLSelectElement;
 const acEnabled = document.getElementById("ac-enabled") as HTMLInputElement;
 const acStatus = document.getElementById("ac-status")!;
@@ -51,10 +49,9 @@ function readAutoCollectForm(): SearchConfig {
     .split(",")
     .map((t) => t.trim())
     .filter((t) => t.length > 0);
-  const platforms: Array<"twitter" | "threads" | "reddit"> = [];
+  const platforms: Array<"twitter" | "threads"> = [];
   if (acX.checked) platforms.push("twitter");
   if (acThreads.checked) platforms.push("threads");
-  if (acReddit.checked) platforms.push("reddit");
   return {
     terms,
     platforms,
@@ -77,7 +74,7 @@ async function loadAutoCollect() {
   const syncData = await chrome.storage.sync.get(["autoCollect"]) as { autoCollect?: SearchConfig };
   const config: SearchConfig = syncData.autoCollect ?? {
     terms: [],
-    platforms: ["twitter", "threads", "reddit"],
+    platforms: ["twitter", "threads"],
     intervalMinutes: 60,
     enabled: false,
   };
@@ -85,7 +82,6 @@ async function loadAutoCollect() {
   acTerms.value = config.terms.join(", ");
   acX.checked = config.platforms.includes("twitter");
   acThreads.checked = config.platforms.includes("threads");
-  acReddit.checked = config.platforms.includes("reddit");
   acInterval.value = String(config.intervalMinutes);
   acEnabled.checked = config.enabled;
 
@@ -124,9 +120,6 @@ acX.addEventListener("change", async () => {
   await chrome.storage.sync.set({ autoCollect: readAutoCollectForm() });
 });
 acThreads.addEventListener("change", async () => {
-  await chrome.storage.sync.set({ autoCollect: readAutoCollectForm() });
-});
-acReddit.addEventListener("change", async () => {
   await chrome.storage.sync.set({ autoCollect: readAutoCollectForm() });
 });
 acInterval.addEventListener("change", async () => {
@@ -299,7 +292,6 @@ saveBtn.addEventListener("click", async () => {
       entities: { id: string; label: string }[];
       trackedThreads?: Array<{ url: string; platform: string; externalId?: string | null }>;
       twitterAccounts?: string[];
-      redditSubreddits?: Array<{ subredditName: string; keywordFilters: string[] }>;
     };
 
     const data = await chrome.storage.sync.get(["accounts", "activeAccountId"]) as StorageData;
@@ -315,7 +307,6 @@ saveBtn.addEventListener("click", async () => {
       entities: ctx.entities,
       trackedThreads: ctx.trackedThreads ?? [],
       twitterAccounts: ctx.twitterAccounts ?? [],
-      redditSubreddits: ctx.redditSubreddits ?? [],
     };
 
     const existing = accounts.findIndex((a) => a.companyId === ctx.companyId);

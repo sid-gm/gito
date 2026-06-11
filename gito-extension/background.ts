@@ -1,7 +1,6 @@
 import {
   collectX,
   collectThreads,
-  collectReddit,
   collectXThread,
   collectThreadsThread,
   collectXProfile,
@@ -25,12 +24,11 @@ interface Account {
   entities: { id: string; label: string }[];
   trackedThreads: TrackedThread[];
   twitterAccounts: string[];
-  redditSubreddits: Array<{ subredditName: string; keywordFilters: string[] }>;
 }
 
 interface SearchConfig {
   terms: string[];
-  platforms: Array<"twitter" | "threads" | "reddit">;
+  platforms: Array<"twitter" | "threads">;
   intervalMinutes: number;
   enabled: boolean;
 }
@@ -40,15 +38,14 @@ interface SearchConfig {
 // ---------------------------------------------------------------------------
 
 type QueueEntry =
-  | { type: "keyword"; term: string; platforms?: Array<"twitter" | "threads" | "reddit"> }
-  | { type: "reddit_subreddit"; subredditName: string; keywordFilters: string[] }
+  | { type: "keyword"; term: string; platforms?: Array<"twitter" | "threads"> }
   | { type: "tracked" };            // processes all tracked threads + Twitter profiles
 
 interface ActiveRunState {
   runId: string;
   ranAt: string;
   triggeredBy: "auto" | "manual";
-  platforms: Array<"twitter" | "threads" | "reddit">;
+  platforms: Array<"twitter" | "threads">;
   terms: string[];
   totalCollected: number;
   totalInserted: number;
@@ -154,60 +151,11 @@ interface SessionResult {
   errors: string[];
 }
 
-function buildRedditSubredditUrl(subredditName: string, keywordFilters: string[]): string {
-  if (subredditName === "all") {
-    const q = keywordFilters.join(" OR ");
-    return `https://www.reddit.com/search/?q=${encodeURIComponent(q)}&sort=new`;
-  }
-  if (keywordFilters.length === 0) {
-    return `https://www.reddit.com/r/${subredditName}/new/`;
-  }
-  const q = keywordFilters.join(" OR ");
-  return `https://www.reddit.com/r/${subredditName}/search/?q=${encodeURIComponent(q)}&restrict_sr=1&sort=new`;
-}
-
-async function processRedditSubredditEntry(
-  entry: { subredditName: string; keywordFilters: string[] },
-  state: ActiveRunState,
-  account: Account,
-): Promise<SessionResult> {
-  const searchUrl = buildRedditSubredditUrl(entry.subredditName, entry.keywordFilters);
-  let collected = 0;
-  let inserted = 0;
-  const errors: string[] = [];
-  let tabId: number | null = null;
-
-  try {
-    console.log(`[Gito] opening tab: ${searchUrl}`);
-    const tab = await chrome.tabs.create({ url: searchUrl, active: false });
-    tabId = tab.id!;
-    await waitForTabLoad(tabId, 8000);
-    const searchItems = await collectReddit(`r/${entry.subredditName}`, tabId);
-    console.log(`[Gito] reddit/r/${entry.subredditName}: ${searchItems.length} items`);
-    await chrome.tabs.remove(tabId);
-    tabId = null;
-
-    if (searchItems.length > 0) {
-      collected += searchItems.length;
-      const { inserted: n, error } = await ingestBatch(searchItems, account, state.runId);
-      if (error) { errors.push(error); console.error(`[Gito] ${error}`); }
-      inserted += n;
-    }
-  } catch (err) {
-    const msg = `reddit/r/${entry.subredditName}: ${String(err)}`;
-    console.error(`[Gito] ${msg}`);
-    errors.push(msg);
-    if (tabId !== null) chrome.tabs.remove(tabId).catch(() => {});
-  }
-
-  return { collected, inserted, errors };
-}
-
 async function processKeywordEntry(
   term: string,
   state: ActiveRunState,
   account: Account,
-  platformsOverride?: Array<"twitter" | "threads" | "reddit">,
+  platformsOverride?: Array<"twitter" | "threads">,
 ): Promise<SessionResult> {
   let collected = 0;
   let inserted = 0;
@@ -220,9 +168,7 @@ async function processKeywordEntry(
       const searchUrl =
         platform === "twitter"
           ? `https://x.com/search?q=${encodeURIComponent(term)}&f=live`
-          : platform === "threads"
-          ? `https://www.threads.com/search?q=${encodeURIComponent(term)}&serp_type=default&filter=recent`
-          : `https://www.reddit.com/search/?q=${encodeURIComponent(term)}&sort=new`;
+          : `https://www.threads.com/search?q=${encodeURIComponent(term)}&serp_type=default&filter=recent`;
 
       console.log(`[Gito] opening tab: ${searchUrl}`);
       const tab = await chrome.tabs.create({ url: searchUrl, active: false });
@@ -232,9 +178,7 @@ async function processKeywordEntry(
       searchItems =
         platform === "twitter"
           ? await collectX(term, tabId)
-          : platform === "threads"
-          ? await collectThreads(term, tabId)
-          : await collectReddit(term, tabId);
+          : await collectThreads(term, tabId);
 
       console.log(`[Gito] ${platform}/${term}: ${searchItems.length} items`);
       await chrome.tabs.remove(tabId);
@@ -373,23 +317,15 @@ async function startCollectRun(
   account: Account,
   triggeredBy: "auto" | "manual",
 ): Promise<SessionResult> {
-  const configuredSubreddits = account.redditSubreddits ?? [];
-  const hasSubreddits = configuredSubreddits.length > 0 && config.platforms.includes("reddit");
-  const keywordPlatforms = hasSubreddits
-    ? config.platforms.filter((p) => p !== "reddit")
-    : config.platforms;
+  // Stored configs may still contain legacy platforms (e.g. "reddit") — drop them.
+  const keywordPlatforms = config.platforms.filter(
+    (p): p is "twitter" | "threads" => p === "twitter" || p === "threads",
+  );
 
   const entries: QueueEntry[] = [];
   if (keywordPlatforms.length > 0) {
     for (const term of config.terms) {
-      entries.push(hasSubreddits
-        ? { type: "keyword", term, platforms: keywordPlatforms }
-        : { type: "keyword", term });
-    }
-  }
-  if (hasSubreddits) {
-    for (const sub of configuredSubreddits) {
-      entries.push({ type: "reddit_subreddit", subredditName: sub.subredditName, keywordFilters: sub.keywordFilters });
+      entries.push({ type: "keyword", term, platforms: keywordPlatforms });
     }
   }
   entries.push({ type: "tracked" });
@@ -398,7 +334,7 @@ async function startCollectRun(
     runId: crypto.randomUUID(),
     ranAt: new Date().toISOString(),
     triggeredBy,
-    platforms: config.platforms,
+    platforms: keywordPlatforms,
     terms: config.terms,
     totalCollected: 0,
     totalInserted: 0,
@@ -433,8 +369,6 @@ async function processEntry(
 ): Promise<SessionResult> {
   const result = entry.type === "keyword"
     ? await processKeywordEntry(entry.term, state, account, entry.platforms)
-    : entry.type === "reddit_subreddit"
-    ? await processRedditSubredditEntry(entry, state, account)
     : await processTrackedEntry(state, account);
 
   const updatedState: ActiveRunState = {
@@ -449,8 +383,6 @@ async function processEntry(
     await chrome.storage.local.set({ [QUEUE_KEY]: { entries: remaining, state: updatedState } as StoredQueue });
     const label = remaining[0].type === "keyword"
       ? `"${remaining[0].term}"`
-      : remaining[0].type === "reddit_subreddit"
-      ? `r/${remaining[0].subredditName}`
       : "tracked threads";
     console.log(`[Gito] session done — scheduling next session (${label}) in 30s`);
     // Chrome clamps delayInMinutes to a minimum of 0.5 (30 seconds).
