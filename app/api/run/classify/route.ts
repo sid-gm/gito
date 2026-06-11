@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { and, asc, count, eq, gt, gte, isNull, lte, or } from "drizzle-orm";
+import { and, asc, count, desc, eq, gt, gte, isNull, lte, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { clusters, clusterItems, ingestedItems, trackedEntities } from "@/lib/db/schema";
 import { classifyCluster, classifyItemSignals } from "@/lib/ai/classify";
@@ -34,6 +34,12 @@ export async function POST() {
         gte(clusters.itemCount, 2),
         isNull(clusters.analystClassification)
       )
+    )
+    // Clusters needing AI classification first, so already-classified clusters
+    // (which only get a velocity/stage refresh) can't starve the batch
+    .orderBy(
+      sql`(${clusters.classification} = 'unclassified' OR ${clusters.classifiedAt} IS NULL OR ${clusters.lastSeenAt} > ${clusters.classifiedAt}) DESC`,
+      desc(clusters.lastSeenAt)
     )
     .limit(BATCH_SIZE);
 
@@ -217,7 +223,9 @@ export async function POST() {
     }
   }
 
-  // Sentiment backfill: narrative clusters missing sentiment (any analystClassification)
+  // Sentiment backfill: any active cluster still missing sentiment. Timeline
+  // sentiment averages every cluster a day's items belong to, so clusters
+  // can't wait on a "narrative" classification (or any classification at all)
   let sentimentBackfilled = 0;
   const needsSentiment = await db
     .select({
@@ -229,13 +237,10 @@ export async function POST() {
     .where(
       and(
         isNull(clusters.archivedAt),
-        or(
-          eq(clusters.classification, "narrative"),
-          eq(clusters.analystClassification, "narrative")
-        ),
         isNull(clusters.sentimentLabel)
       )
     )
+    .orderBy(desc(clusters.lastSeenAt))
     .limit(BATCH_SIZE);
 
   for (const cluster of needsSentiment) {

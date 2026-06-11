@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { and, asc, count, eq, gt, gte, isNull, lte, or } from "drizzle-orm";
+import { and, asc, count, desc, eq, gt, gte, isNull, lte, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { clusters, clusterItems, ingestedItems, trackedEntities } from "@/lib/db/schema";
 import { verifyCronSecret } from "@/lib/cron-auth";
@@ -12,6 +12,9 @@ import { assignClustersToStorylines } from "@/lib/ai/storylines";
 export const maxDuration = 300;
 
 const BATCH_SIZE = 15;
+// Sentiment is a single cheap LLM call per cluster, so the backfill can chew
+// through a larger batch than full classification
+const SENTIMENT_BATCH_SIZE = 40;
 
 export async function GET(req: Request) {
   const authError = verifyCronSecret(req);
@@ -42,6 +45,12 @@ export async function GET(req: Request) {
         gte(clusters.itemCount, 2),
         isNull(clusters.analystClassification)
       )
+    )
+    // Clusters needing AI classification first, so already-classified clusters
+    // (which only get a velocity/stage refresh) can't starve the batch
+    .orderBy(
+      sql`(${clusters.classification} = 'unclassified' OR ${clusters.classifiedAt} IS NULL OR ${clusters.lastSeenAt} > ${clusters.classifiedAt}) DESC`,
+      desc(clusters.lastSeenAt)
     )
     .limit(BATCH_SIZE);
 
@@ -231,8 +240,9 @@ export async function GET(req: Request) {
     }
   }
 
-  // Sentiment backfill: catch narrative clusters excluded from the main loop
-  // (e.g. analyst-reviewed clusters with analystClassification set)
+  // Sentiment backfill: any active cluster still missing sentiment. Timeline
+  // sentiment averages every cluster a day's items belong to, so clusters
+  // can't wait on a "narrative" classification (or any classification at all)
   let sentimentBackfilled = 0;
   const needsSentiment = await db
     .select({
@@ -244,14 +254,11 @@ export async function GET(req: Request) {
     .where(
       and(
         isNull(clusters.archivedAt),
-        or(
-          eq(clusters.classification, "narrative"),
-          eq(clusters.analystClassification, "narrative")
-        ),
         isNull(clusters.sentimentLabel)
       )
     )
-    .limit(BATCH_SIZE);
+    .orderBy(desc(clusters.lastSeenAt))
+    .limit(SENTIMENT_BATCH_SIZE);
 
   for (const cluster of needsSentiment) {
     try {

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { and, avg, count, eq, gte, isNotNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { trackedEntities, ingestedItems, clusterItems, clusters } from "@/lib/db/schema";
+import { trackedEntities, ingestedItems, clusterItems, clusters, newsTimelineDays, rssFeeds } from "@/lib/db/schema";
 
 const PLATFORM_LABELS: Record<string, string> = {
   reddit: "Reddit",
@@ -34,8 +34,9 @@ export async function GET(req: Request) {
 
   const windowDays = window === "90d" ? 90 : window === "30d" ? 30 : 7;
   const cutoff = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
+  const cutoffStr = cutoff.toISOString().slice(0, 10);
 
-  const [dailyRows, storyRows] = await Promise.all([
+  const [dailyRows, storyRows, newsDayRows] = await Promise.all([
     db
       .select({
         platform: ingestedItems.platform,
@@ -83,6 +84,24 @@ export async function GET(req: Request) {
         sql`DATE(${ingestedItems.publishedAt})`,
         clusters.id
       ),
+
+    // News sentiment lives in news_timeline_days (headline-based), not clusters
+    db
+      .select({
+        day: newsTimelineDays.periodDate,
+        sentimentScore: newsTimelineDays.sentimentScore,
+        itemCount: newsTimelineDays.itemCount,
+        stories: newsTimelineDays.stories,
+      })
+      .from(newsTimelineDays)
+      .innerJoin(rssFeeds, eq(rssFeeds.id, newsTimelineDays.rssFeedId))
+      .innerJoin(trackedEntities, eq(trackedEntities.id, rssFeeds.entityId))
+      .where(
+        and(
+          eq(trackedEntities.companyId, companyId),
+          gte(newsTimelineDays.periodDate, cutoffStr)
+        )
+      ),
   ]);
 
   // Index daily rows by platform → date
@@ -104,6 +123,22 @@ export async function GET(req: Request) {
     const dayMap = platformStoryMap.get(sr.platform)!;
     if (!dayMap.has(sr.day)) dayMap.set(sr.day, []);
     dayMap.get(sr.day)!.push(sr);
+  }
+
+  // Aggregate news_timeline_days per date across the company's feeds,
+  // weighted by item count
+  const newsDayMap = new Map<
+    string,
+    { weightedSum: number; weight: number; stories: NonNullable<(typeof newsDayRows)[number]["stories"]> }
+  >();
+  for (const nd of newsDayRows) {
+    if (!newsDayMap.has(nd.day)) newsDayMap.set(nd.day, { weightedSum: 0, weight: 0, stories: [] });
+    const agg = newsDayMap.get(nd.day)!;
+    if (nd.sentimentScore != null && nd.itemCount > 0) {
+      agg.weightedSum += nd.sentimentScore * nd.itemCount;
+      agg.weight += nd.itemCount;
+    }
+    if (nd.stories) agg.stories.push(...nd.stories);
   }
 
   const today = new Date();
@@ -133,10 +168,10 @@ export async function GET(req: Request) {
     while (cursor <= today) {
       const dateStr = cursor.toISOString().slice(0, 10);
       const row = dayMap.get(dateStr);
-      const avgScore = row?.avgSentiment != null ? Number(row.avgSentiment) : null;
+      let avgScore = row?.avgSentiment != null ? Number(row.avgSentiment) : null;
 
       const rawStories = storyDayMap.get(dateStr) ?? [];
-      const stories = rawStories
+      let stories = rawStories
         .filter((s) => s.label)
         .sort((a, b) => Number(b.clusterCount) - Number(a.clusterCount))
         .slice(0, 3)
@@ -147,6 +182,20 @@ export async function GET(req: Request) {
           score: s.score ?? 0,
           count: Number(s.clusterCount),
         }));
+
+      // News items rarely belong to sentiment-scored clusters — use the
+      // headline-based news_timeline_days sentiment instead
+      if (platform === "google_alerts") {
+        const newsAgg = newsDayMap.get(dateStr);
+        if (newsAgg && newsAgg.weight > 0) {
+          avgScore = newsAgg.weightedSum / newsAgg.weight;
+        }
+        if (stories.length === 0 && newsAgg && newsAgg.stories.length > 0) {
+          stories = [...newsAgg.stories]
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 3);
+        }
+      }
 
       days.push({
         date: dateStr,

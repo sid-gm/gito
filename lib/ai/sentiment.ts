@@ -94,7 +94,7 @@ Weighting rules (for social threads where lines are tagged [OP @user] or [@user]
 - "negative": coverage is critical, damaging, or harmful to ${entityLabel}
 - "neutral": factual reporting without strong positive or negative framing towards ${entityLabel}
 - "mixed": contains significant positive AND negative coverage towards ${entityLabel}
-- score: -1.0 (very negative) to 1.0 (very positive), 0.0 for neutral or mixed
+- score: -1.0 (very negative) to 1.0 (very positive). Use 0.0 only for genuinely neutral coverage. For "mixed", the score MUST reflect the net lean of the distinct voices (e.g. mostly critical with some defenders → around -0.4); do not default mixed to 0.0 unless the sides are truly balanced
 
 Respond with JSON only, no markdown:
 {"sentiment":"positive"|"negative"|"neutral"|"mixed","score":<float -1.0 to 1.0>}`,
