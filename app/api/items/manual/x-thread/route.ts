@@ -165,6 +165,7 @@ export async function POST(req: Request) {
         .limit(1);
 
       if (entityRow) {
+        const opAuthor = author ?? op.author ?? null;
         const result = await analyzeEntitySentiment({
           entityLabel: entityRow.label,
           clusterLabel,
@@ -172,6 +173,8 @@ export async function POST(req: Request) {
             title: `${t.author}: ${t.body.slice(0, 80)}`,
             body: t.body,
             analystNote: null,
+            author: t.author,
+            isOp: t.isOriginalPost || (opAuthor != null && t.author === opAuthor),
           })),
         });
 

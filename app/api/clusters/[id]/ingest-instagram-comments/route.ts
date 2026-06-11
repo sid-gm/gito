@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { ingestedItems, clusters, clusterItems, trackedEntities } from "@/lib/db/schema";
 import type { NewIngestedItem } from "@/lib/db/schema";
-import { analyzeEntitySentiment } from "@/lib/ai/sentiment";
+import { analyzeEntitySentiment, withOpFlags } from "@/lib/ai/sentiment";
 import { eq, inArray, count } from "drizzle-orm";
 import { z } from "zod";
 
@@ -109,7 +109,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
       if (entityRow) {
         const allItems = await db
-          .select({ title: ingestedItems.title, body: ingestedItems.body })
+          .select({
+            title: ingestedItems.title,
+            body: ingestedItems.body,
+            author: ingestedItems.author,
+            subtype: ingestedItems.subtype,
+          })
           .from(ingestedItems)
           .innerJoin(clusterItems, eq(clusterItems.itemId, ingestedItems.id))
           .where(eq(clusterItems.clusterId, clusterId));
@@ -117,10 +122,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         const result = await analyzeEntitySentiment({
           entityLabel: entityRow.label,
           clusterLabel: clusterRow?.label ?? "",
-          items: allItems.map((i) => ({
+          items: withOpFlags(allItems).map((i) => ({
             title: i.title ?? "",
             body: i.body ?? null,
             analystNote: null,
+            author: i.author,
+            isOp: i.isOp,
           })),
         });
 

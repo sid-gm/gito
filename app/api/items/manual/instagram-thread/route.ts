@@ -159,15 +159,24 @@ export async function POST(req: Request) {
         .limit(1);
 
       if (entityRow) {
+        const opAuthor = author ?? null;
         const result = await analyzeEntitySentiment({
           entityLabel: entityRow.label,
           clusterLabel,
           items: [
-            { title, body: postBody ?? null, analystNote: null },
+            {
+              title,
+              body: postBody ?? null,
+              analystNote: null,
+              author: opAuthor,
+              isOp: true,
+            },
             ...comments.map((c) => ({
               title: `${c.author}: ${c.body.slice(0, 80)}`,
               body: c.body,
               analystNote: null,
+              author: c.author,
+              isOp: opAuthor != null && c.author === opAuthor,
             })),
           ],
         });

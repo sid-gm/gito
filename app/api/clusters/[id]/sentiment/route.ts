@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { desc, eq } from "drizzle-orm";
+import { asc, desc, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { clusters, clusterItems, clusterPeriodNarratives, ingestedItems, trackedEntities } from "@/lib/db/schema";
-import { analyzeEntitySentiment } from "@/lib/ai/sentiment";
+import { analyzeEntitySentiment, withOpFlags } from "@/lib/ai/sentiment";
 
 export async function POST(
   _req: NextRequest,
@@ -24,19 +24,23 @@ export async function POST(
 
   if (!clusterRow) return NextResponse.json({ error: "not found" }, { status: 404 });
 
-  const items = await db
+  const itemRows = await db
     .select({
       title: ingestedItems.title,
       body: ingestedItems.body,
       analystNote: clusterItems.analystNote,
+      author: ingestedItems.author,
+      subtype: ingestedItems.subtype,
     })
     .from(clusterItems)
     .innerJoin(ingestedItems, eq(clusterItems.itemId, ingestedItems.id))
     .where(eq(clusterItems.clusterId, id))
-    .orderBy(desc(clusterItems.similarity))
-    .limit(30);
+    .orderBy(desc(clusterItems.similarity), asc(ingestedItems.createdAt))
+    .limit(40);
 
-  if (items.length === 0) return NextResponse.json({ error: "no items" }, { status: 422 });
+  if (itemRows.length === 0) return NextResponse.json({ error: "no items" }, { status: 422 });
+
+  const items = withOpFlags(itemRows);
 
   const periodRows = await db
     .select({

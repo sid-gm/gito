@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
-import { and, count, eq, gt, gte, isNull, lte, or } from "drizzle-orm";
+import { and, asc, count, eq, gt, gte, isNull, lte, or } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { clusters, clusterItems, ingestedItems, trackedEntities } from "@/lib/db/schema";
 import { classifyCluster, classifyItemSignals } from "@/lib/ai/classify";
-import { analyzeEntitySentiment } from "@/lib/ai/sentiment";
+import { analyzeEntitySentiment, withOpFlags } from "@/lib/ai/sentiment";
 import { computeNarrativeStage, NEWS_PLATFORMS } from "@/lib/narrative-stage";
 
 const BATCH_SIZE = 10;
@@ -124,10 +124,29 @@ export async function POST() {
       let sentimentLabel: string | null = null;
 
       if (result.classification === "narrative") {
+        const sentimentItems = await db
+          .select({
+            title: ingestedItems.title,
+            body: ingestedItems.body,
+            author: ingestedItems.author,
+            subtype: ingestedItems.subtype,
+          })
+          .from(clusterItems)
+          .innerJoin(ingestedItems, eq(clusterItems.itemId, ingestedItems.id))
+          .where(eq(clusterItems.clusterId, cluster.id))
+          .orderBy(asc(ingestedItems.createdAt))
+          .limit(40);
+
         const sentimentResult = await analyzeEntitySentiment({
           entityLabel: entity?.label ?? "Unknown",
           clusterLabel: cluster.label,
-          items: items.map((i) => ({ title: i.title, body: i.body, analystNote: null })),
+          items: withOpFlags(sentimentItems).map((i) => ({
+            title: i.title,
+            body: i.body,
+            analystNote: null,
+            author: i.author,
+            isOp: i.isOp,
+          })),
         });
         sentimentScore = sentimentResult.score;
         sentimentLabel = sentimentResult.sentiment;
@@ -222,11 +241,17 @@ export async function POST() {
   for (const cluster of needsSentiment) {
     try {
       const items = await db
-        .select({ title: ingestedItems.title, body: ingestedItems.body })
+        .select({
+          title: ingestedItems.title,
+          body: ingestedItems.body,
+          author: ingestedItems.author,
+          subtype: ingestedItems.subtype,
+        })
         .from(clusterItems)
         .innerJoin(ingestedItems, eq(clusterItems.itemId, ingestedItems.id))
         .where(eq(clusterItems.clusterId, cluster.id))
-        .limit(5);
+        .orderBy(asc(ingestedItems.createdAt))
+        .limit(40);
 
       const titles = items.map((i) => i.title ?? i.body?.slice(0, 120) ?? "").filter(Boolean);
       if (titles.length === 0) continue;
@@ -241,7 +266,13 @@ export async function POST() {
       const sentimentResult = await analyzeEntitySentiment({
         entityLabel: entity?.label ?? "Unknown",
         clusterLabel: cluster.label,
-        items: items.map((i) => ({ title: i.title, body: i.body, analystNote: null })),
+        items: withOpFlags(items).map((i) => ({
+          title: i.title,
+          body: i.body,
+          analystNote: null,
+          author: i.author,
+          isOp: i.isOp,
+        })),
       });
 
       await db

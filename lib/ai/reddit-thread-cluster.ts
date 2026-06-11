@@ -1,7 +1,7 @@
 import { and, eq, inArray, isNull, isNotNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { ingestedItems, clusters, clusterItems, trackedEntities } from "@/lib/db/schema";
-import { analyzeEntitySentiment } from "@/lib/ai/sentiment";
+import { analyzeEntitySentiment, withOpFlags } from "@/lib/ai/sentiment";
 import { updateVelocityAndStage } from "@/lib/ai/cluster-velocity";
 
 const REDDIT_SUBTYPES = ["reddit_post", "reddit_thread", "reddit_comment"] as const;
@@ -21,6 +21,7 @@ export async function groupRedditThreadsIntoClusters(): Promise<number> {
       url: ingestedItems.url,
       title: ingestedItems.title,
       body: ingestedItems.body,
+      author: ingestedItems.author,
       entityId: ingestedItems.entityId,
       subtype: ingestedItems.subtype,
       publishedAt: ingestedItems.publishedAt,
@@ -140,10 +141,12 @@ export async function groupRedditThreadsIntoClusters(): Promise<number> {
               const result = await analyzeEntitySentiment({
                 entityLabel: entityRow.label,
                 clusterLabel: label,
-                items: items.map((i) => ({
+                items: withOpFlags(items).map((i) => ({
                   title: i.title,
                   body: i.body,
                   analystNote: null,
+                  author: i.author,
+                  isOp: i.isOp,
                 })),
               });
 
