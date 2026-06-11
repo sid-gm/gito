@@ -209,7 +209,7 @@ function extractFacebookPost(selectedText: string): ExtensionItem {
   }
 }
 
-function extractVisibleFacebookComments(): ExtensionItem[] {
+function extractVisibleFacebookComments(postUrl: string): ExtensionItem[] {
   const articles = Array.from(document.querySelectorAll('div[role="article"][aria-label]'));
   const comments: ExtensionItem[] = [];
 
@@ -232,21 +232,22 @@ function extractVisibleFacebookComments(): ExtensionItem[] {
     if (!body) continue;
 
     let externalId: string | undefined;
-    let commentUrl = window.location.href;
     let publishedAt: string | undefined;
     const permalink = Array.from(article.querySelectorAll('a[href*="comment_id"]'))
       .find((a) => (a as HTMLAnchorElement).closest('div[role="article"]') === article) as HTMLAnchorElement | undefined;
     if (permalink) {
       try {
+        // The comment_id anchor often points at the commenter's profile, not a
+        // real permalink — use it only for the ID and relative timestamp, and
+        // always link the comment back to the post itself.
         const parsed = new URL(permalink.href, window.location.origin);
         externalId = parsed.searchParams.get("reply_comment_id") ?? parsed.searchParams.get("comment_id") ?? undefined;
-        commentUrl = parsed.href;
         publishedAt = parseFacebookRelativeTime(permalink.textContent);
       } catch { /* keep fallbacks */ }
     }
 
     comments.push({
-      url: commentUrl,
+      url: postUrl,
       title: body.slice(0, 200),
       body,
       author,
@@ -466,7 +467,7 @@ async function initiateCapture(selectedText: string, anchorRect: DOMRect) {
     : isRedditThread
     ? extractVisibleRedditComments(item.externalId)
     : isFacebookPage
-    ? extractVisibleFacebookComments()
+    ? extractVisibleFacebookComments(item.url)
     : undefined;
 
   chrome.runtime.sendMessage({ type: "GET_CONTEXT" }, (response) => {
