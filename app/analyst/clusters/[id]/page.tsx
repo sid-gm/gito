@@ -6,6 +6,7 @@ import { PlatformChip } from "@/components/primitives";
 import { useCompany } from "@/components/CompanyContext";
 import { VelocitySparkline } from "@/components/VelocitySparkline";
 import { ItemAnnotations } from "@/components/ItemAnnotations";
+import { ItemRowActions } from "@/components/ItemRowActions";
 import { AddItemDialog } from "@/components/AddItemDialog";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -322,6 +323,15 @@ export default function ClusterDetailPage() {
     }
   };
 
+  const refreshItems = async () => {
+    const [clusterData, itemsData] = await Promise.all([
+      fetch(`/api/clusters/${id}`).then((r) => r.json()),
+      fetch(`/api/clusters/${id}/items`).then((r) => r.json()),
+    ]);
+    setCluster(clusterData);
+    setExpanded(itemsData);
+  };
+
   const deleteCluster = async () => {
     setDeleteBusy(true);
     try {
@@ -378,6 +388,14 @@ export default function ClusterDetailPage() {
               };
             });
           }}
+        />
+        <ItemRowActions
+          clusterId={id}
+          itemId={item.itemId}
+          entityId={cluster?.entityId ?? null}
+          itemTitle={cleanTitle(item.title) ?? item.body?.slice(0, 120) ?? null}
+          onRemoved={refreshItems}
+          onMoved={refreshItems}
         />
       </div>
     );

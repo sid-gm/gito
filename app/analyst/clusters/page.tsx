@@ -8,6 +8,7 @@ import { useCompany } from "@/components/CompanyContext";
 import { StageKey } from "@/components/StagePill";
 import { AddItemDialog } from "@/components/AddItemDialog";
 import { ItemAnnotations } from "@/components/ItemAnnotations";
+import { ItemRowActions } from "@/components/ItemRowActions";
 import ThreadIngestDialog from "@/components/ThreadIngestDialog";
 import XReplyIngestDialog from "@/components/XReplyIngestDialog";
 import InstagramCommentIngestDialog from "@/components/InstagramCommentIngestDialog";
@@ -646,6 +647,20 @@ export default function ClustersPage() {
     setEditingPeriod(null);
   };
 
+  // Refresh expanded item lists after a remove/move, plus the cluster list
+  // (item counts changed). Refetches every cached cluster that's affected.
+  const refreshAfterItemChange = useCallback(async (clusterIds: string[]) => {
+    await Promise.all(
+      clusterIds.map(async (cid) => {
+        if (!expandedData[cid]) return;
+        const res = await fetch(`/api/clusters/${cid}/items`);
+        const data: ExpandedData = await res.json();
+        setExpandedData((prev) => ({ ...prev, [cid]: data }));
+      })
+    );
+    fetchClusters();
+  }, [expandedData, fetchClusters]);
+
   // ── Render date-grouped expanded items ──────────────────────────────────────
   function renderExpandedItems(cluster: Cluster) {
     const data = expandedData[cluster.id];
@@ -695,7 +710,7 @@ export default function ClustersPage() {
                   {periodText ?? <span style={{ opacity: 0.4 }}>Add note…</span>}
                 </div>
               )}
-              {dayItems.map((item, i) => renderItemRow(item, i, cluster.id))}
+              {dayItems.map((item, i) => renderItemRow(item, i, cluster.id, cluster.entityId))}
             </div>
           );
         })}
@@ -712,7 +727,7 @@ export default function ClustersPage() {
     );
   }
 
-  function renderItemRow(item: ClusterItem, i: number, clusterId: string) {
+  function renderItemRow(item: ClusterItem, i: number, clusterId: string, entityId: string | null) {
     const href = item.platform === "hackernews" && item.externalId
       ? `https://news.ycombinator.com/item?id=${item.externalId}`
       : item.url;
@@ -743,6 +758,14 @@ export default function ClustersPage() {
           onReviewed={(ts) => {
             setClusterList((prev) => prev.map((c) => c.id === clusterId ? { ...c, analystReviewedAt: ts } : c));
           }}
+        />
+        <ItemRowActions
+          clusterId={clusterId}
+          itemId={item.itemId}
+          entityId={entityId}
+          itemTitle={cleanTitle(item.title) ?? item.body?.slice(0, 120) ?? null}
+          onRemoved={() => refreshAfterItemChange([clusterId])}
+          onMoved={(targetId) => refreshAfterItemChange([clusterId, targetId])}
         />
       </div>
     );
@@ -1117,7 +1140,7 @@ export default function ClustersPage() {
                     ? renderExpandedItems(cluster)
                     : displayItems.length > 0 && (
                       <div className="cluster-card-items">
-                        {displayItems.map((item, i) => renderItemRow(item, i, cluster.id))}
+                        {displayItems.map((item, i) => renderItemRow(item, i, cluster.id, cluster.entityId))}
                       </div>
                     )
                   }
