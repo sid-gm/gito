@@ -25,6 +25,7 @@ export async function GET(req: Request) {
       id: clusters.id,
       label: clusters.label,
       narrativeSummary: clusters.narrativeSummary,
+      analystNote: clusters.analystNote,
       classifiedAt: clusters.classifiedAt,
       entityLabel: trackedEntities.label,
     })
@@ -105,8 +106,14 @@ export async function GET(req: Request) {
               .join("\n")}`
           : "";
 
-        const analystNotesSection = existing?.analystNarrative
-          ? `\nAnalyst notes: ${existing.analystNarrative}`
+        const itemNotes = dayItems
+          .map((i) => i.analystNote?.trim())
+          .filter((n): n is string => Boolean(n));
+        const analystNotesSection = itemNotes.length
+          ? `\nAnalyst notes on these items (human-written — treat as authoritative):\n${itemNotes
+              .slice(0, 5)
+              .map((n, i) => `${i + 1}. ${n.slice(0, 300)}`)
+              .join("\n")}`
           : "";
 
         const { text: periodText } = await generateText({
@@ -145,12 +152,16 @@ Write 1-2 sentences summarizing what people think about this story and why they 
 
       let newSummary = "";
 
+      const clusterNoteSection = cluster.analystNote?.trim()
+        ? `\nAnalyst note on this narrative (human-written — treat as authoritative): ${cluster.analystNote.trim()}\n`
+        : "";
+
       if (timeline) {
         const { text } = await generateText({
           model: openai("gpt-4o-mini"),
           prompt: `Narrative: "${cluster.label ?? "Unnamed"}"
 Tracked entity: ${entityLabel}
-
+${clusterNoteSection}
 Story timeline:
 ${timeline}
 
@@ -171,7 +182,7 @@ Write an updated 1-2 sentence overview of how public reaction to this story has 
           prompt: `Narrative: "${cluster.label ?? "Unnamed"}"
 Tracked entity: ${entityLabel}
 Previous summary: ${cluster.narrativeSummary ?? "none"}
-
+${clusterNoteSection}
 Recent items:
 ${itemSnippets}
 

@@ -1,8 +1,8 @@
-import { and, desc, eq, inArray, isNull, or } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, isNull, or } from "drizzle-orm";
 import { generateText } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { db } from "@/lib/db";
-import { clusters, clusterNewsLinks, storylines, trackedEntities } from "@/lib/db/schema";
+import { clusters, clusterItems, clusterNewsLinks, storylines, trackedEntities } from "@/lib/db/schema";
 import { buildClusterContext, formatClusterBlock } from "@/lib/ai/report-context";
 
 const STORYLINES_SHOWN = 20;
@@ -25,6 +25,7 @@ export async function assignClustersToStorylines(limit = 15): Promise<StorylineA
       entityId: clusters.entityId,
       label: clusters.label,
       narrativeSummary: clusters.narrativeSummary,
+      analystNote: clusters.analystNote,
       firstSeenAt: clusters.firstSeenAt,
       lastSeenAt: clusters.lastSeenAt,
       itemCount: clusters.itemCount,
@@ -41,6 +42,26 @@ export async function assignClustersToStorylines(limit = 15): Promise<StorylineA
     .limit(limit);
 
   if (candidates.length === 0) return { assigned: 0, created: 0 };
+
+  // Item-level analyst notes carry context the AI summaries may miss (risk
+  // calls, who's driving the conversation) — surface a few per cluster.
+  const itemNoteRows = await db
+    .select({ clusterId: clusterItems.clusterId, note: clusterItems.analystNote })
+    .from(clusterItems)
+    .where(
+      and(
+        inArray(clusterItems.clusterId, candidates.map((c) => c.id)),
+        isNotNull(clusterItems.analystNote)
+      )
+    );
+  const itemNotesByCluster = new Map<string, string[]>();
+  for (const row of itemNoteRows) {
+    const note = row.note?.trim();
+    if (!note) continue;
+    const list = itemNotesByCluster.get(row.clusterId) ?? [];
+    if (list.length < 3) list.push(note);
+    itemNotesByCluster.set(row.clusterId, list);
+  }
 
   const byEntity = new Map<string, typeof candidates>();
   for (const c of candidates) {
@@ -89,6 +110,9 @@ export async function assignClustersToStorylines(limit = 15): Promise<StorylineA
         .map((c, i) => {
           const parts = [`[${i + 1}] "${c.label ?? "(unlabeled)"}"`, `${fmtDate(c.firstSeenAt)} to ${fmtDate(c.lastSeenAt)}`, `${c.itemCount} items`];
           if (c.narrativeSummary) parts.push(c.narrativeSummary.slice(0, 160));
+          if (c.analystNote?.trim()) parts.push(`Analyst note: ${c.analystNote.trim().slice(0, 200)}`);
+          const itemNotes = itemNotesByCluster.get(c.id);
+          if (itemNotes?.length) parts.push(`Analyst item notes: ${itemNotes.map((n) => n.slice(0, 150)).join(" | ")}`);
           return parts.join(" — ");
         })
         .join("\n");
@@ -106,6 +130,7 @@ Rules:
 - Distinct unrelated topics get separate storylines.
 - Two clusters to place may share one NEW storyline — give them the same new key.
 - When in doubt, create a new storyline.
+- "Analyst note" lines are written by human analysts; trust them over AI summaries when deciding which arc a cluster belongs to.
 
 Respond ONLY with valid JSON:
 {"assignments":[{"cluster":1,"storyline":2},{"cluster":2,"storyline":"new-1"},{"cluster":3,"storyline":"new-1"}],
@@ -258,6 +283,8 @@ ${blocks.join("\n\n")}
 
 Linked news coverage:
 ${newsList}
+
+"Analyst note" / "Analyst notes" lines were written by human analysts — treat them as authoritative context and weight them above raw post content when judging tone, significance, and how the arc evolved.
 
 Return a JSON object:
 - "title": a 4-8 word title for the storyline arc
