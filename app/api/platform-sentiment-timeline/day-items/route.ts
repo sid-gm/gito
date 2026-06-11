@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { trackedEntities, ingestedItems, clusterItems, clusters } from "@/lib/db/schema";
 
 const VALID_PLATFORMS = [
-  "hackernews", "reddit", "twitter", "google_alerts", "manual", "threads", "instagram",
+  "hackernews", "reddit", "twitter", "google_alerts", "manual", "threads", "instagram", "facebook",
 ] as const;
 type ValidPlatform = typeof VALID_PLATFORMS[number];
 

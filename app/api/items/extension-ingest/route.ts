@@ -21,7 +21,7 @@ const itemSchema = z.object({
   body: z.string().nullish(),
   author: z.string().nullish(),
   publishedAt: z.string().nullish(),
-  platform: z.enum(["twitter", "reddit", "instagram", "threads", "manual"]),
+  platform: z.enum(["twitter", "reddit", "instagram", "threads", "facebook", "manual"]),
   subtype: z.string().nullish(),
   externalId: z.string().nullish(),
   parentExternalId: z.string().nullish(),
@@ -142,8 +142,11 @@ export async function POST(req: Request) {
   const isRedditThread =
     items.some((i) => i.subtype === "reddit_post") &&
     items.some((i) => i.subtype === "reddit_comment" || i.subtype === "reddit_reply");
+  const isFacebookThread =
+    items.some((i) => i.subtype === "facebook_post") &&
+    items.some((i) => i.subtype === "facebook_comment" || i.subtype === "facebook_reply");
 
-  if (isTwitterThread || isRedditThread) {
+  if (isTwitterThread || isRedditThread || isFacebookThread) {
     // Resolve IDs for all items in the batch (including pre-existing duplicates).
     const externalIds = toInsert.map((i) => i.externalId).filter((id): id is string => !!id);
     const resolvedRows = externalIds.length > 0
@@ -160,8 +163,8 @@ export async function POST(req: Request) {
     ]);
 
     if (resolvedIds.size > 0) {
-      const post = items.find((i) => i.subtype === "x_post" || i.subtype === "reddit_post");
-      const defaultLabel = isRedditThread ? "Reddit thread" : "Twitter thread";
+      const post = items.find((i) => i.subtype === "x_post" || i.subtype === "reddit_post" || i.subtype === "facebook_post");
+      const defaultLabel = isRedditThread ? "Reddit thread" : isFacebookThread ? "Facebook thread" : "Twitter thread";
       const clusterLabel = (post?.title ?? post?.body ?? defaultLabel).slice(0, 80);
       const resolvedEntityId = toInsert.find((i) => i.entityId)?.entityId ?? null;
 

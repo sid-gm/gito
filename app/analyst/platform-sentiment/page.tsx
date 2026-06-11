@@ -21,6 +21,7 @@ const PLATFORM_COLORS: Record<string, string> = {
   hackernews:   "oklch(0.58 0.16 55)",
   threads:      "oklch(0.55 0.15 285)",
   instagram:    "oklch(0.62 0.12 320)",
+  facebook:     "oklch(0.50 0.16 262)",
   google_alerts:"oklch(0.56 0.14 160)",
   manual:       "oklch(0.55 0.06 220)",
 };

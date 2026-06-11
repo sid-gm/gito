@@ -289,7 +289,7 @@ ${newsList}
 Return a JSON object:
 - "title": a 4-8 word title for the storyline arc
 - "summary": 2-3 sentences telling the arc oldest to newest (what started it, how it evolved, where it stands)
-- "lens": an object keyed by source ("news", "reddit", "twitter", "threads", "instagram", "hackernews") — include ONLY sources that appear above. Each value: {"digest": one sentence on what that source is saying, "quote": a short verbatim quote from that source or null}
+- "lens": an object keyed by source ("news", "reddit", "twitter", "threads", "instagram", "facebook", "hackernews") — include ONLY sources that appear above. Each value: {"digest": one sentence on what that source is saying, "quote": a short verbatim quote from that source or null}
 - "newsSentimentScore": -1.0 to 1.0 based on the linked news coverage, or null if no news
 - "socialSentimentScore": -1.0 to 1.0 based on the social conversation, or null
 

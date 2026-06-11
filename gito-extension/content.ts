@@ -169,12 +169,104 @@ function extractInstagramPost(selectedText: string): ExtensionItem {
   }
 }
 
+function extractFacebookExternalId(url: string): string | undefined {
+  // Facebook post URLs come in several shapes; try the known ones in order.
+  return url.match(/\/posts\/(pfbid[A-Za-z0-9]+|\d+)/)?.[1]
+    ?? url.match(/story_fbid=(pfbid[A-Za-z0-9]+|\d+)/)?.[1]
+    ?? url.match(/[?&]fbid=(\d+)/)?.[1]
+    ?? url.match(/\/(?:videos|reel)\/(\d+)/)?.[1]
+    ?? url.match(/\/share\/[pvr]\/([A-Za-z0-9]+)/)?.[1];
+}
+
+// Facebook only renders relative times ("21h", "55m", "3d") — approximate an ISO date.
+function parseFacebookRelativeTime(text: string | null | undefined): string | undefined {
+  const m = text?.trim().match(/^(\d+)\s*(s|m|h|d|w|y)$/i);
+  if (!m) return undefined;
+  const n = parseInt(m[1], 10);
+  const unitMs: Record<string, number> = {
+    s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000, w: 604_800_000, y: 31_536_000_000,
+  };
+  return new Date(Date.now() - n * unitMs[m[2].toLowerCase()]).toISOString();
+}
+
+function extractFacebookPost(selectedText: string): ExtensionItem {
+  const url = window.location.href;
+  try {
+    const externalId = extractFacebookExternalId(url);
+    // data-ad-* attributes are Facebook's stable hooks; class names are atomic CSS and churn.
+    const messageEl = document.querySelector(
+      'div[data-ad-preview="message"], div[data-ad-rendering-role="story_message"]'
+    );
+    const body = messageEl?.textContent?.trim() || selectedText;
+    const postRoot = messageEl?.closest('div[role="article"]') ?? messageEl?.closest("div[aria-posinset]") ?? document;
+    const authorEl = postRoot.querySelector(
+      '[data-ad-rendering-role="profile_name"], h2 a, h3 a'
+    ) as HTMLElement | null;
+    const author = authorEl?.textContent?.trim() || undefined;
+    return { url, title: body.slice(0, 200), body, author, platform: "facebook", subtype: "facebook_post", externalId };
+  } catch {
+    return { url, title: selectedText.slice(0, 200), body: selectedText, platform: "facebook", subtype: "facebook_post" };
+  }
+}
+
+function extractVisibleFacebookComments(): ExtensionItem[] {
+  const articles = Array.from(document.querySelectorAll('div[role="article"][aria-label]'));
+  const comments: ExtensionItem[] = [];
+
+  for (const article of articles) {
+    // Comments/replies carry aria-label "Comment by <name>" / "Reply by <name>" (English UI);
+    // the main post uses aria-labelledby, so it never matches here.
+    const aria = article.getAttribute("aria-label") ?? "";
+    const m = aria.match(/^(comment|reply) by (.+)$/i);
+    if (!m) continue;
+    const subtype = m[1].toLowerCase() === "reply" ? "facebook_reply" : "facebook_comment";
+    const author = m[2].replace(/\s+\d+\s+\w+\s+ago$/i, "").trim() || undefined;
+
+    // Replies are nested articles inside their parent comment — only take text
+    // blocks that belong directly to this article, not to a nested one.
+    const body = Array.from(article.querySelectorAll('div[dir="auto"]'))
+      .filter((el) => el.closest('div[role="article"]') === article)
+      .map((el) => el.textContent?.trim() ?? "")
+      .filter(Boolean)
+      .join("\n");
+    if (!body) continue;
+
+    let externalId: string | undefined;
+    let commentUrl = window.location.href;
+    let publishedAt: string | undefined;
+    const permalink = Array.from(article.querySelectorAll('a[href*="comment_id"]'))
+      .find((a) => (a as HTMLAnchorElement).closest('div[role="article"]') === article) as HTMLAnchorElement | undefined;
+    if (permalink) {
+      try {
+        const parsed = new URL(permalink.href, window.location.origin);
+        externalId = parsed.searchParams.get("reply_comment_id") ?? parsed.searchParams.get("comment_id") ?? undefined;
+        commentUrl = parsed.href;
+        publishedAt = parseFacebookRelativeTime(permalink.textContent);
+      } catch { /* keep fallbacks */ }
+    }
+
+    comments.push({
+      url: commentUrl,
+      title: body.slice(0, 200),
+      body,
+      author,
+      platform: "facebook",
+      subtype,
+      externalId,
+      publishedAt,
+    });
+  }
+
+  return comments;
+}
+
 function extractItem(selectedText: string): ExtensionItem {
   const url = window.location.href;
   if (/x\.com|twitter\.com/.test(url)) return extractTweet(selectedText);
   if (/threads\.(net|com)/.test(url)) return extractThreadsPost(selectedText);
   if (/reddit\.com/.test(url)) return extractRedditPost(selectedText);
   if (/instagram\.com/.test(url)) return extractInstagramPost(selectedText);
+  if (/facebook\.com/.test(url)) return extractFacebookPost(selectedText);
   return { url, title: selectedText.slice(0, 200), body: selectedText, platform: "manual" };
 }
 
@@ -300,9 +392,9 @@ function showPickerPanel(item: ExtensionItem, anchorRect: DOMRect, entities: Ent
     includeRepliesCheckbox.checked = true;
     includeRepliesCheckbox.style.cssText = "cursor:pointer;accent-color:#1a1a1a;";
     const repliesLabel = document.createElement("span");
-    const isReddit = item.platform === "reddit";
-    const noun = isReddit ? "comment" : "repl";
-    repliesLabel.textContent = `Include ${replies.length} ${noun}${replies.length === 1 ? (isReddit ? "" : "y") : (isReddit ? "s" : "ies")}`;
+    const usesComments = item.platform === "reddit" || item.platform === "facebook";
+    const noun = usesComments ? "comment" : "repl";
+    repliesLabel.textContent = `Include ${replies.length} ${noun}${replies.length === 1 ? (usesComments ? "" : "y") : (usesComments ? "s" : "ies")}`;
     repliesRow.appendChild(includeRepliesCheckbox);
     repliesRow.appendChild(repliesLabel);
     body.appendChild(repliesRow);
@@ -368,10 +460,13 @@ async function initiateCapture(selectedText: string, anchorRect: DOMRect) {
 
   const isTwitterThread = /x\.com|twitter\.com/.test(window.location.href) && /\/status\/\d+/.test(window.location.href);
   const isRedditThread = /reddit\.com/.test(window.location.href) && /\/comments\//.test(window.location.href);
+  const isFacebookPage = /facebook\.com/.test(window.location.href);
   const replies = isTwitterThread
     ? extractVisibleReplies(item.externalId)
     : isRedditThread
     ? extractVisibleRedditComments(item.externalId)
+    : isFacebookPage
+    ? extractVisibleFacebookComments()
     : undefined;
 
   chrome.runtime.sendMessage({ type: "GET_CONTEXT" }, (response) => {

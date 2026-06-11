@@ -13,7 +13,9 @@
       "https://www.threads.net/*",
       "https://www.threads.com/*",
       "https://www.reddit.com/*",
-      "https://www.instagram.com/*"
+      "https://www.instagram.com/*",
+      "https://www.facebook.com/*",
+      "https://web.facebook.com/*"
     ],
     "js": ["content.js"]
   }],

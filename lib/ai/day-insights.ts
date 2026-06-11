@@ -13,7 +13,7 @@ import {
 } from "@/lib/db/schema";
 
 // Same social-platform set the social timeline aggregates over
-const SOCIAL_PLATFORMS = ["reddit", "twitter", "hackernews", "threads", "instagram"] as const;
+const SOCIAL_PLATFORMS = ["reddit", "twitter", "hackernews", "threads", "instagram", "facebook"] as const;
 const SETTLED_AFTER_DAYS = 3; // history older than this is final once generated
 
 export type DayInsightResult = { daysWritten: number; summariesGenerated: number };

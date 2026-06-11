@@ -22,6 +22,7 @@ const PLATFORM_LABELS: Record<string, string> = {
   hackernews: "Hacker News",
   threads: "Threads",
   instagram: "Instagram",
+  facebook: "Facebook",
   google_alerts: "News",
   manual: "Manual",
 };

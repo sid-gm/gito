@@ -9,11 +9,12 @@ const PLATFORM_LABELS: Record<string, string> = {
   hackernews: "Hacker News",
   threads: "Threads",
   instagram: "Instagram",
+  facebook: "Facebook",
   google_alerts: "News",
   manual: "Manual",
 };
 
-const PLATFORM_ORDER = ["reddit", "twitter", "hackernews", "threads", "instagram", "google_alerts", "manual"];
+const PLATFORM_ORDER = ["reddit", "twitter", "hackernews", "threads", "instagram", "facebook", "google_alerts", "manual"];
 
 function scoreToLabel(score: number | null): string | null {
   if (score == null) return null;
