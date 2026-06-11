@@ -19,6 +19,7 @@ export type NtlDayItem = {
   url: string | null;
   publishedAt: string | null;
   author: string | null;
+  subtype?: string | null;
   sentimentScore?: number | null;
   sentimentLabel?: string | null;
   replyCount?: number;

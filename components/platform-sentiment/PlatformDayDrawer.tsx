@@ -36,6 +36,14 @@ const PLATFORM_LABELS: Record<string, string> = {
   manual: "Manual",
 };
 
+const ROOT_POST_SUBTYPES = new Set([
+  "reddit_post", "reddit_thread", "x_post", "ig_post", "threads_post", "story", "facebook_post",
+]);
+
+function isRootPost(subtype: string | null | undefined): boolean {
+  return subtype != null && ROOT_POST_SUBTYPES.has(subtype);
+}
+
 function ItemCard({ item }: { item: NtlDayItem }) {
   const domain = item.url
     ? (() => { try { return new URL(item.url!).hostname.replace(/^www\./, ""); } catch { return ""; } })()
@@ -68,7 +76,9 @@ function ItemCard({ item }: { item: NtlDayItem }) {
           {domain && <span className="ntl-story-dom">{domain}</span>}
           {(item.replyCount ?? 0) > 0 && (
             <span className="ntl-story-dom">
-              {item.replyCount} {item.replyCount === 1 ? "reply" : "replies"} ingested
+              {isRootPost(item.subtype)
+                ? `${item.replyCount} ${item.replyCount === 1 ? "reply" : "replies"} ingested`
+                : `thread · ${(item.replyCount ?? 0) + 1} items`}
             </span>
           )}
           {item.url && <span className="ntl-story-go" aria-hidden="true">↗</span>}

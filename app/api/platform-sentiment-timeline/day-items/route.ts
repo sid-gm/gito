@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { and, avg, count, desc, eq, gte, inArray, lt, or, sql } from "drizzle-orm";
+import { and, avg, count, desc, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { trackedEntities, ingestedItems, clusterItems, clusters } from "@/lib/db/schema";
 
@@ -67,6 +67,7 @@ export async function GET(req: Request) {
         url: ingestedItems.url,
         publishedAt: ingestedItems.publishedAt,
         author: ingestedItems.author,
+        subtype: ingestedItems.subtype,
         sentimentScore: ingestedItems.sentimentScore,
         sentimentLabel: ingestedItems.sentimentLabel,
       })
@@ -91,21 +92,19 @@ export async function GET(req: Request) {
       .where(dayFilter),
   ]);
 
-  // Engagement as replies: children already ingested under these items
-  // (nested replies roll up to the root via root_post_id)
-  const itemIds = itemRows.map((i) => i.id);
-  const replyCountMap = new Map<string, number>();
-  if (itemIds.length > 0) {
-    const replyRows = await db
-      .select({
-        targetId: sql<string>`COALESCE(${ingestedItems.rootPostId}, ${ingestedItems.parentId})`,
-        cnt: count(ingestedItems.id),
-      })
+  // Engagement as replies: thread members share the root post's URL (the
+  // ingestion convention for Reddit/X/IG/FB comments — parent_id is sparse),
+  // so thread size = items on the same URL
+  const itemUrls = [...new Set(itemRows.map((i) => i.url).filter((u): u is string => !!u))];
+  const urlThreadMap = new Map<string, number>();
+  if (itemUrls.length > 0) {
+    const threadRows = await db
+      .select({ url: ingestedItems.url, cnt: count(ingestedItems.id) })
       .from(ingestedItems)
-      .where(or(inArray(ingestedItems.rootPostId, itemIds), inArray(ingestedItems.parentId, itemIds)))
-      .groupBy(sql`COALESCE(${ingestedItems.rootPostId}, ${ingestedItems.parentId})`);
-    for (const r of replyRows) {
-      if (r.targetId) replyCountMap.set(r.targetId, Number(r.cnt));
+      .where(inArray(ingestedItems.url, itemUrls))
+      .groupBy(ingestedItems.url);
+    for (const r of threadRows) {
+      if (r.url) urlThreadMap.set(r.url, Number(r.cnt));
     }
   }
 
@@ -122,7 +121,7 @@ export async function GET(req: Request) {
     items: itemRows.map((it) => ({
       ...it,
       publishedAt: it.publishedAt?.toISOString() ?? null,
-      replyCount: replyCountMap.get(it.id) ?? 0,
+      replyCount: it.url ? Math.max((urlThreadMap.get(it.url) ?? 1) - 1, 0) : 0,
     })),
     breakdown: {
       total: Number(breakdownRow?.total ?? 0),
