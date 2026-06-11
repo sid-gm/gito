@@ -37,7 +37,7 @@ export async function GET(req: Request) {
   const cutoff = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
   const cutoffStr = cutoff.toISOString().slice(0, 10);
 
-  const [dailyRows, storyRows, newsDayRows] = await Promise.all([
+  const [dailyRows, itemDailyRows, storyRows, newsDayRows] = await Promise.all([
     db
       .select({
         platform: ingestedItems.platform,
@@ -49,6 +49,29 @@ export async function GET(req: Request) {
       .innerJoin(trackedEntities, eq(trackedEntities.id, ingestedItems.entityId))
       .leftJoin(clusterItems, eq(clusterItems.itemId, ingestedItems.id))
       .leftJoin(clusters, eq(clusters.id, clusterItems.clusterId))
+      .where(
+        and(
+          eq(trackedEntities.companyId, companyId),
+          gte(ingestedItems.publishedAt, cutoff),
+          isNotNull(ingestedItems.publishedAt)
+        )
+      )
+      .groupBy(ingestedItems.platform, sql`DATE(${ingestedItems.publishedAt})`),
+
+    // Per-item sentiment aggregates — preferred over the cluster average when
+    // a day has scored items (no cluster join, so counts can't be inflated)
+    db
+      .select({
+        platform: ingestedItems.platform,
+        day: sql<string>`DATE(${ingestedItems.publishedAt})`,
+        itemCount: count(ingestedItems.id),
+        scoredCount: count(ingestedItems.sentimentScore),
+        avgItemSentiment: avg(ingestedItems.sentimentScore),
+        posCount: sql<number>`COUNT(*) FILTER (WHERE ${ingestedItems.sentimentScore} >= 0.2)`,
+        negCount: sql<number>`COUNT(*) FILTER (WHERE ${ingestedItems.sentimentScore} <= -0.2)`,
+      })
+      .from(ingestedItems)
+      .innerJoin(trackedEntities, eq(trackedEntities.id, ingestedItems.entityId))
       .where(
         and(
           eq(trackedEntities.companyId, companyId),
@@ -116,6 +139,23 @@ export async function GET(req: Request) {
     });
   }
 
+  // Index item-level sentiment aggregates by platform → date
+  const itemDayMap = new Map<
+    string,
+    Map<string, { itemCount: number; scoredCount: number; avgItemSentiment: string | null; posCount: number; negCount: number }>
+  >();
+  for (const row of itemDailyRows) {
+    if (!row.day) continue;
+    if (!itemDayMap.has(row.platform)) itemDayMap.set(row.platform, new Map());
+    itemDayMap.get(row.platform)!.set(row.day, {
+      itemCount: Number(row.itemCount),
+      scoredCount: Number(row.scoredCount),
+      avgItemSentiment: row.avgItemSentiment,
+      posCount: Number(row.posCount),
+      negCount: Number(row.negCount),
+    });
+  }
+
   // Index story rows by platform → date → stories[]
   const platformStoryMap = new Map<string, Map<string, typeof storyRows>>();
   for (const sr of storyRows) {
@@ -154,6 +194,9 @@ export async function GET(req: Request) {
   const feeds = [];
   for (const platform of platforms) {
     const dayMap = platformDayMap.get(platform)!;
+    const itemAggDayMap =
+      itemDayMap.get(platform) ??
+      new Map<string, { itemCount: number; scoredCount: number; avgItemSentiment: string | null; posCount: number; negCount: number }>();
     const storyDayMap: Map<string, typeof storyRows> = platformStoryMap.get(platform) ?? new Map();
 
     const days: {
@@ -162,6 +205,9 @@ export async function GET(req: Request) {
       sentimentScore: number | null;
       sentimentLabel: string | null;
       itemCount: number;
+      scoredCount: number;
+      posCount: number;
+      negCount: number;
       stories: { label: string; summary: string; sentiment: string; score: number; count: number }[];
     }[] = [];
 
@@ -169,7 +215,15 @@ export async function GET(req: Request) {
     while (cursor <= today) {
       const dateStr = cursor.toISOString().slice(0, 10);
       const row = dayMap.get(dateStr);
-      let avgScore = row?.avgSentiment != null ? Number(row.avgSentiment) : null;
+      const itemAgg = itemAggDayMap.get(dateStr);
+      // Prefer the average of that day's own item scores; cluster-lifetime
+      // average is only the fallback for unscored history
+      let avgScore =
+        itemAgg && itemAgg.scoredCount > 0 && itemAgg.avgItemSentiment != null
+          ? Number(itemAgg.avgItemSentiment)
+          : row?.avgSentiment != null
+            ? Number(row.avgSentiment)
+            : null;
 
       const rawStories = storyDayMap.get(dateStr) ?? [];
       let stories = rawStories
@@ -184,11 +238,12 @@ export async function GET(req: Request) {
           count: Number(s.clusterCount),
         }));
 
-      // News items rarely belong to sentiment-scored clusters — use the
-      // headline-based news_timeline_days sentiment instead
+      // News fallback when the day's items are unscored: headline-based
+      // news_timeline_days sentiment beats the cluster average
       if (platform === "google_alerts") {
         const newsAgg = newsDayMap.get(dateStr);
-        if (newsAgg && newsAgg.weight > 0) {
+        const hasItemScores = itemAgg != null && itemAgg.scoredCount > 0;
+        if (!hasItemScores && newsAgg && newsAgg.weight > 0) {
           avgScore = newsAgg.weightedSum / newsAgg.weight;
         }
         if (stories.length === 0 && newsAgg && newsAgg.stories.length > 0) {
@@ -203,7 +258,10 @@ export async function GET(req: Request) {
         aiSummary: stories[0]?.summary || null,
         sentimentScore: avgScore,
         sentimentLabel: scoreToLabel(avgScore),
-        itemCount: row ? row.itemCount : 0,
+        itemCount: itemAgg ? itemAgg.itemCount : row ? row.itemCount : 0,
+        scoredCount: itemAgg?.scoredCount ?? 0,
+        posCount: itemAgg?.posCount ?? 0,
+        negCount: itemAgg?.negCount ?? 0,
         stories,
       });
 

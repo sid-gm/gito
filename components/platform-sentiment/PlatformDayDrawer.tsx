@@ -14,6 +14,15 @@ type PlatformCluster = {
   sentimentScore: number | null;
   sentimentLabel: string | null;
   itemCount: number;
+  dayAvgScore: number | null;
+  dayScoredCount: number;
+};
+
+type DayBreakdown = {
+  total: number;
+  scored: number;
+  pos: number;
+  neg: number;
 };
 
 const PLATFORM_LABELS: Record<string, string> = {
@@ -34,6 +43,8 @@ function ItemCard({ item }: { item: NtlDayItem }) {
   const time = item.publishedAt
     ? new Date(item.publishedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
     : "";
+  const score = item.sentimentScore ?? null;
+  const scoreSlug = score == null ? "neutral" : sentSlug(item.sentimentLabel ?? null);
 
   function inner() {
     return (
@@ -41,6 +52,11 @@ function ItemCard({ item }: { item: NtlDayItem }) {
         <div className="ntl-story-top">
           {item.author && <span className="ntl-story-src">{item.author}</span>}
           {time && <span className="ntl-story-time">{time}</span>}
+          {score != null && (
+            <span className={cx("ntl-story-time", `nd-text-${scoreSlug}`)} title={item.sentimentLabel ?? undefined}>
+              {fmtScore(score)}
+            </span>
+          )}
         </div>
         <div className="ntl-story-title">{item.title ?? "(no title)"}</div>
         {item.body && (
@@ -50,6 +66,11 @@ function ItemCard({ item }: { item: NtlDayItem }) {
         )}
         <div className="ntl-story-foot">
           {domain && <span className="ntl-story-dom">{domain}</span>}
+          {(item.replyCount ?? 0) > 0 && (
+            <span className="ntl-story-dom">
+              {item.replyCount} {item.replyCount === 1 ? "reply" : "replies"} ingested
+            </span>
+          )}
           {item.url && <span className="ntl-story-go" aria-hidden="true">↗</span>}
         </div>
       </>
@@ -73,6 +94,7 @@ export function PlatformDayDrawer({
   const [last, setLast] = useState<{ feed: NtlFeed; day: NtlDay } | null>(null);
   const [drawerClusters, setDrawerClusters] = useState<PlatformCluster[]>([]);
   const [items, setItems] = useState<NtlDayItem[]>([]);
+  const [breakdown, setBreakdown] = useState<DayBreakdown | null>(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -85,12 +107,14 @@ export function PlatformDayDrawer({
     setLoading(true);
     setDrawerClusters([]);
     setItems([]);
+    setBreakdown(null);
     const params = new URLSearchParams({ companyId, platform: feed.feedId, date: day.date });
     fetch(`/api/platform-sentiment-timeline/day-items?${params}`)
       .then((r) => r.json())
       .then((d) => {
         setDrawerClusters(d.clusters ?? []);
         setItems(d.items ?? []);
+        setBreakdown(d.breakdown ?? null);
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -163,6 +187,19 @@ export function PlatformDayDrawer({
           )}
         </div>
 
+        {breakdown != null && breakdown.scored > 0 && (
+          <div className="ntl-dw-vol">
+            <span className="nd-text-positive"><strong>{breakdown.pos}</strong> positive</span>
+            {" · "}
+            <span className="nd-text-negative"><strong>{breakdown.neg}</strong> negative</span>
+            {" · "}
+            <span><strong>{breakdown.scored - breakdown.pos - breakdown.neg}</strong> neutral</span>
+            {breakdown.scored < breakdown.total && (
+              <span className="ntl-dw-vol-delta">{breakdown.total - breakdown.scored} unscored</span>
+            )}
+          </div>
+        )}
+
         {!present && (
           <div className="ntl-dw-block">
             <p className="ntl-dw-summary ntl-dw-empty">No items ingested for {platformLabel} this day.</p>
@@ -172,7 +209,7 @@ export function PlatformDayDrawer({
         {present && drawerClusters.length > 0 && (
           <div className="ntl-dw-block">
             <div className="ntl-dw-label">
-              Clusters · {drawerClusters.length}
+              Clusters · {drawerClusters.length} · strongest pull first
             </div>
             <div className="ntl-clusters">
               {drawerClusters.map((c) => (
@@ -183,7 +220,19 @@ export function PlatformDayDrawer({
                 >
                   <div className="ntl-cluster-head">
                     <span className="ntl-cluster-topic">{c.label ?? "(unlabelled)"}</span>
-                    <SentPill label={c.sentimentLabel} />
+                    {c.dayScoredCount > 0 && c.dayAvgScore != null ? (
+                      <span
+                        className={cx(
+                          "ntl-cluster-count",
+                          `nd-text-${c.dayAvgScore >= 0.2 ? "positive" : c.dayAvgScore <= -0.2 ? "negative" : "neutral"}`
+                        )}
+                        title="Average sentiment of this cluster's items on this day"
+                      >
+                        {fmtScore(c.dayAvgScore)} today
+                      </span>
+                    ) : (
+                      <SentPill label={c.sentimentLabel} />
+                    )}
                     <span className="ntl-cluster-count">
                       {c.itemCount} {c.itemCount === 1 ? "item" : "items"}
                     </span>
@@ -197,7 +246,9 @@ export function PlatformDayDrawer({
 
         {present && !loading && items.length > 0 && (
           <div className="ntl-dw-block">
-            <div className="ntl-dw-label">Items · {items.length}</div>
+            <div className="ntl-dw-label">
+              Items · {items.length}{(breakdown?.scored ?? 0) > 0 ? " · strongest sentiment first" : ""}
+            </div>
             <div className="ntl-stories">
               {items.map((it) => <ItemCard key={it.id} item={it} />)}
             </div>
@@ -211,7 +262,9 @@ export function PlatformDayDrawer({
         )}
 
         <p className="ntl-dw-foot">
-          Platform-level sentiment · averaged from cluster sentiment scores for {platformLabel} items.
+          Platform-level sentiment · averaged from per-item sentiment scores for {platformLabel} items
+          (cluster averages where items are unscored). Reply counts reflect replies ingested by Gito, not
+          total platform engagement.
         </p>
       </div>
     </div>

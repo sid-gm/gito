@@ -19,6 +19,9 @@ export type NtlDayItem = {
   url: string | null;
   publishedAt: string | null;
   author: string | null;
+  sentimentScore?: number | null;
+  sentimentLabel?: string | null;
+  replyCount?: number;
 };
 
 export type NtlDay = {
@@ -27,6 +30,10 @@ export type NtlDay = {
   sentimentScore: number | null;
   sentimentLabel: string | null;
   itemCount: number;
+  // Item-level sentiment breakdown (platform sentiment feeds only)
+  scoredCount?: number;
+  posCount?: number;
+  negCount?: number;
   stories?: NtlStory[] | null;
 };
 
@@ -203,6 +210,13 @@ export function HoverPop({ pop }: { pop: HoverPopState }) {
           <span className={cx("ntl-pop-score", `nd-text-${slug}`)}>{fmtScore(day.sentimentScore)}</span>
         )}
         <span className="ntl-pop-items">{day.itemCount || 0} {day.itemCount === 1 ? "item" : "items"}</span>
+        {(day.scoredCount ?? 0) > 0 && (
+          <span className="ntl-pop-items">
+            <span className="nd-text-positive">{day.posCount ?? 0}+</span>
+            {" · "}
+            <span className="nd-text-negative">{day.negCount ?? 0}−</span>
+          </span>
+        )}
       </div>
       {day.aiSummary
         ? <div className="ntl-pop-text">{day.aiSummary}</div>
