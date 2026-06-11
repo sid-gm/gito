@@ -5,6 +5,7 @@ import { clusters, clusterItems, ingestedItems, trackedEntities } from "@/lib/db
 import { verifyCronSecret } from "@/lib/cron-auth";
 import { classifyCluster, classifyItemSignals } from "@/lib/ai/classify";
 import { analyzeEntitySentiment, withOpFlags } from "@/lib/ai/sentiment";
+import { scoreItemRows } from "@/lib/ai/item-sentiment";
 import { computeNarrativeStage, NEWS_PLATFORMS } from "@/lib/narrative-stage";
 import { linkNewsForAllEntities } from "@/lib/ai/link-news";
 import { assignClustersToStorylines } from "@/lib/ai/storylines";
@@ -15,6 +16,10 @@ const BATCH_SIZE = 15;
 // Sentiment is a single cheap LLM call per cluster, so the backfill can chew
 // through a larger batch than full classification
 const SENTIMENT_BATCH_SIZE = 40;
+// Per-item sentiment: forward-only from ship date — older items stay unscored
+// unless explicitly backfilled (see /api/run/backfill-item-sentiment)
+const ITEM_SENTIMENT_SINCE = new Date("2026-06-11T00:00:00.000Z");
+const ITEM_SENTIMENT_BATCH = 120;
 
 export async function GET(req: Request) {
   const authError = verifyCronSecret(req);
@@ -312,6 +317,35 @@ export async function GET(req: Request) {
     }
   }
 
+  // Per-item sentiment: score newly ingested items (all companies, forward-only)
+  let itemsScored = 0;
+  try {
+    const unscoredItems = await db
+      .select({
+        id: ingestedItems.id,
+        title: ingestedItems.title,
+        body: ingestedItems.body,
+        author: ingestedItems.author,
+        entityLabel: trackedEntities.label,
+      })
+      .from(ingestedItems)
+      .innerJoin(trackedEntities, eq(trackedEntities.id, ingestedItems.entityId))
+      .where(
+        and(
+          isNull(ingestedItems.sentimentAnalyzedAt),
+          gte(ingestedItems.createdAt, ITEM_SENTIMENT_SINCE)
+        )
+      )
+      .orderBy(desc(ingestedItems.createdAt))
+      .limit(ITEM_SENTIMENT_BATCH);
+
+    if (unscoredItems.length > 0) {
+      itemsScored = await scoreItemRows(unscoredItems);
+    }
+  } catch (err) {
+    console.error("[cron/classify] item sentiment:", err);
+  }
+
   // Link the closest related news articles to narrative clusters with new activity
   let newsLinked = 0;
   try {
@@ -338,6 +372,7 @@ export async function GET(req: Request) {
     stageRefreshed,
     signalsTagged,
     sentimentBackfilled,
+    itemsScored,
     newsLinked,
     storylinesAssigned,
     storylinesCreated,

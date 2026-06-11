@@ -36,6 +36,8 @@ export async function GET(req: Request) {
       publishedAt: ingestedItems.publishedAt,
       subtype: ingestedItems.subtype,
       createdAt: ingestedItems.createdAt,
+      sentimentScore: ingestedItems.sentimentScore,
+      sentimentLabel: ingestedItems.sentimentLabel,
     })
     .from(ingestedItems)
     .leftJoin(trackedEntities, eq(ingestedItems.entityId, trackedEntities.id))

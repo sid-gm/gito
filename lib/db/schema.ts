@@ -122,6 +122,10 @@ export const ingestedItems = pgTable(
     parentId: uuid("parent_id").references((): AnyPgColumn => ingestedItems.id, { onDelete: "set null" }),
     rootPostId: uuid("root_post_id").references((): AnyPgColumn => ingestedItems.id, { onDelete: "set null" }),
     showInNewsTimeline: boolean("show_in_news_timeline").default(false).notNull(),
+    // Per-item sentiment towards the tracked entity (batched LLM scoring)
+    sentimentScore: real("sentiment_score"),
+    sentimentLabel: text("sentiment_label"),
+    sentimentAnalyzedAt: timestamp("sentiment_analyzed_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (t) => [unique("platform_external_id_unique").on(t.platform, t.externalId)]

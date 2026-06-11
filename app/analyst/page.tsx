@@ -21,6 +21,8 @@ type FeedItem = {
   publishedAt: string | null;
   subtype: string | null;
   createdAt: string;
+  sentimentScore?: number | null;
+  sentimentLabel?: string | null;
   threadIngested?: boolean;
   clusterId?: string | null;
   clusterLabel?: string | null;
@@ -399,7 +401,7 @@ function hnHref(item: FeedItem): string | null {
 
 function FeedRow({ item, entities, onIngestThread }: { item: FeedItem; entities: Entity[]; onIngestThread?: (url: string) => void }) {
   const ent = entities.find((e) => e.id === item.entityId);
-  const sentiment = 0;
+  const sentiment = item.sentimentScore ?? null;
   const isRedditPost = item.platform === "reddit" && item.subtype === "reddit_post";
   const alreadyIngested = item.threadIngested ?? false;
   return (
@@ -443,8 +445,10 @@ function FeedRow({ item, entities, onIngestThread }: { item: FeedItem; entities:
           </span>
           <span className="meta-sent">
             <span className="meta-sent-label">sentiment</span>
-            <SentimentBar value={sentiment} />
-            <span className="meta-mono dim">{sentiment.toFixed(2)}</span>
+            <SentimentBar value={sentiment ?? 0} />
+            <span className="meta-mono dim" title={item.sentimentLabel ?? undefined}>
+              {sentiment != null ? sentiment.toFixed(2) : "—"}
+            </span>
           </span>
         </div>
       </div>
