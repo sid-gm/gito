@@ -1027,11 +1027,9 @@ export default function ClustersPage() {
                 <div
                   key={cluster.id}
                   className="cluster-card"
+                  data-reviewed={cluster.analystReviewedAt ? "true" : undefined}
                   ref={(el) => { if (el) cardRefs.current.set(cluster.id, el); else cardRefs.current.delete(cluster.id); }}
-                  style={{
-                    ...(cluster.analystReviewedAt ? { background: "color-mix(in oklch, var(--ink) 5%, var(--paper))" } : {}),
-                    ...(isSelected ? { outline: "2px solid var(--accent)", outlineOffset: 2 } : {}),
-                  }}
+                  style={isSelected ? { outline: "2px solid var(--accent)", outlineOffset: 2 } : undefined}
                 >
                   {/* Header */}
                   <div className="cluster-card-head" style={{ alignItems: "flex-start", gap: 6 }}>
