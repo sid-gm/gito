@@ -61,7 +61,13 @@ export async function collectThreads(term: string, tabId: number): Promise<Exten
   const results = await chrome.scripting.executeScript({
     target: { tabId },
     func: (): any[] => {
-      const posts = document.querySelectorAll('div[role="article"], article');
+      // threads.com no longer marks posts with role="article"; fall back to
+      // the pressable post containers that wrap each post in feeds/search.
+      let posts: NodeListOf<Element> | Element[] = document.querySelectorAll('div[role="article"], article');
+      if (posts.length === 0) {
+        posts = Array.from(document.querySelectorAll('div[data-pressable-container="true"]'))
+          .filter((el) => !el.parentElement?.closest('div[data-pressable-container="true"]'));
+      }
       return Array.from(posts).slice(0, 20).map((p: any) => {
         const body = p.textContent?.trim() ?? "";
         const authorEl = p.querySelector('a[href^="/@"]');
@@ -195,7 +201,11 @@ export async function collectThreadsThread(postUrl: string, tabId: number): Prom
     target: { tabId },
     func: (pageUrl: string): any[] => {
       const rootExternalId = pageUrl.match(/\/post\/([A-Za-z0-9_-]+)/)?.[1] ?? null;
-      const articles = Array.from(document.querySelectorAll('div[role="article"], article'));
+      let articles = Array.from(document.querySelectorAll('div[role="article"], article'));
+      if (articles.length === 0) {
+        articles = Array.from(document.querySelectorAll('div[data-pressable-container="true"]'))
+          .filter((el) => !el.parentElement?.closest('div[data-pressable-container="true"]'));
+      }
       const items: any[] = [];
       let rootFound = false;
 

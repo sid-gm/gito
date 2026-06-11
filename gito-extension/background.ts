@@ -221,7 +221,7 @@ async function processKeywordEntry(
         platform === "twitter"
           ? `https://x.com/search?q=${encodeURIComponent(term)}&f=live`
           : platform === "threads"
-          ? `https://www.threads.net/search?q=${encodeURIComponent(term)}&serp_type=default&filter=recent`
+          ? `https://www.threads.com/search?q=${encodeURIComponent(term)}&serp_type=default&filter=recent`
           : `https://www.reddit.com/search/?q=${encodeURIComponent(term)}&sort=new`;
 
       console.log(`[Gito] opening tab: ${searchUrl}`);

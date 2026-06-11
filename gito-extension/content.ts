@@ -172,7 +172,7 @@ function extractInstagramPost(selectedText: string): ExtensionItem {
 function extractItem(selectedText: string): ExtensionItem {
   const url = window.location.href;
   if (/x\.com|twitter\.com/.test(url)) return extractTweet(selectedText);
-  if (/threads\.net/.test(url)) return extractThreadsPost(selectedText);
+  if (/threads\.(net|com)/.test(url)) return extractThreadsPost(selectedText);
   if (/reddit\.com/.test(url)) return extractRedditPost(selectedText);
   if (/instagram\.com/.test(url)) return extractInstagramPost(selectedText);
   return { url, title: selectedText.slice(0, 200), body: selectedText, platform: "manual" };
