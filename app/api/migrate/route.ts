@@ -181,6 +181,16 @@ export async function POST() {
       )
     `);
 
+    await db.execute(sql`
+      ALTER TABLE ingested_items ADD COLUMN IF NOT EXISTS sentiment_score REAL
+    `);
+    await db.execute(sql`
+      ALTER TABLE ingested_items ADD COLUMN IF NOT EXISTS sentiment_label TEXT
+    `);
+    await db.execute(sql`
+      ALTER TABLE ingested_items ADD COLUMN IF NOT EXISTS sentiment_analyzed_at TIMESTAMP
+    `);
+
     return NextResponse.json({ ok: true, message: "Migration applied" });
   } catch (err) {
     console.error("[POST /api/migrate]", err);
