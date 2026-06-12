@@ -267,6 +267,15 @@ export function Sidebar() {
         <button className="sb-settings-btn" onClick={openSettings}>
           ⚙ Settings
         </button>
+        <button
+          className="sb-settings-btn"
+          onClick={async () => {
+            await fetch("/api/auth/logout", { method: "POST" });
+            window.location.href = "/login";
+          }}
+        >
+          ↪ Sign out
+        </button>
       </div>
 
       {mounted && showSettings && createPortal(

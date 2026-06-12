@@ -1,11 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
+import { ANALYST_SESSION_COOKIE, verifySessionToken } from "@/lib/analyst-auth";
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const password = process.env.ANALYST_PASSWORD;
 
   // If no password is set, allow through (dev mode)
   if (!password) return NextResponse.next();
 
+  // Session cookie set by /api/auth/login
+  const token = request.cookies.get(ANALYST_SESSION_COOKIE)?.value;
+  if (await verifySessionToken(password, token)) return NextResponse.next();
+
+  // Basic auth fallback for scripts / curl
   const authHeader = request.headers.get("authorization");
   if (authHeader?.startsWith("Basic ")) {
     const credentials = atob(authHeader.slice(6));
@@ -14,10 +20,9 @@ export function middleware(request: NextRequest) {
     if (pass === password) return NextResponse.next();
   }
 
-  return new NextResponse("Analyst portal — authentication required", {
-    status: 401,
-    headers: { "WWW-Authenticate": 'Basic realm="Gito Analyst Portal"' },
-  });
+  const loginUrl = new URL("/login", request.url);
+  loginUrl.searchParams.set("from", request.nextUrl.pathname);
+  return NextResponse.redirect(loginUrl);
 }
 
 export const config = {
