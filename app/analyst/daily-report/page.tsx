@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { useCompany } from "@/components/CompanyContext";
 import { cx, Dot, PlatformChip } from "@/components/primitives";
 import { StagePill } from "@/components/StagePill";
@@ -404,11 +405,13 @@ function DRClusterDetail({ cluster, onClose }: { cluster: ReportCluster; onClose
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function DailyReportPage() {
+  const router = useRouter();
   const { activeCompanyId } = useCompany();
   const [data, setData] = useState<DailyReportData | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [viewDate, setViewDate] = useState<string | null>(null); // null = today
+  const [itemsOpen, setItemsOpen] = useState(false);
 
   useEffect(() => {
     if (!activeCompanyId) return;
@@ -422,7 +425,7 @@ export default function DailyReportPage() {
       .finally(() => setLoading(false));
   }, [activeCompanyId, viewDate]);
 
-  const clusters = data?.clusters ?? [];
+  const clusters = useMemo(() => data?.clusters ?? [], [data]);
   const maxHour = data?.currentHour ?? 0;
 
   const { hour, playing, completed, toggle, scrub, replay } = useAnimatedHour(maxHour);
@@ -433,12 +436,23 @@ export default function DailyReportPage() {
     if (dateKey) replay();
   }, [dateKey, replay]);
 
-  const ranked = useMemo(
-    () => [...clusters].sort((a, b) => (b.hourly[hour] ?? 0) - (a.hourly[hour] ?? 0)),
-    [clusters, hour],
+  // Flat list of today's items across all clusters, newest first, each
+  // carrying a back-reference to the cluster it belongs to.
+  const allItems = useMemo(
+    () =>
+      clusters
+        .flatMap((c) =>
+          c.items.map((it) => ({
+            ...it,
+            clusterId: c.id,
+            clusterLabel: c.label,
+            sentiment: c.sentiment,
+          })),
+        )
+        .sort((a, b) => b.time.localeCompare(a.time)),
+    [clusters],
   );
 
-  const top = ranked[0] ?? null;
   const totalNow = clusters.reduce((s, c) => s + (c.hourly[hour] ?? 0), 0);
   const clustersActiveNow = clusters.filter((c) => (c.hourly[hour] ?? 0) > 0).length;
   const selected = selectedId ? clusters.find((c) => c.id === selectedId) ?? null : null;
@@ -537,13 +551,19 @@ export default function DailyReportPage() {
           </p>
         </div>
         <div className="topbar-actions">
+          <button
+            className={cx("btn", itemsOpen && "btn-primary")}
+            onClick={() => setItemsOpen((v) => !v)}
+          >
+            ☰ Items · {allItems.length}
+          </button>
           <button className="btn">↗ Embed</button>
           <button className="btn">⇣ PNG</button>
           <button className="btn btn-primary">⇣ MP4 · 1080×1080</button>
         </div>
       </header>
 
-      <div className="dr-page">
+      <div className={cx("dr-page", itemsOpen && "dr-page-with-bar")}>
         {/* Date strip */}
         <div className="dr-datebar">
           <div className="dr-date-nav">
@@ -583,114 +603,63 @@ export default function DailyReportPage() {
           />
         )}
 
-        {/* Two-column layout */}
-        <div className="dr-stage">
-          {/* Left: artwork */}
-          <div>
-            <div className="dr-card-wrap">
-              <div className="dr-card-rail" />
-              <div className="dr-card">
-                {/* Artwork header */}
-                <div className="dr-card-head">
-                  <div className="dr-card-id">
-                    <div className="dr-card-mark"><img src="/gito-bird.png" alt="Gito" width={22} height={22} style={{ objectFit: "contain" }} /></div>
-                    <div>
-                      <div className="dr-card-eyebrow">Daily signal brief · {data.date}</div>
-                      <div className="dr-card-title">{data.company} · cluster formation</div>
-                    </div>
-                  </div>
-                  <div className="dr-card-meta">
-                    <span className="dr-card-meta-stat">
-                      <span className="dr-card-meta-stat-num">{totalNow}</span>
-                      <span>items · {clustersActiveNow}/{clusters.length} clusters</span>
-                    </span>
-                    <span>polled hourly · deduplicated on ingest</span>
+        {/* Artwork */}
+        <div className="dr-solo">
+          <div className="dr-card-wrap">
+            <div className="dr-card-rail" />
+            <div className="dr-card">
+              {/* Artwork header */}
+              <div className="dr-card-head">
+                <div className="dr-card-id">
+                  <div className="dr-card-mark"><img src="/gito-bird.png" alt="Gito" width={22} height={22} style={{ objectFit: "contain" }} /></div>
+                  <div>
+                    <div className="dr-card-eyebrow">Daily signal brief · {data.date}</div>
+                    <div className="dr-card-title">{data.company} · cluster formation</div>
                   </div>
                 </div>
-
-                {/* Bubble graph */}
-                <div className="dr-bubble-area">
-                  <DRBubbleGraph
-                    clusters={clusters}
-                    currentHour={hour}
-                    selectedId={selectedId}
-                    onSelect={(id) => setSelectedId((prev) => (prev === id ? null : id))}
-                  />
+                <div className="dr-card-meta">
+                  <span className="dr-card-meta-stat">
+                    <span className="dr-card-meta-stat-num">{totalNow}</span>
+                    <span>items · {clustersActiveNow}/{clusters.length} clusters</span>
+                  </span>
+                  <span>polled hourly · deduplicated on ingest</span>
                 </div>
+              </div>
 
-                {/* Timeline */}
-                <DRTimeline
+              {/* Bubble graph */}
+              <div className="dr-bubble-area">
+                <DRBubbleGraph
+                  clusters={clusters}
                   currentHour={hour}
-                  maxHour={maxHour}
-                  onScrub={scrub}
-                  playing={playing}
-                  tz={data.tz}
+                  selectedId={selectedId}
+                  onSelect={(id) => setSelectedId((prev) => (prev === id ? null : id))}
                 />
               </div>
-            </div>
 
-            {/* Play controls */}
-            <div className="dr-card-controls">
-              <button className="dr-ctrl-btn" onClick={toggle}>
-                <span className="dr-ctrl-glyph">{playing ? "▮▮" : completed ? "↻" : "▶"}</span>
-                <span>{playing ? "Pause" : completed ? "Replay" : "Play"}</span>
-              </button>
-              <button className="dr-ctrl-btn" onClick={onReplay}>
-                <span className="dr-ctrl-glyph">↻</span>
-                <span>Restart</span>
-              </button>
-              <div className="dr-ctrl-sep" />
-              <span>scrub the timeline above to inspect any hour · click a bubble to see its items</span>
+              {/* Timeline */}
+              <DRTimeline
+                currentHour={hour}
+                maxHour={maxHour}
+                onScrub={scrub}
+                playing={playing}
+                tz={data.tz}
+              />
             </div>
           </div>
 
-          {/* Right rail */}
-          <aside className="dr-side">
-            {top && (
-              <div className="dr-headline">
-                <div className="dr-side-eyebrow dr-headline-eyebrow">Top signal today</div>
-                <div className="dr-headline-title">{top.label}</div>
-                <div className="dr-headline-meta">
-                  <span><strong>{top.hourly[hour] ?? 0}</strong> items</span>
-                  <span>· {top.platforms.length} platforms</span>
-                  <span>· first seen <strong>{top.firstSeen}</strong></span>
-                  <span>· velocity <strong>{top.velocity.toFixed(1)}/h</strong></span>
-                </div>
-              </div>
-            )}
-
-            <div className="dr-side-card">
-              <div className="dr-side-eyebrow">Clusters · ranked by volume</div>
-              <div className="dr-legend-list">
-                {ranked.map((c) => {
-                  const color = sentimentColor(c.sentiment);
-                  const isOn = selectedId === c.id;
-                  const count = c.hourly[hour] ?? 0;
-                  return (
-                    <button
-                      key={c.id}
-                      className={cx("dr-legend-row", isOn && "dr-legend-row-on")}
-                      style={{ color } as React.CSSProperties}
-                      onClick={() => setSelectedId((prev) => (prev === c.id ? null : c.id))}
-                    >
-                      <span className="dr-legend-dot" />
-                      <span className="dr-legend-label">{c.label}</span>
-                      <span className="dr-legend-meta">
-                        {count} · <StagePill stage={c.stage} />
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="dr-side-card">
-              <div className="dr-side-eyebrow">How it&apos;s built</div>
-              <div style={{ fontSize: 13, color: "var(--ink-70)", lineHeight: 1.5 }}>
-                The hourly cron polls all platforms, deduplicates new items on ingest, and re-runs cluster assignment. The bubbles redraw whenever cluster cardinality changes.
-              </div>
-            </div>
-          </aside>
+          {/* Play controls */}
+          <div className="dr-card-controls">
+            <button className="dr-ctrl-btn" onClick={toggle}>
+              <span className="dr-ctrl-glyph">{playing ? "▮▮" : completed ? "↻" : "▶"}</span>
+              <span>{playing ? "Pause" : completed ? "Replay" : "Play"}</span>
+            </button>
+            <button className="dr-ctrl-btn" onClick={onReplay}>
+              <span className="dr-ctrl-glyph">↻</span>
+              <span>Restart</span>
+            </button>
+            <div className="dr-ctrl-sep" />
+            <span>scrub the timeline above to inspect any hour · click a bubble to see its items</span>
+          </div>
         </div>
 
         {/* Detail panel */}
@@ -698,6 +667,42 @@ export default function DailyReportPage() {
           <DRClusterDetail cluster={selected} onClose={() => setSelectedId(null)} />
         )}
       </div>
+
+      {/* Bottom items bar */}
+      {itemsOpen && (
+        <div className="dr-itemsbar">
+          <div className="dr-itemsbar-head">
+            <span className="dr-itemsbar-title">Items today · {allItems.length}</span>
+            <button className="dr-detail-close" onClick={() => setItemsOpen(false)} aria-label="Close">✕</button>
+          </div>
+          <div className="dr-itemsbar-scroll">
+            {allItems.length === 0 ? (
+              <div className="dr-itemsbar-empty">No items yet today</div>
+            ) : (
+              allItems.map((it, i) => (
+                <button
+                  key={i}
+                  className="dr-itemsbar-card"
+                  style={{ color: sentimentColor(it.sentiment) } as React.CSSProperties}
+                  onClick={() => router.push(`/analyst/clusters/${it.clusterId}`)}
+                  title={`Open cluster · ${it.clusterLabel}`}
+                >
+                  <span className="dr-itemsbar-card-rail" />
+                  <div className="dr-itemsbar-card-top">
+                    <PlatformChip platform={it.platform} size="sm" />
+                    <span className="dr-itemsbar-card-time">{it.time}</span>
+                  </div>
+                  <div className="dr-itemsbar-card-title">{it.title}</div>
+                  <div className="dr-itemsbar-card-cluster">
+                    <span className="dr-itemsbar-card-dot" />
+                    <span>{it.clusterLabel}</span>
+                  </div>
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      )}
     </>
   );
 }
