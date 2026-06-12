@@ -57,6 +57,21 @@ function stageColor(stage: string) {
   return STAGE_COLOR[stage] ?? STAGE_COLOR.relaxed;
 }
 
+// ─── Sentiment colors ─────────────────────────────────────────────────────────
+// Score is -1.0…1.0. Hue is fixed (red 25 / green 150); chroma and lightness
+// scale with |score| so a -0.9 reads far redder than a -0.3.
+
+function sentimentColor(score: number): string {
+  const t = Math.min(Math.abs(score), 1);
+  if (score > 0.05) return `oklch(${(0.72 - 0.16 * t).toFixed(3)} ${(0.05 + 0.13 * t).toFixed(3)} 150)`;
+  if (score < -0.05) return `oklch(${(0.7 - 0.12 * t).toFixed(3)} ${(0.06 + 0.15 * t).toFixed(3)} 25)`;
+  return "var(--ink-40)";
+}
+
+function sentimentFillPct(score: number): number {
+  return Math.round(10 + 32 * Math.min(Math.abs(score), 1));
+}
+
 // ─── Bubble constants ─────────────────────────────────────────────────────────
 
 const VIEW_W = 1080;
@@ -177,10 +192,10 @@ function DRBubble({
 }) {
   const count = cluster.hourly[currentHour] ?? 0;
   const r = radiusFor(count, maxFinal, rMax);
-  const color = stageColor(cluster.stage);
+  const color = sentimentColor(cluster.sentiment);
   const selected = selectedId === cluster.id;
   const dim = (!!selectedId && !selected) || (anyHovered && !hovered);
-  const fill = `color-mix(in oklch, ${color} 12%, var(--paper))`;
+  const fill = `color-mix(in oklch, ${color} ${sentimentFillPct(cluster.sentiment)}%, var(--paper))`;
   const labelFs = bubbleFontSize(r);
   const showLabel = r >= 32;
   const showCount = r >= 56;
@@ -648,7 +663,7 @@ export default function DailyReportPage() {
               <div className="dr-side-eyebrow">Clusters · ranked by volume</div>
               <div className="dr-legend-list">
                 {ranked.map((c) => {
-                  const color = stageColor(c.stage);
+                  const color = sentimentColor(c.sentiment);
                   const isOn = selectedId === c.id;
                   const count = c.hourly[hour] ?? 0;
                   return (
