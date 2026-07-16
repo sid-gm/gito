@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Gito — Send to Gito",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "One-click capture of social posts into Gito.",
   "permissions": ["contextMenus", "storage", "activeTab", "scripting", "alarms", "tabs"],
   "host_permissions": ["<all_urls>"],

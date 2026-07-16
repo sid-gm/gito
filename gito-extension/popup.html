@@ -3,308 +3,287 @@
 <head>
   <meta charset="UTF-8" />
   <title>Gito Extension</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
-    body {
-      width: 300px;
-      font-family: system-ui, -apple-system, sans-serif;
-      font-size: 13px;
-      background: #faf9f6;
-      color: #1a1a1a;
+    :root {
+      --accent: #4f7cff;
+      --bg: #0f1115;
+      --panel: #12151d;
+      --panel-2: #161a23;
+      --border: #20263a;
+      --border-2: #262c3a;
+      --row-border: #191d2a;
+      --text: #e5e9f0;
+      --text-2: #c3cad9;
+      --muted: #8891a5;
+      --dim: #7b8398;
+      --faint: #5f6a80;
+      --pos: #34d399;
+      --warn: #f59e0b;
+      --neg: #fb7185;
+      --font-sans: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+      --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
     }
+
+    body {
+      width: 344px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-sans);
+      font-size: 13px;
+    }
+    .mono { font-family: var(--font-mono); }
+
+    ::-webkit-scrollbar { width: 8px; }
+    ::-webkit-scrollbar-thumb { background: #2a3040; border-radius: 6px; border: 2px solid var(--bg); }
+    ::-webkit-scrollbar-track { background: transparent; }
 
     /* ── Header ── */
     .header {
-      padding: 10px 12px;
-      border-bottom: 1px solid #e8e4dc;
-      display: flex;
-      align-items: center;
-      gap: 8px;
+      display: flex; align-items: center; gap: 10px;
+      padding: 14px 16px; border-bottom: 1px solid var(--row-border);
     }
-
     .header-logo {
-      width: 20px; height: 20px;
-      background: #1a1a1a;
-      border-radius: 4px;
+      width: 26px; height: 26px; border-radius: 7px;
+      background: var(--accent); color: var(--bg);
       display: flex; align-items: center; justify-content: center;
-      color: #faf9f6; font-weight: 700; font-size: 11px;
+      font-family: var(--font-mono); font-weight: 700; font-size: 15px;
       flex-shrink: 0;
     }
+    .header-name { font-weight: 600; font-size: 16px; letter-spacing: -0.02em; }
+    .header-right { margin-left: auto; font-size: 11.5px; color: var(--dim); display: flex; align-items: center; gap: 6px; }
+    .header-right .mono { color: var(--text-2); }
+    .offline-dot { width: 7px; height: 7px; border-radius: 50%; background: #4b5568; }
 
-    .company-switcher {
-      flex: 1;
-      position: relative;
+    .content { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+
+    /* ── Setup ── */
+    .setup-title { font-size: 14px; font-weight: 600; margin-bottom: 16px; }
+    .field-label {
+      font-family: var(--font-mono); font-size: 10.5px;
+      letter-spacing: 0.06em; text-transform: uppercase;
+      color: var(--dim); margin-bottom: 6px;
     }
-
-    .company-select {
-      width: 100%;
-      appearance: none;
-      background: transparent;
-      border: none;
-      font-size: 13px;
-      font-weight: 600;
-      color: #1a1a1a;
-      cursor: pointer;
-      padding-right: 16px;
-      outline: none;
-    }
-
-    .company-select:disabled { color: #888; cursor: default; }
-
-    .company-caret {
-      position: absolute; right: 0; top: 50%;
-      transform: translateY(-50%);
-      font-size: 9px; color: #888;
-      pointer-events: none;
-    }
-
-    .btn-add-account {
-      background: none; border: none; cursor: pointer;
-      font-size: 16px; color: #888; line-height: 1;
-      padding: 2px;
-      flex-shrink: 0;
-    }
-    .btn-add-account:hover { color: #1a1a1a; }
-
-    /* ── Content ── */
-    .content { padding: 14px; }
-
-    /* Setup form */
-    .setup-label {
-      font-size: 11px; font-weight: 500; color: #666;
-      text-transform: uppercase; letter-spacing: 0.04em;
-      margin-bottom: 4px;
-    }
-
     input[type="url"], input[type="password"], input[type="text"] {
-      width: 100%; padding: 7px 10px;
-      border: 1px solid #d4cfc6; border-radius: 6px;
-      font-size: 13px; background: #fff; color: #1a1a1a;
-      margin-bottom: 10px; outline: none;
+      width: 100%; padding: 9px 11px;
+      background: var(--panel-2); border: 1px solid var(--border-2); border-radius: 8px;
+      color: var(--text); font-size: 13px; font-family: inherit; outline: none;
     }
-    input:focus { border-color: #1a1a1a; }
+    input[type="password"] { font-family: var(--font-mono); }
+    input:focus { border-color: var(--accent); }
+    input::placeholder { color: var(--faint); }
+    .field-gap { margin-bottom: 14px; }
+    .field-gap-lg { margin-bottom: 16px; }
 
-    .help-text {
-      font-size: 11px; color: #888;
-      margin-top: -6px; margin-bottom: 12px; line-height: 1.5;
-    }
+    .error-msg { color: var(--neg); font-size: 12px; margin-bottom: 10px; display: none; }
+    .error-msg.visible { display: block; }
 
-    .error-msg { color: #dc2626; font-size: 12px; margin-bottom: 8px; }
+    .btn-primary {
+      width: 100%; padding: 10px; border: none; border-radius: 8px;
+      background: var(--accent); color: var(--bg);
+      font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+    }
+    .btn-primary:disabled { background: #1a2030; color: var(--dim); cursor: default; }
 
-    button.btn-primary {
-      width: 100%; padding: 8px; border: none; border-radius: 6px;
-      font-size: 13px; font-weight: 500; cursor: pointer;
-      background: #1a1a1a; color: #faf9f6;
+    /* ── Cards ── */
+    .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; }
+    .card-pad { padding: 14px; }
+    .card-head {
+      display: flex; justify-content: space-between; align-items: baseline;
+      padding: 12px 14px 11px 14px; border-bottom: 1px solid var(--row-border);
     }
-    button.btn-primary:hover { background: #333; }
-    button.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+    .card-title { font-size: 12.5px; font-weight: 600; }
+    .card-hint { font-size: 11px; color: var(--dim); }
 
-    button.btn-secondary {
-      width: 100%; padding: 8px;
-      background: transparent; border: 1px solid #d4cfc6;
-      border-radius: 6px; font-size: 13px; font-weight: 500;
-      color: #666; cursor: pointer;
+    /* ── Blocked banner ── */
+    .banner {
+      display: none; gap: 9px; align-items: flex-start;
+      padding: 11px 12px; background: #fb71850f;
+      border: 1px solid #fb718533; border-radius: 10px;
     }
-    button.btn-secondary:hover { border-color: #999; color: #333; }
+    .banner.visible { display: flex; }
+    .banner-mark {
+      width: 17px; height: 17px; flex: none; border-radius: 5px;
+      background: var(--neg); color: var(--bg);
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 12px; margin-top: 1px;
+    }
+    .banner-text { font-size: 11.5px; color: #f6b8c1; line-height: 1.5; }
+    .banner-text strong { font-weight: 600; color: #fecdd4; }
 
-    /* Configured state */
-    .stats-box {
-      text-align: center; padding: 12px;
-      background: #fff; border: 1px solid #e8e4dc;
-      border-radius: 6px; margin-bottom: 10px;
+    /* ── Run panel ── */
+    .run-top { display: flex; justify-content: space-between; align-items: flex-start; }
+    .run-label {
+      font-family: var(--font-mono); font-size: 10.5px;
+      letter-spacing: 0.06em; text-transform: uppercase;
+      color: var(--dim); margin-bottom: 5px;
     }
-    .stats-count { font-size: 28px; font-weight: 700; line-height: 1; margin-bottom: 2px; }
-    .stats-label { font-size: 11px; color: #888; }
+    .run-status { display: flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 600; }
+    .run-status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--pos); flex: none; }
+    .run-status-meta { color: var(--dim); font-weight: 400; font-size: 12px; }
+    .run-count { text-align: right; }
+    .run-count-num { font-family: var(--font-mono); font-size: 20px; font-weight: 600; line-height: 1; }
+    .run-count-label { font-size: 11px; color: var(--dim); margin-top: 2px; }
+    .btn-run { margin-top: 14px; }
+    .btn-run.running { background: #1a2030; color: var(--dim); cursor: default; }
 
-    .config-row {
-      display: flex; justify-content: space-between; align-items: center;
-      padding: 6px 10px; background: #fff;
-      border: 1px solid #e8e4dc; border-radius: 6px; margin-bottom: 6px;
+    /* ── Platform health ── */
+    .plat-row {
+      display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 12px;
+      padding: 11px 14px; border-bottom: 1px solid var(--row-border);
     }
-    .config-label { font-size: 11px; color: #888; }
-    .config-value { font-size: 12px; font-weight: 500; font-family: monospace; }
+    .plat-row:last-child { border-bottom: none; }
+    .plat-row.blocked { background: #fb71850d; }
+    .plat-id { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    .plat-tag {
+      display: inline-flex; align-items: center; justify-content: center;
+      min-width: 26px; height: 22px; padding: 0 5px; border-radius: 6px;
+      font-family: var(--font-mono); font-size: 11px; font-weight: 600; flex: none;
+    }
+    .plat-name { font-size: 13px; font-weight: 500; }
+    .plat-detail {
+      font-size: 11px; color: var(--dim); margin-top: 1px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .plat-status { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 500; }
+    .plat-status-dot { width: 8px; height: 8px; border-radius: 50%; }
 
-    .entities-section { margin-bottom: 10px; }
-    .entities-label {
-      font-size: 11px; font-weight: 500; color: #666;
-      text-transform: uppercase; letter-spacing: 0.04em;
-      margin-bottom: 6px;
+    /* ── Quick-add keyword ── */
+    .kw-form { display: flex; gap: 7px; }
+    .kw-form input { flex: 1; min-width: 0; padding: 8px 10px; font-size: 12.5px; }
+    .btn-add {
+      padding: 8px 13px; border: 1px solid var(--accent);
+      background: #4f7cff1f; color: #c9d6ff;
+      border-radius: 8px; font-family: inherit; font-size: 12.5px; font-weight: 600;
+      cursor: pointer; flex: none;
     }
-    .entity-list {
-      display: flex; flex-wrap: wrap; gap: 4px;
+    .kw-chips { display: none; flex-wrap: wrap; gap: 6px; margin-top: 11px; }
+    .kw-chips.visible { display: flex; }
+    .kw-chip {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 4px 6px 4px 10px; background: var(--panel-2);
+      border: 1px solid var(--border-2); border-radius: 7px;
+      font-size: 11.5px; color: var(--text-2);
     }
-    .entity-chip {
-      font-size: 11px; padding: 2px 8px;
-      background: #fff; border: 1px solid #e8e4dc;
-      border-radius: 20px; color: #444;
-    }
-    .entity-empty { font-size: 12px; color: #999; font-style: italic; }
-
-    #state-setup, #state-configured { display: none; }
-
-    /* ── Auto-collect section ── */
-    .section-divider {
-      display: flex; align-items: center; gap: 8px;
-      margin: 14px 0 10px;
-    }
-    .section-divider::before, .section-divider::after {
-      content: ""; flex: 1; height: 1px; background: #e8e4dc;
-    }
-    .section-title {
-      font-size: 10px; font-weight: 600; color: #888;
-      text-transform: uppercase; letter-spacing: 0.06em;
-      white-space: nowrap;
-    }
-
-    .platform-checks {
-      display: flex; gap: 12px; margin-bottom: 10px;
-    }
-    .check-label {
-      display: flex; align-items: center; gap: 4px;
-      font-size: 12px; color: #333; cursor: pointer;
-    }
-    .check-label input[type="checkbox"] { cursor: pointer; accent-color: #1a1a1a; }
-
-    .interval-select {
-      width: 100%; padding: 7px 10px;
-      border: 1px solid #d4cfc6; border-radius: 6px;
-      font-size: 13px; background: #fff; color: #1a1a1a;
-      margin-bottom: 10px; outline: none; cursor: pointer;
-    }
-    .interval-select:focus { border-color: #1a1a1a; }
-
-    .toggle-row {
-      display: flex; justify-content: space-between; align-items: center;
-      margin-bottom: 8px;
-    }
-    .toggle-label { font-size: 12px; font-weight: 500; color: #333; }
-
-    .toggle-switch {
-      position: relative; display: inline-block;
-      width: 36px; height: 20px; flex-shrink: 0;
-    }
-    .toggle-switch input { opacity: 0; width: 0; height: 0; }
-    .toggle-knob {
-      position: absolute; cursor: pointer;
-      top: 0; left: 0; right: 0; bottom: 0;
-      background: #d4cfc6; border-radius: 20px; transition: .2s;
-    }
-    .toggle-knob::before {
-      position: absolute; content: "";
-      height: 14px; width: 14px; left: 3px; bottom: 3px;
-      background: #fff; border-radius: 50%; transition: .2s;
-    }
-    .toggle-switch input:checked + .toggle-knob { background: #16a34a; }
-    .toggle-switch input:checked + .toggle-knob::before { transform: translateX(16px); }
-
-    .ac-status {
-      font-size: 11px; color: #666; line-height: 1.5; margin-bottom: 4px;
-    }
-    .ac-error {
-      font-size: 11px; color: #dc2626; line-height: 1.5;
-      background: #fef2f2; border: 1px solid #fecaca;
-      border-radius: 5px; padding: 6px 8px; margin-bottom: 4px;
-      display: none;
+    .kw-chip button {
+      width: 15px; height: 15px; border: none; border-radius: 4px;
+      background: #242b3a; color: var(--muted);
+      font-size: 12px; line-height: 1; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      font-family: inherit;
     }
 
-    .run-action-row {
-      display: flex; gap: 6px; margin-bottom: 8px;
+    /* ── Manage link ── */
+    .manage-link {
+      display: flex; align-items: center; gap: 10px;
+      padding: 11px 13px; background: var(--panel);
+      border: 1px solid var(--border); border-radius: 10px;
+      color: var(--text); text-decoration: none;
     }
-    .btn-run-now {
-      flex: 1; padding: 7px;
-      background: transparent; border: 1px solid #d4cfc6;
-      border-radius: 6px; font-size: 12px; font-weight: 500;
-      color: #444; cursor: pointer; text-align: center;
+    .manage-icon { width: 16px; height: 16px; color: var(--accent); flex: none; }
+    .manage-texts { flex: 1; }
+    .manage-title { font-size: 12.5px; font-weight: 500; }
+    .manage-sub { font-size: 11px; color: var(--dim); margin-top: 1px; }
+    .manage-arrow { color: var(--dim); font-size: 15px; }
+
+    /* ── Footer ── */
+    .footer { display: flex; justify-content: space-between; align-items: center; padding-top: 2px; }
+    .footer-version { font-family: var(--font-mono); font-size: 10.5px; color: var(--faint); }
+    .btn-disconnect {
+      border: none; background: none; color: var(--dim);
+      font-family: inherit; font-size: 11.5px; cursor: pointer; padding: 2px;
     }
-    .btn-run-now:hover:not(:disabled) { border-color: #1a1a1a; color: #1a1a1a; }
-    .btn-run-now:disabled { opacity: 0.5; cursor: not-allowed; }
-    .btn-view-runs {
-      flex: 1; padding: 7px;
-      background: transparent; border: 1px solid #d4cfc6;
-      border-radius: 6px; font-size: 12px; font-weight: 500;
-      color: #444; cursor: pointer; text-align: center;
-      text-decoration: none; display: flex; align-items: center; justify-content: center;
-    }
-    .btn-view-runs:hover { border-color: #1a1a1a; color: #1a1a1a; }
+    .btn-disconnect:hover { color: var(--text-2); }
   </style>
 </head>
 <body>
   <div class="header">
-    <div class="header-logo">G</div>
-    <div class="company-switcher">
-      <select class="company-select" id="company-select" disabled>
-        <option value="">Gito</option>
-      </select>
-      <span class="company-caret">▼</span>
-    </div>
-    <button class="btn-add-account" id="btn-add-account" title="Add another company">+</button>
+    <div class="header-logo">g</div>
+    <div class="header-name">gito</div>
+    <span class="header-right" id="header-status">
+      <span class="offline-dot"></span>Offline
+    </span>
   </div>
 
-  <div class="content">
-    <!-- Setup state -->
-    <div id="state-setup">
-      <p class="setup-label">Gito URL</p>
-      <input type="url" id="input-url" placeholder="https://your-gito.vercel.app" />
+  <!-- Setup state -->
+  <div id="state-setup" class="content" style="display:none">
+    <div>
+      <div class="setup-title">Connect to Gito</div>
+      <div class="field-label">Gito URL</div>
+      <input type="url" id="input-url" placeholder="https://usegito.com" class="field-gap" />
+      <div class="field-label">API key</div>
+      <input type="password" id="input-key" placeholder="gito_••••••••••••••••" class="field-gap-lg" />
+      <div class="error-msg" id="setup-error"></div>
+      <button class="btn-primary" id="btn-save">Save &amp; connect</button>
+    </div>
+  </div>
 
-      <p class="setup-label">API Key</p>
-      <input type="password" id="input-key" placeholder="gito_••••••••••••••••" />
-      <p class="help-text">Find your API key in Gito → Sources → Extension</p>
+  <!-- Connected state -->
+  <div id="state-configured" class="content" style="display:none">
 
-      <p class="error-msg" id="setup-error"></p>
-      <button class="btn-primary" id="btn-save">Save & Connect</button>
+    <div class="banner" id="blocked-banner">
+      <span class="banner-mark">!</span>
+      <div class="banner-text" id="blocked-text"></div>
     </div>
 
-    <!-- Configured state -->
-    <div id="state-configured">
-      <div class="stats-box">
-        <div class="stats-count" id="daily-count">0</div>
-        <div class="stats-label">items sent today</div>
+    <div class="card card-pad">
+      <div class="run-top">
+        <div>
+          <div class="run-label">Status</div>
+          <div class="run-status">
+            <span class="run-status-dot" id="status-dot"></span>
+            <span id="status-text">—</span>
+            <span class="run-status-meta" id="status-meta"></span>
+          </div>
+        </div>
+        <div class="run-count">
+          <div class="run-count-num" id="items-today">0</div>
+          <div class="run-count-label">items</div>
+        </div>
       </div>
-
-      <div class="entities-section">
-        <div class="entities-label">Tracked entities</div>
-        <div class="entity-list" id="entity-list"></div>
-      </div>
-
-      <div class="section-divider">
-        <span class="section-title">Auto-collect</span>
-      </div>
-
-      <p class="setup-label">Search terms</p>
-      <input type="text" id="ac-terms" placeholder="lurie, daniel lurie, SF mayor" />
-
-      <p class="setup-label">Platforms</p>
-      <div class="platform-checks">
-        <label class="check-label"><input type="checkbox" id="ac-x" /> X</label>
-        <label class="check-label"><input type="checkbox" id="ac-threads" /> Threads</label>
-      </div>
-
-      <p class="setup-label">Interval</p>
-      <select id="ac-interval" class="interval-select">
-        <option value="30">Every 30 min</option>
-        <option value="60" selected>Every hour</option>
-        <option value="120">Every 2 hours</option>
-        <option value="240">Every 4 hours</option>
-      </select>
-
-      <div class="toggle-row">
-        <span class="toggle-label">Enable auto-collect</span>
-        <label class="toggle-switch">
-          <input type="checkbox" id="ac-enabled" />
-          <span class="toggle-knob"></span>
-        </label>
-      </div>
-
-      <div class="run-action-row">
-        <button class="btn-run-now" id="btn-run-now">Run now</button>
-        <a class="btn-view-runs" id="btn-view-runs" href="#" target="_blank">View runs ↗</a>
-      </div>
-      <div class="ac-status" id="ac-status"></div>
-      <div class="ac-error" id="ac-error"></div>
-
-      <button class="btn-secondary" id="btn-disconnect">Disconnect</button>
+      <button class="btn-primary btn-run" id="btn-run-now">Run now</button>
     </div>
+
+    <div class="card">
+      <div class="card-head">
+        <span class="card-title">Platform health</span>
+        <span class="card-hint" id="health-hint">last run · —</span>
+      </div>
+      <div id="platform-rows"></div>
+    </div>
+
+    <div class="card card-pad">
+      <div class="card-head" style="padding:0;border:none;margin-bottom:9px">
+        <span class="card-title">Quick-add keyword</span>
+        <span class="card-hint" style="font-size:10.5px">→ collector terms</span>
+      </div>
+      <div class="kw-form">
+        <input type="text" id="kw-input" placeholder="e.g. streamer university" />
+        <button class="btn-add" id="btn-add-kw">Add</button>
+      </div>
+      <div class="kw-chips" id="kw-chips"></div>
+    </div>
+
+    <a class="manage-link" id="manage-link" href="https://usegito.com/analyst/sources" target="_blank">
+      <span class="manage-icon">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"></path><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"></path></svg>
+      </span>
+      <span class="manage-texts">
+        <span class="manage-title" style="display:block">Manage configuration</span>
+        <span class="manage-sub" style="display:block">Keywords, subreddits, schedule</span>
+      </span>
+      <span class="manage-arrow">→</span>
+    </a>
+
+    <div class="footer">
+      <span class="footer-version" id="footer-version">v— · Chrome</span>
+      <button class="btn-disconnect" id="btn-disconnect">Disconnect</button>
+    </div>
+
   </div>
 
   <script src="popup.js"></script>

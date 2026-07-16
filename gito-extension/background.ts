@@ -50,6 +50,19 @@ interface ActiveRunState {
   totalCollected: number;
   totalInserted: number;
   errors: string[];
+  platformStats: PlatformStats;
+}
+
+// Per-platform tallies for the popup's health card.
+type PlatformStats = Record<string, { collected: number; errors: number }>;
+
+function mergeStats(base: PlatformStats | undefined, add: PlatformStats): PlatformStats {
+  const out: PlatformStats = { ...(base ?? {}) };
+  for (const [platform, s] of Object.entries(add)) {
+    const cur = out[platform] ?? { collected: 0, errors: 0 };
+    out[platform] = { collected: cur.collected + s.collected, errors: cur.errors + s.errors };
+  }
+  return out;
 }
 
 interface StoredQueue {
@@ -149,6 +162,15 @@ interface SessionResult {
   collected: number;
   inserted: number;
   errors: string[];
+  perPlatform: PlatformStats;
+}
+
+function statsBumper(perPlatform: PlatformStats) {
+  return (platform: string, collected: number, errors: number) => {
+    const s = perPlatform[platform] ?? (perPlatform[platform] = { collected: 0, errors: 0 });
+    s.collected += collected;
+    s.errors += errors;
+  };
 }
 
 async function processKeywordEntry(
@@ -160,6 +182,8 @@ async function processKeywordEntry(
   let collected = 0;
   let inserted = 0;
   const errors: string[] = [];
+  const perPlatform: PlatformStats = {};
+  const bump = statsBumper(perPlatform);
 
   for (const platform of (platformsOverride ?? state.platforms)) {
     let tabId: number | null = null;
@@ -187,14 +211,16 @@ async function processKeywordEntry(
       const msg = `${platform}/${term}: ${String(err)}`;
       console.error(`[Gito] ${msg}`);
       errors.push(msg);
+      bump(platform, 0, 1);
       if (tabId !== null) chrome.tabs.remove(tabId).catch(() => {});
       searchItems = [];
     }
 
     if (searchItems.length > 0) {
       collected += searchItems.length;
+      bump(platform, searchItems.length, 0);
       const { inserted: n, error } = await ingestBatch(searchItems, account, state.runId);
-      if (error) { errors.push(error); console.error(`[Gito] ${error}`); }
+      if (error) { errors.push(error); bump(platform, 0, 1); console.error(`[Gito] ${error}`); }
       inserted += n;
     }
 
@@ -222,21 +248,23 @@ async function processKeywordEntry(
 
           if (threadItems.length > 0) {
             collected += threadItems.length;
+            bump(platform, threadItems.length, 0);
             const { inserted: n, error } = await ingestBatch(threadItems, account, state.runId);
-            if (error) { errors.push(error); console.error(`[Gito] ${error}`); }
+            if (error) { errors.push(error); bump(platform, 0, 1); console.error(`[Gito] ${error}`); }
             inserted += n;
           }
         } catch (err) {
           const msg = `${platform} thread ${post.url}: ${String(err)}`;
           console.error(`[Gito] ${msg}`);
           errors.push(msg);
+          bump(platform, 0, 1);
           if (threadTabId !== null) chrome.tabs.remove(threadTabId).catch(() => {});
         }
       }
     }
   }
 
-  return { collected, inserted, errors };
+  return { collected, inserted, errors, perPlatform };
 }
 
 async function processTrackedEntry(
@@ -246,6 +274,8 @@ async function processTrackedEntry(
   let collected = 0;
   let inserted = 0;
   const errors: string[] = [];
+  const perPlatform: PlatformStats = {};
+  const bump = statsBumper(perPlatform);
 
   for (const thread of (account.trackedThreads ?? [])) {
     if (thread.platform !== "twitter" && thread.platform !== "threads") continue;
@@ -264,14 +294,16 @@ async function processTrackedEntry(
 
       if (threadItems.length > 0) {
         collected += threadItems.length;
+        bump(thread.platform, threadItems.length, 0);
         const { inserted: n, error } = await ingestBatch(threadItems, account, state.runId);
-        if (error) { errors.push(error); console.error(`[Gito] ${error}`); }
+        if (error) { errors.push(error); bump(thread.platform, 0, 1); console.error(`[Gito] ${error}`); }
         inserted += n;
       }
     } catch (err) {
       const msg = `tracked thread ${thread.url}: ${String(err)}`;
       console.error(`[Gito] ${msg}`);
       errors.push(msg);
+      bump(thread.platform, 0, 1);
       if (tabId !== null) chrome.tabs.remove(tabId).catch(() => {});
     }
   }
@@ -291,19 +323,21 @@ async function processTrackedEntry(
 
       if (profileItems.length > 0) {
         collected += profileItems.length;
+        bump("twitter", profileItems.length, 0);
         const { inserted: n, error } = await ingestBatch(profileItems, account, state.runId);
-        if (error) { errors.push(error); console.error(`[Gito] ${error}`); }
+        if (error) { errors.push(error); bump("twitter", 0, 1); console.error(`[Gito] ${error}`); }
         inserted += n;
       }
     } catch (err) {
       const msg = `twitter profile @${handle}: ${String(err)}`;
       console.error(`[Gito] ${msg}`);
       errors.push(msg);
+      bump("twitter", 0, 1);
       if (tabId !== null) chrome.tabs.remove(tabId).catch(() => {});
     }
   }
 
-  return { collected, inserted, errors };
+  return { collected, inserted, errors, perPlatform };
 }
 
 // ---------------------------------------------------------------------------
@@ -339,6 +373,7 @@ async function startCollectRun(
     totalCollected: 0,
     totalInserted: 0,
     errors: [],
+    platformStats: {},
   };
 
   // Create the run record immediately so the FK constraint is satisfied for all
@@ -376,6 +411,7 @@ async function processEntry(
     totalCollected: state.totalCollected + result.collected,
     totalInserted: state.totalInserted + result.inserted,
     errors: [...state.errors, ...result.errors],
+    platformStats: mergeStats(state.platformStats, result.perPlatform),
   };
 
   if (remaining.length > 0) {
@@ -421,6 +457,7 @@ async function finaliseRun(state: ActiveRunState, account: Account): Promise<voi
     lastRun: new Date().toISOString(),
     lastInserted: state.totalInserted,
     failureCount: 0,
+    lastRunPlatforms: { at: state.ranAt, stats: state.platformStats ?? {} },
     dailyCount:
       stats.dailyCount?.date === today
         ? { date: today, count: stats.dailyCount.count + state.totalInserted }
