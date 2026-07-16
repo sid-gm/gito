@@ -1,15 +1,10 @@
 {
   "crons": [
-    { "path": "/api/cron/hackernews",       "schedule": "0 * * * *"   },
-    { "path": "/api/cron/twitter",          "schedule": "0 */6 * * *" },
-    { "path": "/api/cron/google-alerts",    "schedule": "0 * * * *"   },
-    { "path": "/api/cron/cluster",          "schedule": "5,35 * * * *" },
-    { "path": "/api/cron/name-clusters",         "schedule": "0 3 * * *"    },
-    { "path": "/api/cron/archive-clusters",      "schedule": "0 4 * * *"    },
-    { "path": "/api/cron/classify",              "schedule": "0 */2 * * *"  },
-    { "path": "/api/cron/summarize-narratives",   "schedule": "0 */4 * * *"  },
-    { "path": "/api/cron/summarize-news-timeline","schedule": "0 */4 * * *"  },
-    { "path": "/api/cron/purge-news-items",       "schedule": "0 6 * * *"    },
-    { "path": "/api/cron/notify-google-alerts-digest", "schedule": "30 */3 * * *" }
+    { "path": "/api/cron/hackernews",                  "schedule": "0 7 * * *"  },
+    { "path": "/api/cron/twitter",                     "schedule": "0 8 * * *"  },
+    { "path": "/api/cron/google-alerts",               "schedule": "0 9 * * *"  },
+    { "path": "/api/cron/summarize-news-timeline",     "schedule": "0 10 * * *" },
+    { "path": "/api/cron/notify-google-alerts-digest", "schedule": "30 10 * * *" },
+    { "path": "/api/cron/purge-news-items",            "schedule": "0 6 * * *"  }
   ]
 }
