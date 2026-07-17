@@ -3,6 +3,9 @@
 // expects: kind post/comment, honest timestamps (never faked), engagement
 // snapshots, and parent/root external ids for structural threading.
 
+// Shared with the server ingest path so capture and storage clean identically.
+import { cleanThreadsBody } from "../lib/collectors/threads-text";
+
 export type SocialPlatform = "twitter" | "threads" | "reddit" | "instagram" | "facebook" | "linkedin";
 
 export type SourceKind =
@@ -309,7 +312,11 @@ export async function collectThreads(term: string, tabId: number): Promise<Exten
     args: [],
   });
   void term;
-  return (results[0]?.result ?? []) as ExtensionItem[];
+  // Strip UI chrome (Follow…More header, Like…Share action bar) that the
+  // container's textContent picks up; drop caption-less media posts.
+  return ((results[0]?.result ?? []) as ExtensionItem[])
+    .map((i) => ({ ...i, body: cleanThreadsBody(i.body, i.author) }))
+    .filter((i) => (i.body ?? "").length > 0);
 }
 
 export async function collectThreadsThread(postUrl: string, tabId: number): Promise<ExtensionItem[]> {
@@ -361,7 +368,9 @@ export async function collectThreadsThread(postUrl: string, tabId: number): Prom
     },
     args: [postUrl],
   });
-  return (results[0]?.result ?? []) as ExtensionItem[];
+  return ((results[0]?.result ?? []) as ExtensionItem[])
+    .map((i) => ({ ...i, body: cleanThreadsBody(i.body, i.author) }))
+    .filter((i) => (i.body ?? "").length > 0);
 }
 
 // ---------------------------------------------------------------------------

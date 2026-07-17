@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { items, collectKeywords, engagementSnapshots } from "@/lib/db/schema";
 import type { NewItem } from "@/lib/db/schema";
 import { verifyExtensionKey } from "@/lib/extension-auth";
+import { cleanThreadsBody } from "@/lib/collectors/threads-text";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 
@@ -114,7 +115,12 @@ export async function POST(req: Request) {
   const toRow = (i: z.infer<typeof itemSchema>): NewItem => {
     const publishedAt = parseDate(i.publishedAt);
     const externalId = i.externalId ?? null;
-    const dedupeKey = computeDedupeKey(i.platform, i.author, i.body);
+    // Threads bodies arrive wrapped in scraped UI chrome (Follow…More header +
+    // Like…Share action bar) — strip it before hashing/storing. Reliable even
+    // for older extension builds that still send raw text.
+    const body =
+      i.platform === "threads" ? cleanThreadsBody(i.body, i.author) || null : i.body ?? null;
+    const dedupeKey = computeDedupeKey(i.platform, i.author, body);
     const rootExternalId = i.rootExternalId ?? null;
     const threadKey = rootExternalId
       ? `${i.platform}:${rootExternalId}`
@@ -134,7 +140,7 @@ export async function POST(req: Request) {
       url: i.url ?? null,
       author: i.author ?? null,
       title: i.title ?? null,
-      body: i.body ?? null,
+      body,
       publishedAt,
       publishedAtPrecision: publishedAt ? (i.publishedAtPrecision ?? "exact") : "unknown",
       threadKey,
