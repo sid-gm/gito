@@ -56,6 +56,18 @@ function Icon({ kind }: { kind: string }) {
           <path d="M5 5a14 14 0 0 1 14 14" />
         </svg>
       );
+    case "grouping":
+      // Thread tree: a root post with two branching replies
+      return (
+        <svg {...common}>
+          <circle cx="6" cy="5" r="2" />
+          <path d="M6 7v10" />
+          <path d="M6 11h5" />
+          <circle cx="13.5" cy="11" r="1.6" />
+          <path d="M6 16h5" />
+          <circle cx="13.5" cy="16" r="1.6" />
+        </svg>
+      );
     default:
       return <svg {...common} />;
   }
@@ -67,6 +79,10 @@ const NAV = [
   { href: "/analyst/sentiment", icon: "sentiment", label: "Sentiment" },
   { href: "/analyst/bubbles", icon: "bubbles", label: "Bubbles" },
   { href: "/analyst/sources", icon: "sources", label: "Sources" },
+];
+
+const NARRATIVE_NAV = [
+  { href: "/analyst/grouping", icon: "grouping", label: "Grouping" },
 ];
 
 export function AnalystNav() {
@@ -82,6 +98,23 @@ export function AnalystNav() {
         {NAV.map((n) => {
           const active =
             n.href === "/analyst" ? path === n.href : path.startsWith(n.href);
+          return (
+            <Link
+              key={n.href}
+              href={n.href}
+              className={`an-nav-item${active ? " an-nav-item-on" : ""}`}
+            >
+              <span className="an-nav-icon">
+                <Icon kind={n.icon} />
+              </span>
+              <span>{n.label}</span>
+            </Link>
+          );
+        })}
+        <div className="an-nav-sep" />
+        <div className="an-nav-section-label">Narrative</div>
+        {NARRATIVE_NAV.map((n) => {
+          const active = path.startsWith(n.href);
           return (
             <Link
               key={n.href}

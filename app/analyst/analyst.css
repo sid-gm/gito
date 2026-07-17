@@ -70,6 +70,13 @@
 .an-nav-item-on, .an-nav-item-on:hover { background: var(--an-accent); color: var(--an-bg); font-weight: 600; }
 .an-nav-icon { display: flex; width: 18px; height: 18px; color: var(--an-dim); }
 .an-nav-item-on .an-nav-icon { color: var(--an-bg); }
+.an-nav-sep { height: 1px; background: var(--an-border); margin: 12px 4px; }
+.an-nav-section-label {
+  padding: 0 11px 8px 11px;
+  font-family: var(--an-font-mono), monospace;
+  font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--an-faint);
+}
 .an-side-foot {
   margin-top: auto; padding: 12px 8px 2px 8px;
   border-top: 1px solid var(--an-border);
@@ -228,6 +235,92 @@
 }
 .an-group-sent { display: flex; align-items: center; justify-content: flex-end; gap: 7px; }
 .an-group-score { font-family: var(--an-font-mono), monospace; font-size: 12.5px; color: var(--an-text-2); }
+
+/* ─── Grouping (post + replies, one thread per card) ──────────────────── */
+.an-grouping-list { display: flex; flex-direction: column; gap: 12px; max-width: 860px; }
+.an-grouping-meta { font-size: 12.5px; color: var(--an-dim); margin-bottom: 2px; }
+.an-grouping-card {
+  position: relative; overflow: hidden;
+  border: 1px solid var(--an-border-2); border-radius: 12px;
+  background: var(--an-panel); padding: 15px 18px 13px 20px;
+  cursor: pointer; transition: background 0.1s, border-color 0.1s;
+}
+.an-grouping-card:hover { background: #151a26; border-color: #2a3350; }
+.an-grouping-card:focus-visible { outline: 2px solid var(--an-accent); outline-offset: 2px; }
+.an-grouping-accent { position: absolute; left: 0; top: 0; bottom: 0; width: 3px; }
+.an-grouping-card-head { display: flex; align-items: center; gap: 8px; margin-bottom: 9px; }
+.an-grouping-handle { font-weight: 600; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.an-grouping-time { font-size: 12px; color: var(--an-dim); flex: none; }
+.an-grouping-view {
+  margin-left: auto; flex: none; display: flex; align-items: center; gap: 6px;
+  font-size: 12px; color: var(--an-dim);
+}
+.an-grouping-card:hover .an-grouping-view { color: var(--an-text-2); }
+.an-grouping-text {
+  font-size: 13.5px; color: var(--an-text-2); line-height: 1.5;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+.an-grouping-metrics {
+  display: flex; align-items: center; gap: 18px; margin-top: 12px;
+  font-family: var(--an-font-mono), monospace; font-size: 12px; color: var(--an-dim);
+}
+.an-grouping-plat { color: var(--an-text-2); }
+.an-metric-strong { color: var(--an-text); font-weight: 600; }
+.an-grouping-sent { margin-left: auto; display: flex; align-items: center; gap: 7px; color: var(--an-text-2); }
+
+/* ─── Grouping detail (original post flattened with its replies) ───────── */
+.an-grouping-detail { max-width: 760px; }
+.an-grouping-back {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 7px 12px; margin-bottom: 18px;
+  border: 1px solid var(--an-border-3); background: var(--an-panel-2); border-radius: 8px;
+  color: var(--an-text-2); font-family: inherit; font-size: 12.5px; cursor: pointer;
+  transition: background 0.1s;
+}
+.an-grouping-back:hover { background: #1b2130; }
+.an-original {
+  position: relative; overflow: hidden;
+  border: 1px solid var(--an-border-2); border-radius: 14px; background: var(--an-panel);
+  padding: 20px 22px 18px 24px;
+}
+.an-original-accent { position: absolute; left: 0; top: 0; bottom: 0; width: 3px; }
+.an-original-head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+.an-original-author { font-weight: 600; font-size: 14.5px; }
+.an-original-meta { font-size: 12px; color: var(--an-dim); margin-top: 1px; }
+.an-original-badge {
+  margin-left: auto; flex: none; padding: 4px 9px; border-radius: 6px;
+  background: var(--an-panel-2); border: 1px solid var(--an-border-3);
+  font-family: var(--an-font-mono), monospace; font-size: 10.5px; letter-spacing: 0.06em; color: var(--an-muted);
+}
+.an-original-text { font-size: 15.5px; line-height: 1.6; color: var(--an-text); }
+.an-original-text a { color: inherit; }
+.an-original-text a:hover { text-decoration: underline; text-decoration-color: #4f7cff66; }
+.an-original-metrics {
+  display: flex; align-items: center; gap: 22px; margin-top: 16px; padding-top: 14px;
+  border-top: 1px solid var(--an-border-2);
+  font-family: var(--an-font-mono), monospace; font-size: 13px; color: var(--an-dim);
+}
+.an-original-metrics .an-grouping-sent { font-size: 13px; }
+.an-replies-head { display: flex; align-items: baseline; gap: 10px; margin: 26px 0 2px 0; }
+.an-replies-title { margin: 0; font-size: 14px; font-weight: 600; }
+.an-replies-count { font-family: var(--an-font-mono), monospace; font-size: 12px; color: var(--an-dim); }
+.an-reply-list { margin-top: 10px; }
+.an-reply { display: flex; gap: 14px; padding: 15px 4px; border-bottom: 1px solid var(--an-row-border); }
+.an-reply:last-child { border-bottom: none; }
+.an-reply-avatar {
+  width: 32px; height: 32px; flex: none; border-radius: 8px; background: #1a2030;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--an-font-mono), monospace; font-size: 11.5px; font-weight: 600; color: var(--an-muted);
+}
+.an-reply-body { flex: 1; min-width: 0; }
+.an-reply-head { display: flex; align-items: center; gap: 8px; }
+.an-reply-author { font-weight: 600; font-size: 13px; }
+.an-reply-meta { font-size: 11.5px; color: var(--an-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.an-reply-sent { margin-left: auto; flex: none; display: flex; align-items: center; gap: 6px; }
+.an-reply-sent-score { font-family: var(--an-font-mono), monospace; font-size: 11.5px; color: var(--an-muted); }
+.an-reply-text { font-size: 13px; color: var(--an-text-2); line-height: 1.55; margin-top: 5px; }
+.an-reply-text a { color: inherit; }
+.an-reply-likes { margin-top: 7px; font-family: var(--an-font-mono), monospace; font-size: 11.5px; color: var(--an-dim); }
 
 /* ─── Sentiment ───────────────────────────────────────────────────────── */
 .an-section { background: var(--an-panel); border: 1px solid var(--an-border-2); border-radius: 14px; padding: 20px 22px; }

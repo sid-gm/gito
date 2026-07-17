@@ -7,6 +7,10 @@ import { CompanySwitcher } from "@/components/analyst/CompanySwitcher";
 const TITLES: Record<string, [string, string]> = {
   "/analyst": ["Raw data", "Every scraped post and article, newest first"],
   "/analyst/groups": ["Groups", "Volume clustered by dimension"],
+  "/analyst/grouping": [
+    "Grouping",
+    "Every original post grouped with its replies and metrics",
+  ],
   "/analyst/sentiment": ["Sentiment", "News over time vs. social by platform"],
   "/analyst/bubbles": [
     "Topic bubbles",
