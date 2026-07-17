@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useAnalyst } from "@/components/analyst/AnalystContext";
+import { ConfigPanel } from "@/components/analyst/ConfigPanel";
 import { platformMeta, timeAgo } from "@/components/analyst/data";
 
 const SOCIAL_PLATFORMS = ["reddit", "twitter", "threads", "instagram", "facebook", "linkedin"];
@@ -132,6 +133,7 @@ export default function SourcesPage() {
   const { todayByPlatform, connected } = derived;
 
   return (
+    <div>
     <div className="an-sources">
       <section className="an-source-card">
         <div className="an-source-head">
@@ -312,6 +314,8 @@ export default function SourcesPage() {
           </div>
         )}
       </section>
+    </div>
+    <ConfigPanel />
     </div>
   );
 }
