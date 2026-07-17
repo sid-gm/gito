@@ -220,32 +220,45 @@ function TopicsCard({ companyId }: { companyId: string }) {
     topicsRes.refresh();
     keywordsRes.refresh();
   };
-  const [newTopic, setNewTopic] = useState("");
   const [newTerm, setNewTerm] = useState("");
-  const [newTermTopic, setNewTermTopic] = useState("");
+  const [newTermTopic, setNewTermTopic] = useState(""); // "" = nothing picked — a topic is required
   const [newTermPlatforms, setNewTermPlatforms] = useState<string[]>([...KEYWORD_PLATFORMS]);
+  // Topic picker dropdown state
+  const [ddOpen, setDdOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [newTopicName, setNewTopicName] = useState("");
 
-  async function addTopic() {
-    const label = newTopic.trim();
-    if (!label) return;
-    await jfetch("/api/topics", { method: "POST", body: JSON.stringify({ companyId, label }) });
-    setNewTopic("");
-    load();
-  }
+  // A keyword can't be tracked without a topic — enforce it in the form.
+  const canAdd = !!newTerm.trim() && !!newTermTopic && newTermPlatforms.length > 0;
 
   async function addKeyword() {
     const term = newTerm.trim();
-    if (!term || newTermPlatforms.length === 0) return;
+    if (!term || !newTermTopic || newTermPlatforms.length === 0) return;
     await jfetch("/api/collect-keywords", {
       method: "POST",
       body: JSON.stringify({
         companyId,
         term,
-        topicId: newTermTopic || null,
+        topicId: newTermTopic,
         platforms: newTermPlatforms,
       }),
     });
     setNewTerm("");
+    load();
+  }
+
+  // Create a topic inline from the picker, then select it for the keyword.
+  async function createTopic() {
+    const label = newTopicName.trim();
+    if (!label) return;
+    const row = await jfetch<Topic>("/api/topics", {
+      method: "POST",
+      body: JSON.stringify({ companyId, label }),
+    });
+    setNewTopicName("");
+    setCreating(false);
+    setDdOpen(false);
+    if (row?.id) setNewTermTopic(row.id);
     load();
   }
 
@@ -265,10 +278,11 @@ function TopicsCard({ companyId }: { companyId: string }) {
   );
 
   const unassigned = keywords.filter((k) => !k.topicId);
+  const selectedTopic = topics.find((t) => t.id === newTermTopic) ?? null;
 
   return (
-    <section className="an-source-card">
-      <CardHead title="Topics & keywords" hint="Each keyword's finds are tagged with its topic (provenance)" />
+    <section className="an-source-card an-source-card-open">
+      <CardHead title="Topics & keywords" hint="Each keyword is tracked under a topic — its finds are tagged with it (provenance)" />
       {topics.map((t) => (
         <div key={t.id} className="an-cfg-block">
           <div className="an-cfg-block-head">
@@ -281,6 +295,7 @@ function TopicsCard({ companyId }: { companyId: string }) {
               title="Delete topic (keywords stay, unassigned)"
               onClick={async () => {
                 await jfetch(`/api/topics/${t.id}`, { method: "DELETE" });
+                if (newTermTopic === t.id) setNewTermTopic("");
                 load();
               }}
             >
@@ -298,7 +313,7 @@ function TopicsCard({ companyId }: { companyId: string }) {
       {unassigned.length > 0 && (
         <div className="an-cfg-block">
           <div className="an-cfg-block-head">
-            <span className="an-feed-meta">Unassigned</span>
+            <span className="an-feed-meta">Unassigned (from quick-add) — assign a topic</span>
           </div>
           <div className="an-cfg-list">
             {unassigned.map((k) => (
@@ -334,12 +349,82 @@ function TopicsCard({ companyId }: { companyId: string }) {
           onChange={(e) => setNewTerm(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && addKeyword()}
         />
-        <select className="an-select" value={newTermTopic} onChange={(e) => setNewTermTopic(e.target.value)}>
-          <option value="">no topic</option>
-          {topics.map((t) => (
-            <option key={t.id} value={t.id}>{t.label}</option>
-          ))}
-        </select>
+        <div className="an-topicdd">
+          <button
+            type="button"
+            className={`an-topicdd-trigger${selectedTopic ? "" : " an-topicdd-trigger-empty"}`}
+            onClick={() => {
+              setDdOpen((o) => !o);
+              setCreating(false);
+            }}
+          >
+            <span
+              className="an-topicdd-dot"
+              style={{ background: selectedTopic ? topicColor(selectedTopic.id) : "#4b5568" }}
+            />
+            <span>{selectedTopic ? selectedTopic.label : "Select topic…"}</span>
+            <span className="an-topicdd-caret">▾</span>
+          </button>
+          {ddOpen && (
+            <div
+              className="an-topicdd-overlay"
+              onClick={() => {
+                setDdOpen(false);
+                setCreating(false);
+              }}
+            />
+          )}
+          {ddOpen && !creating && (
+            <div className="an-topicdd-menu">
+              {topics.length === 0 && <div className="an-topicdd-empty">No topics yet</div>}
+              {topics.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  className="an-topicdd-item"
+                  onClick={() => {
+                    setNewTermTopic(t.id);
+                    setDdOpen(false);
+                  }}
+                >
+                  <span className="an-topicdd-dot" style={{ background: topicColor(t.id) }} />
+                  <span style={{ flex: 1 }}>{t.label}</span>
+                  {newTermTopic === t.id && <span className="an-topicdd-check">✓</span>}
+                </button>
+              ))}
+              <div className="an-topicdd-sep" />
+              <button
+                type="button"
+                className="an-topicdd-item an-topicdd-new"
+                onClick={() => {
+                  setCreating(true);
+                  setNewTopicName("");
+                }}
+              >
+                <span className="an-topicdd-plus">+</span> New topic…
+              </button>
+            </div>
+          )}
+          {ddOpen && creating && (
+            <div className="an-topicdd-menu an-topicdd-create">
+              <div className="an-topicdd-create-label">New topic</div>
+              <div className="an-topicdd-create-row">
+                <input
+                  className="an-input"
+                  autoFocus
+                  placeholder="Topic name…"
+                  value={newTopicName}
+                  onChange={(e) => setNewTopicName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") createTopic();
+                    else if (e.key === "Escape") setCreating(false);
+                  }}
+                />
+                <button type="button" className="an-btn" onClick={createTopic}>Create</button>
+              </div>
+            </div>
+          )}
+        </div>
         <div className="an-cfg-chipset">
           {KEYWORD_PLATFORMS.map((p) => (
             <button
@@ -356,18 +441,11 @@ function TopicsCard({ companyId }: { companyId: string }) {
             </button>
           ))}
         </div>
-        <button type="button" className="an-btn" onClick={addKeyword}>Add keyword</button>
+        <button type="button" className="an-btn" onClick={addKeyword} disabled={!canAdd}>Add keyword</button>
       </div>
-      <div className="an-cfg-form">
-        <input
-          className="an-input"
-          placeholder="New topic…"
-          value={newTopic}
-          onChange={(e) => setNewTopic(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && addTopic()}
-        />
-        <button type="button" className="an-btn" onClick={addTopic}>Add topic</button>
-      </div>
+      {!newTermTopic && (
+        <div className="an-cfg-hint">Pick or create a topic — every keyword is tracked under one.</div>
+      )}
     </section>
   );
 }

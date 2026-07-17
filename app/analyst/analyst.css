@@ -534,3 +534,95 @@
 }
 .an-chip-x button:hover, .an-x-btn:hover { background: #fb718533; color: #fecdd4; }
 .an-status-toggle { cursor: pointer; border: none; font-family: inherit; }
+
+/* ── Sources: platform status tooltip (hover) ───────────────────────── */
+/* Card opts out of overflow:hidden so the hover tooltip / topic dropdown
+   can escape its bounds. */
+.an-source-card-open { overflow: visible; }
+.an-src-status-wrap { position: relative; display: flex; justify-content: flex-end; }
+.an-src-status-hint { cursor: help; white-space: nowrap; text-underline-offset: 3px; }
+.an-src-status-hint:hover { text-decoration: underline; }
+.an-tip {
+  position: absolute; top: calc(100% + 8px); right: 0; z-index: 60;
+  width: 290px; text-align: left; cursor: default;
+  background: #0b0e14; border: 1px solid var(--an-border-3); border-radius: 8px;
+  padding: 13px 15px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
+}
+.an-tip-head { display: flex; align-items: center; gap: 7px; margin-bottom: 9px; }
+.an-tip-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+.an-tip-status {
+  font-family: var(--an-font-mono), monospace; font-size: 10.5px;
+  letter-spacing: 0.08em; text-transform: uppercase; font-weight: 600;
+}
+.an-tip-reason { font-size: 12.5px; line-height: 1.55; color: var(--an-text-2); }
+.an-tip-divider { height: 1px; background: var(--an-border-2); margin: 11px 0; }
+.an-tip-fixlabel {
+  font-family: var(--an-font-mono), monospace; font-size: 10px;
+  letter-spacing: 0.09em; text-transform: uppercase; color: var(--an-dim);
+  font-weight: 600; margin-bottom: 5px;
+}
+.an-tip-fix { font-size: 12.5px; line-height: 1.55; color: var(--an-nav); }
+
+/* ── Sources: recent runs collapsible + pagination ──────────────────── */
+.an-runs-toggle {
+  width: 100%; background: transparent; border: none;
+  border-bottom: 1px solid var(--an-border-2); cursor: pointer;
+  color: var(--an-text); font-family: inherit;
+}
+.an-runs-chevron { font-size: 13px; color: var(--an-dim); width: 16px; text-align: center; flex: none; }
+.an-pager {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 14px 20px;
+}
+.an-pager-range { font-size: 12px; color: var(--an-dim); font-family: var(--an-font-mono), monospace; }
+.an-pager-nav { display: flex; align-items: center; gap: 12px; }
+.an-pager-btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 6px 12px; border-radius: 7px;
+  border: 1px solid var(--an-border-3); background: var(--an-panel-2);
+  color: var(--an-text-2); font-family: inherit; font-size: 12px; cursor: pointer;
+}
+.an-pager-btn:hover:not(:disabled) { border-color: var(--an-accent); color: var(--an-text); }
+.an-pager-btn:disabled { opacity: 0.45; cursor: default; }
+.an-pager-info { font-family: var(--an-font-mono), monospace; font-size: 12px; color: var(--an-text-2); }
+
+/* ── Config: topic picker dropdown (topic required per keyword) ──────── */
+.an-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.an-topicdd { position: relative; }
+.an-topicdd-trigger {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 7px 11px; border-radius: 8px;
+  border: 1px solid var(--an-border-3); background: var(--an-panel-2);
+  color: var(--an-text-2); font-family: inherit; font-size: 12.5px;
+  cursor: pointer; white-space: nowrap;
+}
+.an-topicdd-trigger-empty { color: var(--an-dim); border-style: dashed; }
+.an-topicdd-dot { width: 8px; height: 8px; border-radius: 2px; flex: none; }
+.an-topicdd-caret { color: var(--an-dim); font-size: 11px; margin-left: 2px; }
+.an-topicdd-overlay { position: fixed; inset: 0; z-index: 50; }
+.an-topicdd-menu {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 55;
+  min-width: 214px; padding: 5px;
+  background: #0b0e14; border: 1px solid var(--an-border-3); border-radius: 8px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+.an-topicdd-item {
+  display: flex; align-items: center; gap: 9px; width: 100%;
+  padding: 8px 11px; border: none; background: transparent; cursor: pointer;
+  font-family: inherit; font-size: 13px; color: var(--an-text-2);
+  text-align: left; border-radius: 6px;
+}
+.an-topicdd-item:hover { background: var(--an-panel-2); }
+.an-topicdd-check { color: var(--an-accent); font-size: 12px; }
+.an-topicdd-new { color: var(--an-accent); }
+.an-topicdd-plus { font-size: 15px; line-height: 1; }
+.an-topicdd-sep { height: 1px; background: var(--an-border-2); margin: 5px 2px; }
+.an-topicdd-empty { padding: 8px 11px; font-size: 12px; color: var(--an-dim); }
+.an-topicdd-create { min-width: 244px; padding: 11px; }
+.an-topicdd-create .an-input { min-width: 0; }
+.an-topicdd-create-label {
+  font-family: var(--an-font-mono), monospace; font-size: 10px;
+  letter-spacing: 0.08em; text-transform: uppercase; color: var(--an-dim); margin-bottom: 7px;
+}
+.an-topicdd-create-row { display: flex; gap: 7px; }
+.an-cfg-hint { padding: 2px 14px 12px; font-size: 11.5px; color: var(--an-dim); }
