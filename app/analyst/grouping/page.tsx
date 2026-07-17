@@ -29,6 +29,7 @@ interface ThreadRow {
   reach: number;
   replyCount: number;
   avgSentiment: string | null;
+  promoted?: boolean;
 }
 
 interface Reply {
@@ -308,6 +309,11 @@ export default function GroupingPage() {
                   style={{ background: tc + "1c", color: tc }}
                 >
                   {g.topicLabel}
+                </span>
+              )}
+              {g.promoted && (
+                <span className="an-promoted-pill" title="Re-collected every run for a week to track new replies and engagement">
+                  ● Promoted tracking
                 </span>
               )}
               <span className="an-grouping-view">

@@ -154,6 +154,9 @@ export const trackedThreads = pgTable("tracked_threads", {
   topicId:         uuid("topic_id").references(() => topics.id, { onDelete: "set null" }),
   label:           text("label"),
   isActive:        boolean("is_active").default(true).notNull(),
+  // Auto-promoted posts track for a fixed window then drop out of collection.
+  // Null = track indefinitely (manual adds via the Sources config panel).
+  expiresAt:       timestamp("expires_at", { withTimezone: true }),
   createdAt:       timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   lastCollectedAt: timestamp("last_collected_at", { withTimezone: true }),
 }, (t) => [unique("tracked_threads_company_url_unique").on(t.companyId, t.postUrl)]);

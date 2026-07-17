@@ -10,7 +10,7 @@ import {
   collectSettings,
 } from "@/lib/db/schema";
 import { verifyExtensionKey } from "@/lib/extension-auth";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -80,7 +80,13 @@ export async function GET(req: Request) {
         topicId: trackedThreads.topicId,
       })
       .from(trackedThreads)
-      .where(and(eq(trackedThreads.companyId, companyId), eq(trackedThreads.isActive, true))),
+      .where(and(
+        eq(trackedThreads.companyId, companyId),
+        eq(trackedThreads.isActive, true),
+        // Skip auto-promoted threads whose 1-week window has passed. Manual
+        // adds have a null expiry and are always served.
+        sql`(${trackedThreads.expiresAt} IS NULL OR ${trackedThreads.expiresAt} > now())`,
+      )),
   ]);
 
   return NextResponse.json(

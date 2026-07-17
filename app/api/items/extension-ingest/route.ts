@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createHash } from "node:crypto";
 import { db } from "@/lib/db";
-import { items, collectKeywords, engagementSnapshots } from "@/lib/db/schema";
+import { items, collectKeywords, engagementSnapshots, trackedThreads } from "@/lib/db/schema";
 import type { NewItem } from "@/lib/db/schema";
 import { verifyExtensionKey } from "@/lib/extension-auth";
 import { cleanThreadsBody } from "@/lib/collectors/threads-text";
@@ -288,6 +288,39 @@ export async function POST(req: Request) {
           .where(eq(items.id, itemId));
       }
     }
+  }
+
+  // Auto-promote high-traction posts to tracked threads: >15 likes OR >5
+  // comments. Once tracked, the extension re-collects the post + its replies
+  // every run (writing an engagement snapshot each time) for a 1-week window.
+  // Only platforms with a thread collector qualify; onConflictDoNothing keeps
+  // the window anchored to when the post first crossed the line (no renewal).
+  const TRACK_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+  const THREAD_PLATFORMS = new Set(["twitter", "threads", "reddit"]);
+  const promotionByUrl = new Map<string, typeof trackedThreads.$inferInsert>();
+  for (const r of rows) {
+    if (r.kind !== "post" || !r.url || !THREAD_PLATFORMS.has(r.platform)) continue;
+    const e = r.latestEngagement as Engagement | null;
+    if (!e) continue;
+    const likes = e.likes ?? e.upvotes ?? 0; // reddit score counts as likes
+    const comments = e.replies ?? 0;
+    if (likes > 15 || comments > 5) {
+      promotionByUrl.set(r.url, {
+        companyId,
+        platform: r.platform,
+        postUrl: r.url,
+        postExternalId: r.externalId ?? null,
+        topicId: r.topicId ?? null,
+        label: "auto: >15 likes / >5 comments",
+        expiresAt: new Date(Date.now() + TRACK_WEEK_MS),
+      });
+    }
+  }
+  if (promotionByUrl.size > 0) {
+    await db
+      .insert(trackedThreads)
+      .values([...promotionByUrl.values()])
+      .onConflictDoNothing({ target: [trackedThreads.companyId, trackedThreads.postUrl] });
   }
 
   return NextResponse.json(

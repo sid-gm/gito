@@ -7,6 +7,19 @@ import { and, asc, avg, count, desc, eq, gte, ne, sql } from "drizzle-orm";
 // likes off the cached engagement snapshot (0 when unknown)
 const likesExpr = sql<number>`COALESCE((${items.latestEngagement}->>'likes')::int, 0)`;
 
+// True when this post is inside an active auto-promoted tracking window
+// (matched by platform id, falling back to url).
+const promotedExpr = sql<boolean>`EXISTS (
+  SELECT 1 FROM tracked_threads tt
+  WHERE tt.company_id = ${items.companyId}
+    AND tt.platform   = ${items.platform}
+    AND tt.is_active  = true
+    AND tt.expires_at IS NOT NULL
+    AND tt.expires_at > now()
+    AND ((tt.post_external_id IS NOT NULL AND tt.post_external_id = ${items.externalId})
+         OR tt.post_url = ${items.url})
+)`;
+
 // Grouping view: every original post grouped with all its collected replies.
 //   - no threadId  → list of root posts + thread-level metrics
 //   - ?threadId=id → that root post flattened with its replies + metrics
@@ -134,6 +147,7 @@ export async function GET(req: Request) {
         reach: reachScore,
         replyCount: sql<number>`GREATEST(COALESCE(${thread.size}, 1)::int - 1, 0)`,
         avgSentiment: thread.avgSent,
+        promoted: promotedExpr,
       })
       .from(items)
       .leftJoin(thread, eq(thread.rootId, items.id))
