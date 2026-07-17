@@ -1,40 +1,25 @@
 "use client";
 
-import { useState } from "react";
-import { sentColor, fmtScore } from "@/components/analyst/data";
+import { useEffect, useState } from "react";
+import { useAnalyst } from "@/components/analyst/AnalystContext";
+import {
+  sentColor,
+  fmtScore,
+  fmtDay,
+  platformMeta,
+  topicColor,
+} from "@/components/analyst/data";
 
 type GroupMode = "time" | "platform" | "topic";
 
-type GroupRow = [label: string, count: number, color: string, sent: number];
+interface ApiGroup {
+  bucket: string;
+  topicId?: string | null;
+  count: number;
+  avgSentiment: string | null;
+}
 
-// Mock aggregates — becomes a grouped query over ingested items after the DB redesign.
-const GROUP_DATA: Record<GroupMode, GroupRow[]> = {
-  platform: [
-    ["Reddit", 1420, "#ff5722", 0.26],
-    ["X", 1180, "#c9ccd1", 0.08],
-    ["TikTok", 960, "#22d3ee", 0.43],
-    ["Instagram", 540, "#ec4899", 0.52],
-    ["Threads", 410, "#a78bfa", 0.4],
-    ["News", 302, "#4f7cff", 0.29],
-  ],
-  topic: [
-    ["Streamer University", 1980, "#4f7cff", 0.32],
-    ["Kai Cenat", 1240, "#34d399", 0.45],
-    ["Subathon", 610, "#f59e0b", -0.08],
-    ["AMP", 380, "#a78bfa", 0.3],
-    ["Twitch Rivals", 340, "#22d3ee", 0.22],
-    ["Collabs", 262, "#ec4899", 0.14],
-  ],
-  time: [
-    ["Jul 10", 420, "#4f7cff", 0.2],
-    ["Jul 11", 510, "#4f7cff", 0.3],
-    ["Jul 12", 640, "#4f7cff", 0.25],
-    ["Jul 13", 900, "#4f7cff", 0.1],
-    ["Jul 14", 1180, "#4f7cff", -0.05],
-    ["Jul 15", 760, "#4f7cff", 0.22],
-    ["Jul 16", 402, "#4f7cff", 0.35],
-  ],
-};
+type GroupRow = { label: string; count: number; color: string; sent: number | null };
 
 const MODES: { key: GroupMode; label: string }[] = [
   { key: "time", label: "By time" },
@@ -43,9 +28,51 @@ const MODES: { key: GroupMode; label: string }[] = [
 ];
 
 export default function GroupsPage() {
+  const { companyId, days } = useAnalyst();
   const [mode, setMode] = useState<GroupMode>("platform");
-  const rows = GROUP_DATA[mode];
-  const max = Math.max(...rows.map((g) => g[1]));
+  const [rows, setRows] = useState<GroupRow[]>([]);
+  const [loadedKey, setLoadedKey] = useState<string | null>(null);
+
+  const queryKey = `${companyId}|${mode}|${days}`;
+  const loading = companyId != null && loadedKey !== queryKey;
+
+  useEffect(() => {
+    if (!companyId) return;
+    let cancelled = false;
+    const key = `${companyId}|${mode}|${days}`;
+    fetch(`/api/analyst/groups?companyId=${companyId}&by=${mode}&days=${days}`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+      .then((data: { groups: ApiGroup[] }) => {
+        if (cancelled) return;
+        setRows(
+          (data.groups ?? []).map((g) => {
+            const sent = g.avgSentiment != null ? Number(g.avgSentiment) : null;
+            if (mode === "time") {
+              return { label: fmtDay(g.bucket), count: g.count, color: "#4f7cff", sent };
+            }
+            if (mode === "platform") {
+              const pm = platformMeta(g.bucket);
+              return { label: pm.label, count: g.count, color: pm.color, sent };
+            }
+            return {
+              label: g.bucket,
+              count: g.count,
+              color: topicColor(g.topicId ?? g.bucket),
+              sent,
+            };
+          })
+        );
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setLoadedKey(key);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId, days, mode]);
+
+  const max = Math.max(1, ...rows.map((g) => g.count));
 
   return (
     <div>
@@ -61,7 +88,7 @@ export default function GroupsPage() {
         ))}
       </div>
       <div className="an-groups">
-        {rows.map(([label, count, color, sent]) => (
+        {rows.map(({ label, count, color, sent }) => (
           <div key={label} className="an-group-row">
             <div className="an-group-label">
               <span className="an-group-dot" style={{ background: color }} />
@@ -78,14 +105,23 @@ export default function GroupsPage() {
               <span className="an-group-count">{count.toLocaleString()}</span>
             </div>
             <div className="an-group-sent">
-              <span
-                className="an-sent-dot"
-                style={{ background: sentColor(sent) }}
-              />
-              <span className="an-group-score">{fmtScore(sent)}</span>
+              {sent != null ? (
+                <>
+                  <span
+                    className="an-sent-dot"
+                    style={{ background: sentColor(sent) }}
+                  />
+                  <span className="an-group-score">{fmtScore(sent)}</span>
+                </>
+              ) : (
+                <span className="an-group-score" style={{ color: "#5f6a80" }}>—</span>
+              )}
             </div>
           </div>
         ))}
+        {!loading && rows.length === 0 && (
+          <div className="an-empty">No items in this window yet.</div>
+        )}
       </div>
     </div>
   );

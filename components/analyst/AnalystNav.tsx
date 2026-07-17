@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { TOTAL_ITEMS, LAST_SYNC } from "@/components/analyst/data";
+import { useAnalyst } from "@/components/analyst/AnalystContext";
+import { timeAgo } from "@/components/analyst/data";
 
 function Icon({ kind }: { kind: string }) {
   const common = {
@@ -70,6 +71,7 @@ const NAV = [
 
 export function AnalystNav() {
   const path = usePathname();
+  const { totalItems, lastSyncAt } = useAnalyst();
   return (
     <aside className="an-sidebar">
       <div className="an-brand">
@@ -96,12 +98,16 @@ export function AnalystNav() {
       </nav>
       <div className="an-side-foot">
         <div className="an-side-foot-row">
-          <span className="an-side-foot-label">Items collected</span>
-          <span className="an-side-foot-value">{TOTAL_ITEMS}</span>
+          <span className="an-side-foot-label">Items · 90d</span>
+          <span className="an-side-foot-value">
+            {totalItems != null ? totalItems.toLocaleString() : "—"}
+          </span>
         </div>
         <div className="an-live">
           <span className="an-live-dot" />
-          <span>Live · synced {LAST_SYNC}</span>
+          <span>
+            {lastSyncAt ? `Live · synced ${timeAgo(lastSyncAt)} ago` : "No runs yet"}
+          </span>
         </div>
       </div>
     </aside>

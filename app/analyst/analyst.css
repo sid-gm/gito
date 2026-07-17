@@ -306,3 +306,45 @@
 @media (max-width: 980px) {
   .an-sources { grid-template-columns: 1fr; }
 }
+
+/* ── Wiring additions: selects, empty states, pagination ─────────────── */
+.an-select {
+  background: var(--an-panel-2, #161a23);
+  border: 1px solid var(--an-border, #20263a);
+  border-radius: 8px;
+  color: var(--an-text, #e5e9f0);
+  font-family: inherit;
+  font-size: 12px;
+  padding: 6px 10px;
+  outline: none;
+  cursor: pointer;
+}
+.an-select:focus { border-color: var(--an-accent); }
+.an-select-bare {
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+  font-size: inherit;
+}
+.an-empty {
+  padding: 36px 16px;
+  text-align: center;
+  color: #7b8398;
+  font-size: 13px;
+}
+.an-loadmore {
+  display: block;
+  margin: 14px auto 0;
+  padding: 8px 22px;
+  background: var(--an-panel, #12151d);
+  border: 1px solid var(--an-border, #20263a);
+  border-radius: 8px;
+  color: #c3cad9;
+  font-family: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.an-loadmore:hover { border-color: var(--an-accent); color: #e5e9f0; }
+.an-cell-link { color: inherit; text-decoration: none; }
+.an-cell-link:hover { text-decoration: underline; text-decoration-color: #4f7cff66; }

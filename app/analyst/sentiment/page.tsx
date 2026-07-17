@@ -1,29 +1,32 @@
 "use client";
 
-import { useState } from "react";
-import { sentColor, fmtScore } from "@/components/analyst/data";
+import { useEffect, useState } from "react";
+import { useAnalyst } from "@/components/analyst/AnalystContext";
+import {
+  sentColor,
+  fmtScore,
+  fmtDay,
+  platformMeta,
+  lastNDates,
+  todayPacific,
+} from "@/components/analyst/data";
 
-// Mock series — becomes mean daily sentiment per platform after the DB redesign.
-const SERIES: { key: string; label: string; color: string; values: number[] }[] = [
-  { key: "news", label: "News", color: "#4f7cff", values: [0.15, 0.28, 0.22, 0.35, 0.42, 0.3, 0.1, -0.05, -0.18, 0.05, 0.25, 0.4, 0.52, 0.38] },
-  { key: "reddit", label: "Reddit", color: "#ff5722", values: [0.1, 0.15, 0.05, 0.2, 0.28, 0.12, -0.1, -0.2, -0.05, 0.1, 0.22, 0.3, 0.35, 0.26] },
-  { key: "x", label: "X", color: "#c9ccd1", values: [0.05, 0.1, -0.05, 0.12, 0.2, 0, -0.15, -0.3, -0.18, -0.05, 0.1, 0.15, 0.2, 0.08] },
-  { key: "threads", label: "Threads", color: "#a78bfa", values: [0.25, 0.3, 0.28, 0.35, 0.4, 0.32, 0.2, 0.15, 0.25, 0.3, 0.38, 0.42, 0.45, 0.4] },
-  { key: "instagram", label: "Instagram", color: "#ec4899", values: [0.35, 0.4, 0.38, 0.45, 0.5, 0.48, 0.4, 0.42, 0.5, 0.52, 0.55, 0.58, 0.6, 0.52] },
-  { key: "tiktok", label: "TikTok", color: "#22d3ee", values: [0.2, 0.35, 0.3, 0.45, 0.55, 0.4, 0.25, 0.1, 0.3, 0.45, 0.5, 0.55, 0.48, 0.43] },
-];
+const DAYS = 14;
 
-const DATES = ["Jul 3", "Jul 4", "Jul 5", "Jul 6", "Jul 7", "Jul 8", "Jul 9", "Jul 10", "Jul 11", "Jul 12", "Jul 13", "Jul 14", "Jul 15", "Jul 16"];
+interface ApiPlatform {
+  platform: string;
+  series: Array<{ date: string; avgSentiment: string | null; count: number }>;
+  split: Record<string, number>;
+}
 
-// Mock positive / neutral / negative share of posts per platform.
-const PLATFORM_SPLIT: [label: string, color: string, pos: number, neu: number, neg: number][] = [
-  ["Reddit", "#ff5722", 48, 30, 22],
-  ["X", "#c9ccd1", 40, 28, 32],
-  ["TikTok", "#22d3ee", 58, 27, 15],
-  ["Instagram", "#ec4899", 62, 28, 10],
-  ["Threads", "#a78bfa", 55, 30, 15],
-  ["News", "#4f7cff", 44, 41, 15],
-];
+interface ChartData {
+  key: string;
+  label: string;
+  color: string;
+  values: (number | null)[]; // aligned to the shared date axis
+  counts: number[];
+  split: Record<string, number>;
+}
 
 // Chart geometry (viewBox 0 0 900 216)
 const X0 = 48;
@@ -32,7 +35,7 @@ const Y0 = 18;
 const Y1 = 190;
 const MID = (Y0 + Y1) / 2;
 const AMP = (Y1 - Y0) / 2;
-const N = DATES.length;
+const N = DAYS;
 const STEP = (X1 - X0) / (N - 1);
 const Y_TICKS = [1, 0.5, 0, -0.5, -1];
 const X_TICK_IDX = [0, 2, 4, 6, 8, 10, 12, 13];
@@ -42,25 +45,34 @@ const py = (s: number) => MID - s * AMP;
 
 function SentimentChart({
   chart,
+  dates,
   hoverIdx,
   onHover,
 }: {
-  chart: (typeof SERIES)[number];
+  chart: ChartData;
+  dates: string[];
   hoverIdx: number | null;
   onHover: (idx: number | null) => void;
 }) {
   const { key, label, color, values } = chart;
-  const line = values.map((s, i) => `${px(i).toFixed(1)},${py(s).toFixed(1)}`).join(" ");
-  const area =
-    `M ${X0} ${MID.toFixed(1)} L ` +
-    values.map((s, i) => `${px(i).toFixed(1)} ${py(s).toFixed(1)}`).join(" L ") +
-    ` L ${X1} ${MID.toFixed(1)} Z`;
-  const latest = values[values.length - 1];
+  const points = values
+    .map((s, i) => (s == null ? null : { i, s }))
+    .filter((p): p is { i: number; s: number } => p !== null);
 
+  const line = points.map((p) => `${px(p.i).toFixed(1)},${py(p.s).toFixed(1)}`).join(" ");
+  const area =
+    points.length >= 2
+      ? `M ${px(points[0].i).toFixed(1)} ${MID.toFixed(1)} L ` +
+        points.map((p) => `${px(p.i).toFixed(1)} ${py(p.s).toFixed(1)}`).join(" L ") +
+        ` L ${px(points[points.length - 1].i).toFixed(1)} ${MID.toFixed(1)} Z`
+      : null;
+  const latest = points.length > 0 ? points[points.length - 1].s : null;
+
+  const hoverVal = hoverIdx != null ? values[hoverIdx] : null;
   let tip: { x: number; y: number; tipX: number; tipY: number } | null = null;
-  if (hoverIdx != null) {
+  if (hoverIdx != null && hoverVal != null) {
     const x = px(hoverIdx);
-    const y = py(values[hoverIdx]);
+    const y = py(hoverVal);
     const tw = 118;
     let tipX = x - tw / 2;
     if (tipX < X0) tipX = X0;
@@ -77,9 +89,15 @@ function SentimentChart({
           <span className="an-chart-swatch" style={{ background: color }} />
           <span className="an-chart-label">{label}</span>
         </div>
-        <span className="an-chart-latest" style={{ color: sentColor(latest) }}>
-          latest {fmtScore(latest)}
-        </span>
+        {latest != null ? (
+          <span className="an-chart-latest" style={{ color: sentColor(latest) }}>
+            latest {fmtScore(latest)}
+          </span>
+        ) : (
+          <span className="an-chart-latest" style={{ color: "#5f6a80" }}>
+            no scored items
+          </span>
+        )}
       </div>
       <svg viewBox="0 0 900 216" className="an-chart-svg">
         <defs>
@@ -106,20 +124,22 @@ function SentimentChart({
             </foreignObject>
           </g>
         ))}
-        <path d={area} fill={`url(#an-cg-${key})`} />
-        <polyline
-          points={line}
-          fill="none"
-          stroke={color}
-          strokeWidth="2.4"
-          strokeLinejoin="round"
-          strokeLinecap="round"
-        />
-        {values.map((s, i) => (
+        {area && <path d={area} fill={`url(#an-cg-${key})`} />}
+        {points.length >= 2 && (
+          <polyline
+            points={line}
+            fill="none"
+            stroke={color}
+            strokeWidth="2.4"
+            strokeLinejoin="round"
+            strokeLinecap="round"
+          />
+        )}
+        {points.map((p) => (
           <circle
-            key={i}
-            cx={px(i)}
-            cy={py(s)}
+            key={p.i}
+            cx={px(p.i)}
+            cy={py(p.s)}
             r="2.6"
             fill={color}
             stroke="#12151d"
@@ -128,10 +148,10 @@ function SentimentChart({
         ))}
         {X_TICK_IDX.map((i) => (
           <foreignObject key={i} x={px(i) - 32} y={Y1 + 6} width={64} height={16}>
-            <div className="an-xtick-label">{DATES[i]}</div>
+            <div className="an-xtick-label">{fmtDay(dates[i])}</div>
           </foreignObject>
         ))}
-        {tip && hoverIdx != null && (
+        {tip && hoverIdx != null && hoverVal != null && (
           <g>
             <line
               x1={tip.x}
@@ -161,14 +181,9 @@ function SentimentChart({
             />
             <foreignObject x={tip.tipX} y={tip.tipY} width={118} height={28}>
               <div className="an-chart-tip">
-                <span className="an-chart-tip-date">{DATES[hoverIdx]}</span>
-                <span
-                  style={{
-                    color: sentColor(values[hoverIdx]),
-                    fontWeight: 600,
-                  }}
-                >
-                  {fmtScore(values[hoverIdx])}
+                <span className="an-chart-tip-date">{fmtDay(dates[hoverIdx])}</span>
+                <span style={{ color: sentColor(hoverVal), fontWeight: 600 }}>
+                  {fmtScore(hoverVal)}
                 </span>
               </div>
             </foreignObject>
@@ -192,7 +207,47 @@ function SentimentChart({
 }
 
 export default function SentimentPage() {
+  const { companyId } = useAnalyst();
   const [hover, setHover] = useState<{ key: string; idx: number } | null>(null);
+  const [charts, setCharts] = useState<ChartData[]>([]);
+  const [loadedKey, setLoadedKey] = useState<string | null>(null);
+  const dates = lastNDates(DAYS, todayPacific());
+
+  const loading = companyId != null && loadedKey !== companyId;
+
+  useEffect(() => {
+    if (!companyId) return;
+    let cancelled = false;
+    fetch(`/api/analyst/sentiment?companyId=${companyId}&days=${DAYS}`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+      .then((data: { platforms: ApiPlatform[] }) => {
+        if (cancelled) return;
+        const axis = lastNDates(DAYS, todayPacific());
+        setCharts(
+          (data.platforms ?? []).map((p) => {
+            const byDate = new Map(p.series.map((d) => [d.date, d]));
+            return {
+              key: p.platform,
+              label: platformMeta(p.platform).label,
+              color: platformMeta(p.platform).color,
+              values: axis.map((d) => {
+                const row = byDate.get(d);
+                return row?.avgSentiment != null ? Number(row.avgSentiment) : null;
+              }),
+              counts: axis.map((d) => byDate.get(d)?.count ?? 0),
+              split: p.split,
+            };
+          })
+        );
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setLoadedKey(companyId);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
@@ -200,44 +255,55 @@ export default function SentimentPage() {
         <div className="an-section-head">
           <h3 className="an-section-title">Sentiment over time</h3>
           <span className="an-section-hint">
-            Mean daily score · 14 days · hover for values
+            Mean daily score · {DAYS} days · hover for values
           </span>
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-          {SERIES.map((c) => (
+          {charts.map((c) => (
             <SentimentChart
               key={c.key}
               chart={c}
+              dates={dates}
               hoverIdx={hover?.key === c.key ? hover.idx : null}
               onHover={(idx) =>
                 setHover(idx == null ? null : { key: c.key, idx })
               }
             />
           ))}
+          {!loading && charts.length === 0 && (
+            <div className="an-empty">
+              No scored items yet — sentiment runs daily once items land.
+            </div>
+          )}
         </div>
       </section>
 
       <section className="an-section">
         <div className="an-section-head" style={{ marginBottom: 4 }}>
           <h3 className="an-section-title">Sentiment by platform</h3>
-          <span className="an-section-hint">Social · share of posts</span>
+          <span className="an-section-hint">Share of scored items</span>
         </div>
         <div className="an-section-hint" style={{ marginBottom: 18 }}>
           Positive · neutral · negative split
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          {PLATFORM_SPLIT.map(([label, color, pos, neu, neg]) => {
-            const score = (pos - neg) / 100;
+          {charts.map((c) => {
+            const pos = c.split.positive ?? 0;
+            const neu = (c.split.neutral ?? 0) + (c.split.mixed ?? 0);
+            const neg = c.split.negative ?? 0;
+            const total = pos + neu + neg;
+            if (total === 0) return null;
+            const score = (pos - neg) / total;
             return (
-              <div key={label}>
+              <div key={c.key}>
                 <div className="an-split-row-head">
                   <div className="an-chart-id">
                     <span
                       className="an-chart-swatch"
-                      style={{ background: color }}
+                      style={{ background: c.color }}
                     />
                     <span style={{ fontSize: 13, fontWeight: 500 }}>
-                      {label}
+                      {c.label}
                     </span>
                   </div>
                   <span
@@ -248,9 +314,9 @@ export default function SentimentPage() {
                   </span>
                 </div>
                 <div className="an-split-bar">
-                  <div style={{ width: `${pos}%`, background: "#34d399" }} />
-                  <div style={{ width: `${neu}%`, background: "#4b5568" }} />
-                  <div style={{ width: `${neg}%`, background: "#fb7185" }} />
+                  <div style={{ width: `${(pos / total) * 100}%`, background: "#34d399" }} />
+                  <div style={{ width: `${(neu / total) * 100}%`, background: "#4b5568" }} />
+                  <div style={{ width: `${(neg / total) * 100}%`, background: "#fb7185" }} />
                 </div>
               </div>
             );

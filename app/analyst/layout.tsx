@@ -1,6 +1,7 @@
 import { IBM_Plex_Sans, IBM_Plex_Mono } from "next/font/google";
 import { AnalystNav } from "@/components/analyst/AnalystNav";
 import { AnalystHeader } from "@/components/analyst/AnalystHeader";
+import { AnalystProvider } from "@/components/analyst/AnalystContext";
 import "./analyst.css";
 
 const plexSans = IBM_Plex_Sans({
@@ -20,12 +21,14 @@ export default function AnalystLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className={`an-shell ${plexSans.variable} ${plexMono.variable}`}>
-      <AnalystNav />
-      <main className="an-main">
-        <AnalystHeader />
-        <div className="an-content">{children}</div>
-      </main>
-    </div>
+    <AnalystProvider>
+      <div className={`an-shell ${plexSans.variable} ${plexMono.variable}`}>
+        <AnalystNav />
+        <main className="an-main">
+          <AnalystHeader />
+          <div className="an-content">{children}</div>
+        </main>
+      </div>
+    </AnalystProvider>
   );
 }

@@ -1,19 +1,17 @@
 /* ==========================================================================
-   Analyst UI — shared types, metadata, and mock data.
-
-   Everything here is a stand-in until the database redesign lands:
-   - PlatformMeta.key will map to the platform enum on ingested items
-   - TopicMeta will map to tracked entities (topics = tracked_entities)
-   - RAW_ITEMS / series / group counts will come from API queries
+   Analyst UI — shared platform metadata, topic colors, and formatters.
+   Data comes from /api/analyst/*; this file holds only presentation helpers.
    ========================================================================== */
 
 export type PlatformKey =
-  | "reddit"
-  | "x"
+  | "twitter"
   | "threads"
+  | "reddit"
   | "instagram"
-  | "tiktok"
-  | "news";
+  | "facebook"
+  | "linkedin"
+  | "news"
+  | "manual";
 
 export type PlatformMeta = {
   key: PlatformKey;
@@ -24,64 +22,31 @@ export type PlatformMeta = {
 
 export const PLATFORMS: PlatformMeta[] = [
   { key: "reddit", label: "Reddit", tag: "r/", color: "#ff5722" },
-  { key: "x", label: "X", tag: "X", color: "#c9ccd1" },
+  { key: "twitter", label: "X", tag: "X", color: "#c9ccd1" },
   { key: "threads", label: "Threads", tag: "@", color: "#a78bfa" },
   { key: "instagram", label: "Instagram", tag: "IG", color: "#ec4899" },
-  { key: "tiktok", label: "TikTok", tag: "TT", color: "#22d3ee" },
+  { key: "facebook", label: "Facebook", tag: "f", color: "#60a5fa" },
+  { key: "linkedin", label: "LinkedIn", tag: "in", color: "#38bdf8" },
   { key: "news", label: "News", tag: "RSS", color: "#4f7cff" },
+  { key: "manual", label: "Manual", tag: "✂", color: "#7b8398" },
 ];
 
-/** Topics map to tracked entities once real data is wired in. */
-export type TopicMeta = { key: string; label: string; color: string };
+const FALLBACK_PLATFORM: PlatformMeta = { key: "manual", label: "Other", tag: "•", color: "#7b8398" };
 
-export const TOPICS: TopicMeta[] = [
-  { key: "su", label: "Streamer University", color: "#4f7cff" },
-  { key: "kc", label: "Kai Cenat", color: "#34d399" },
-  { key: "sub", label: "Subathon", color: "#f59e0b" },
-  { key: "amp", label: "AMP", color: "#a78bfa" },
-  { key: "rivals", label: "Twitch Rivals", color: "#22d3ee" },
-  { key: "collab", label: "Collabs", color: "#ec4899" },
-];
+export function platformMeta(key: string): PlatformMeta {
+  return PLATFORMS.find((p) => p.key === key) ?? FALLBACK_PLATFORM;
+}
 
-export type RawItem = {
-  platform: PlatformKey;
-  author: string;
-  text: string;
-  topic: string;
-  sentiment: number; // -1..1, mirrors ingested_items.sentiment_score
-  engagement: string;
-  timeAgo: string;
-};
+/* ─── Topic colors — stable per topic id/label ───────────────────────── */
 
-export const RAW_ITEMS: RawItem[] = [
-  { platform: "reddit", author: "r/Kai_Cenat", text: "The Streamer University lineup leaked and it is actually stacked 🔥", topic: "su", sentiment: 0.82, engagement: "4.2k", timeAgo: "2h" },
-  { platform: "x", author: "@clipsdaily", text: "streamer university about to break twitch again lol", topic: "su", sentiment: 0.6, engagement: "1.1k", timeAgo: "3h" },
-  { platform: "tiktok", author: "@streamtok", text: "POV: you just got your Streamer University acceptance", topic: "su", sentiment: 0.88, engagement: "82k", timeAgo: "4h" },
-  { platform: "news", author: "Dexerto", text: "Kai Cenat confirms Streamer University 2 after record applications", topic: "su", sentiment: 0.7, engagement: "—", timeAgo: "5h" },
-  { platform: "reddit", author: "r/LivestreamFail", text: "Subathon day 12 numbers are lower than last year peak", topic: "sub", sentiment: -0.35, engagement: "2.8k", timeAgo: "6h" },
-  { platform: "x", author: "@esportsheat", text: "why is everyone pretending streamer university is deep, it is a summer camp", topic: "su", sentiment: -0.55, engagement: "640", timeAgo: "7h" },
-  { platform: "threads", author: "@kai.updates", text: "Kai really built a whole institution for streamers, insane growth", topic: "kc", sentiment: 0.75, engagement: "980", timeAgo: "9h" },
-  { platform: "instagram", author: "@amp.world", text: "Behind the scenes at Streamer U 📸", topic: "su", sentiment: 0.62, engagement: "12k", timeAgo: "11h" },
-  { platform: "tiktok", author: "@dramaalert2", text: "streamer university is lowkey cringe idk", topic: "su", sentiment: -0.6, engagement: "24k", timeAgo: "13h" },
-  { platform: "news", author: "Dot Esports", text: "Streamer University faces backlash over guest selection", topic: "su", sentiment: -0.45, engagement: "—", timeAgo: "15h" },
-  { platform: "reddit", author: "r/Twitch", text: "AMP collab announcement during the subathon was huge", topic: "amp", sentiment: 0.68, engagement: "1.9k", timeAgo: "18h" },
-  { platform: "x", author: "@kaicenathive", text: "Kai Cenat subathon raised money for charity again, respect", topic: "sub", sentiment: 0.72, engagement: "3.4k", timeAgo: "20h" },
-  { platform: "tiktok", author: "@clipcentral", text: "Fanum and Kai on Twitch Rivals was unreal", topic: "rivals", sentiment: 0.65, engagement: "56k", timeAgo: "22h" },
-  { platform: "threads", author: "@streamscene", text: "not sure Streamer University lives up to the hype tbh", topic: "su", sentiment: -0.3, engagement: "410", timeAgo: "1d" },
-  { platform: "instagram", author: "@kaicenat", text: "SU commencement 🎓 thank you to everyone who showed up", topic: "su", sentiment: 0.8, engagement: "220k", timeAgo: "1d" },
-  { platform: "news", author: "IGN", text: "Kai Cenat Streamer University draws millions of concurrent viewers", topic: "su", sentiment: 0.55, engagement: "—", timeAgo: "1d" },
-  { platform: "x", author: "@twitchmetrics", text: "Kai Cenat peaks #1 on Twitch during Streamer University week", topic: "kc", sentiment: 0.5, engagement: "2.2k", timeAgo: "2d" },
-  { platform: "reddit", author: "r/LivestreamFail", text: "Collab lineup for SU is mid ngl", topic: "collab", sentiment: -0.4, engagement: "1.3k", timeAgo: "2d" },
-];
+const TOPIC_PALETTE = ["#4f7cff", "#34d399", "#f59e0b", "#a78bfa", "#22d3ee", "#ec4899", "#fb7185", "#facc15"];
 
-export const HEADER_CHIPS: { label: string; on: boolean }[] = [
-  { label: "Kai Cenat", on: true },
-  { label: "Streamer University", on: true },
-  { label: "Subathon", on: false },
-];
-
-export const TOTAL_ITEMS = "4,812";
-export const LAST_SYNC = "2m ago";
+export function topicColor(idOrLabel: string | null | undefined): string {
+  if (!idOrLabel) return "#7b8398";
+  let h = 0;
+  for (let i = 0; i < idOrLabel.length; i++) h = (h * 31 + idOrLabel.charCodeAt(i)) >>> 0;
+  return TOPIC_PALETTE[h % TOPIC_PALETTE.length];
+}
 
 /* ─── Sentiment helpers ──────────────────────────────────────────────── */
 
@@ -123,18 +88,76 @@ export function sentLabel(s: number): string {
   return s >= 0.15 ? "Positive" : s <= -0.15 ? "Negative" : "Neutral";
 }
 
-export function platformMeta(key: PlatformKey): PlatformMeta {
-  return PLATFORMS.find((p) => p.key === key)!;
+/* ─── Formatters ─────────────────────────────────────────────────────── */
+
+export function fmtCount(n: number | null | undefined): string {
+  if (n == null || n === 0) return "—";
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}m`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1).replace(/\.0$/, "")}k`;
+  return String(n);
 }
 
-export function topicMeta(key: string): TopicMeta {
-  return TOPICS.find((t) => t.key === key)!;
+export function timeAgo(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const diff = Date.now() - new Date(iso).getTime();
+  if (isNaN(diff)) return "—";
+  const minutes = Math.floor(diff / 60000);
+  if (minutes < 1) return "now";
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d`;
+  return `${Math.floor(days / 30)}mo`;
 }
 
-export function parseEngagement(e: string): number {
-  if (!e || e === "—") return 0;
-  const m = e.toLowerCase();
-  if (m.endsWith("k")) return parseFloat(m) * 1000;
-  if (m.endsWith("m")) return parseFloat(m) * 1_000_000;
-  return parseFloat(m) || 0;
+/** "2026-07-16" → "Jul 16" */
+export function fmtDay(dateStr: string): string {
+  const d = new Date(`${dateStr}T12:00:00`);
+  if (isNaN(d.getTime())) return dateStr;
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+/** Today's date in the analyst's timezone (Pacific bucketing on the server). */
+export function todayPacific(): string {
+  return new Date().toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
+}
+
+/** N consecutive dates (YYYY-MM-DD) ending at `end` inclusive. */
+export function lastNDates(n: number, end: string): string[] {
+  const out: string[] = [];
+  const endDate = new Date(`${end}T12:00:00Z`);
+  for (let i = n - 1; i >= 0; i--) {
+    out.push(new Date(endDate.getTime() - i * 86_400_000).toISOString().slice(0, 10));
+  }
+  return out;
+}
+
+/* ─── API row types (shared across views) ────────────────────────────── */
+
+export interface AnalystItem {
+  id: string;
+  platform: PlatformKey;
+  kind: "post" | "comment";
+  url: string | null;
+  author: string | null;
+  title: string | null;
+  body: string | null;
+  publishedAt: string | null;
+  createdAt: string;
+  topicId: string | null;
+  topicLabel: string | null;
+  sentimentScore: number | null;
+  sentimentLabel: string | null;
+  reach: number;
+}
+
+export interface Topic {
+  id: string;
+  label: string;
+}
+
+export interface Company {
+  id: string;
+  name: string;
 }

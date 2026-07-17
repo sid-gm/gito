@@ -1,48 +1,45 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useAnalyst } from "@/components/analyst/AnalystContext";
 import {
-  RAW_ITEMS,
   platformMeta,
   bubbleColor,
   sentColor,
   fmtScore,
-  parseEngagement,
+  fmtCount,
+  fmtDay,
+  lastNDates,
+  todayPacific,
 } from "@/components/analyst/data";
 
 type BubbleMode = "topic" | "platform";
 type Granularity = "day" | "week";
 
-const DAY_LABELS = ["Jul 3", "Jul 4", "Jul 5", "Jul 6", "Jul 7", "Jul 8", "Jul 9", "Jul 10", "Jul 11", "Jul 12", "Jul 13", "Jul 14", "Jul 15", "Jul 16"];
-const DAY_SHARES = [5, 6, 7, 8, 10, 9, 6, 5, 7, 8, 9, 11, 7, 5];
-const WEEK_LABELS = ["Jun 23 – 29", "Jun 30 – Jul 6", "Jul 7 – 13", "Jul 14 – 20"];
-const WEEK_SHARES = [18, 24, 33, 25];
+interface ApiStory {
+  id: string;
+  platform: string;
+  title: string | null;
+  body: string | null;
+  url: string | null;
+  author: string | null;
+  sentimentScore: number | null;
+  reach: number;
+}
 
-// Mock cluster volumes — becomes grouped counts per period after the DB redesign.
-const CLUSTER_BASE: Record<BubbleMode, [key: string, label: string, count: number, sent: number][]> = {
-  topic: [
-    ["su", "Streamer University", 1980, 0.3],
-    ["kc", "Kai Cenat", 1240, 0.42],
-    ["sub", "Subathon", 610, -0.22],
-    ["amp", "AMP", 380, 0.25],
-    ["rivals", "Twitch Rivals", 340, 0.18],
-    ["collab", "Collabs", 262, -0.15],
-  ],
-  platform: [
-    ["reddit", "Reddit", 1420, 0.26],
-    ["x", "X", 1180, 0.08],
-    ["tiktok", "TikTok", 960, 0.43],
-    ["instagram", "Instagram", 540, 0.52],
-    ["threads", "Threads", 410, 0.4],
-    ["news", "News", 302, 0.29],
-  ],
-};
+interface ApiBubble {
+  bucket: string;
+  count: number;
+  avgSentiment: string | null;
+  topStories: ApiStory[];
+}
 
 type Placed = {
   key: string;
   label: string;
   count: number;
   sent: number;
+  stories: ApiStory[];
   r: number;
   x: number;
   y: number;
@@ -50,7 +47,7 @@ type Placed = {
 
 /** Greedy circle packing: largest first, each next circle hugs the pack near the center. */
 function packCircles(
-  clusters: { key: string; label: string; count: number; sent: number }[]
+  clusters: { key: string; label: string; count: number; sent: number; stories: ApiStory[] }[]
 ): Placed[] {
   const max = Math.max(1, ...clusters.map((c) => c.count));
   const circles = clusters
@@ -96,35 +93,72 @@ const VH = 520;
 const AW = 832;
 const AH = 472;
 
+const DAY_COUNT = 14;
+const WEEK_COUNT = 4;
+
 export default function BubblesPage() {
+  const { companyId } = useAnalyst();
   const [mode, setMode] = useState<BubbleMode>("platform");
   const [gran, setGran] = useState<Granularity>("day");
   const [periodIdx, setPeriodIdx] = useState<number | null>(null);
-  const [selected, setSelected] = useState<{
-    type: BubbleMode;
-    key: string;
-    label: string;
-  } | null>(null);
+  const [bubbles, setBubbles] = useState<ApiBubble[]>([]);
+  const [loadedKey, setLoadedKey] = useState<string | null>(null);
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
 
-  const labels = gran === "day" ? DAY_LABELS : WEEK_LABELS;
-  const shares = gran === "day" ? DAY_SHARES : WEEK_SHARES;
-  const shareSum = shares.reduce((a, b) => a + b, 0);
-  const count = labels.length;
+  // Periods: 14 single days, or 4 rolling 7-day windows, ending today (Pacific)
+  const periods = useMemo(() => {
+    const today = todayPacific();
+    if (gran === "day") {
+      return lastNDates(DAY_COUNT, today).map((d) => ({
+        end: d,
+        label: fmtDay(d),
+        sub: "" as string,
+      }));
+    }
+    const ends = lastNDates(WEEK_COUNT * 7, today).filter((_, i) => (i + 1) % 7 === 0);
+    return ends.map((end) => {
+      const start = lastNDates(7, end)[0];
+      return { end, label: `${fmtDay(start)} – ${fmtDay(end)}`, sub: "" };
+    });
+  }, [gran]);
+
+  const count = periods.length;
   const pidx = Math.min(Math.max(periodIdx ?? count - 1, 0), count - 1);
-  const share = shares[pidx] / shareSum;
+  const period = periods[pidx];
 
-  const clusters = CLUSTER_BASE[mode]
-    .map(([key, label, base, sent], i) => {
-      // Deterministic per-period jitter so scrubbing feels alive without randomness.
-      const jitter = (((i * 7 + pidx * 11) % 9) - 4) / 45;
-      return {
-        key,
-        label,
-        count: Math.max(0, Math.round(base * share)),
-        sent: Math.max(-1, Math.min(1, sent + jitter)),
-      };
-    })
-    .filter((c) => c.count > 0);
+  const queryKey = `${companyId}|${mode}|${gran}|${period.end}`;
+  const loading = companyId != null && loadedKey !== queryKey;
+
+  useEffect(() => {
+    if (!companyId) return;
+    let cancelled = false;
+    const key = `${companyId}|${mode}|${gran}|${period.end}`;
+    fetch(
+      `/api/analyst/bubbles?companyId=${companyId}&by=${mode}&gran=${gran}&period=${period.end}`
+    )
+      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+      .then((data: { bubbles: ApiBubble[] }) => {
+        if (cancelled) return;
+        setBubbles(data.bubbles ?? []);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setLoadedKey(key);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId, mode, gran, period.end]);
+
+  const clusters = bubbles
+    .filter((b) => b.count > 0)
+    .map((b) => ({
+      key: b.bucket,
+      label: mode === "platform" ? platformMeta(b.bucket).label : b.bucket,
+      count: b.count,
+      sent: b.avgSentiment != null ? Math.max(-1, Math.min(1, Number(b.avgSentiment))) : 0,
+      stories: b.topStories ?? [],
+    }));
 
   const placed = packCircles(clusters);
   const minX = Math.min(...placed.map((c) => c.x - c.r));
@@ -137,19 +171,10 @@ export default function BubblesPage() {
   const offX = (VW - bw * scale) / 2;
   const offY = (VH - bh * scale) / 2;
 
-  const scrubLabel = `${labels[pidx]}, 2026`;
+  const selected = placed.find((c) => c.key === selectedKey) ?? null;
+  const scrubLabel = period.label;
   const scrubSub =
     gran === "day" ? `Day ${pidx + 1} of ${count}` : `Week ${pidx + 1} of ${count}`;
-
-  const stories = selected
-    ? RAW_ITEMS.filter((r) =>
-        selected.type === "topic"
-          ? r.topic === selected.key
-          : r.platform === selected.key
-      )
-        .sort((a, b) => parseEngagement(b.engagement) - parseEngagement(a.engagement))
-        .slice(0, 5)
-    : [];
 
   const segBtn = (on: boolean) => `an-seg-btn${on ? " an-seg-btn-on" : ""}`;
 
@@ -161,7 +186,7 @@ export default function BubblesPage() {
             className={segBtn(mode === "topic")}
             onClick={() => {
               setMode("topic");
-              setSelected(null);
+              setSelectedKey(null);
             }}
           >
             By topic
@@ -170,7 +195,7 @@ export default function BubblesPage() {
             className={segBtn(mode === "platform")}
             onClick={() => {
               setMode("platform");
-              setSelected(null);
+              setSelectedKey(null);
             }}
           >
             By platform
@@ -182,7 +207,7 @@ export default function BubblesPage() {
             onClick={() => {
               setGran("day");
               setPeriodIdx(null);
-              setSelected(null);
+              setSelectedKey(null);
             }}
           >
             Day
@@ -192,7 +217,7 @@ export default function BubblesPage() {
             onClick={() => {
               setGran("week");
               setPeriodIdx(null);
-              setSelected(null);
+              setSelectedKey(null);
             }}
           >
             Week
@@ -225,10 +250,10 @@ export default function BubblesPage() {
           <div className="an-scrub-sub">{scrubSub}</div>
         </div>
         <div className="an-scrub-ticks">
-          {labels.map((l, i) => (
+          {periods.map((p, i) => (
             <button
-              key={l}
-              aria-label={l}
+              key={p.end}
+              aria-label={p.label}
               className={`an-scrub-tick${i === pidx ? " an-scrub-tick-on" : ""}`}
               onClick={() => setPeriodIdx(i)}
             />
@@ -244,76 +269,78 @@ export default function BubblesPage() {
       </div>
 
       <div className="an-bubble-stage">
-        <svg viewBox={`0 0 ${VW} ${VH}`} className="an-bubble-svg">
-          {placed.map((c) => {
-            const cx = (c.x - minX) * scale + offX;
-            const cy = (c.y - minY) * scale + offY;
-            const r = c.r * scale;
-            const col = bubbleColor(c.sent);
-            const isSel = selected?.key === c.key;
-            return (
-              <circle
-                key={c.key}
-                cx={cx}
-                cy={cy}
-                r={r}
-                fill={col.fill}
-                stroke={isSel ? "#e9edf5" : col.stroke}
-                strokeWidth={isSel ? 3.5 : 1.5}
-                style={{ cursor: "pointer" }}
-                onClick={() =>
-                  setSelected((s) =>
-                    s?.key === c.key
-                      ? null
-                      : { type: mode, key: c.key, label: c.label }
-                  )
-                }
-              />
-            );
-          })}
-          {placed.map((c) => {
-            const cx = (c.x - minX) * scale + offX;
-            const cy = (c.y - minY) * scale + offY;
-            const r = c.r * scale;
-            const fs = Math.max(10.5, Math.min(19, r * 0.26));
-            return (
-              <foreignObject
-                key={c.key}
-                x={cx - r}
-                y={cy - r}
-                width={2 * r}
-                height={2 * r}
-              >
-                <div
-                  className="an-bubble-fo-wrap"
-                  style={{ padding: Math.round(r * 0.2) }}
+        {placed.length > 0 ? (
+          <svg viewBox={`0 0 ${VW} ${VH}`} className="an-bubble-svg">
+            {placed.map((c) => {
+              const cx = (c.x - minX) * scale + offX;
+              const cy = (c.y - minY) * scale + offY;
+              const r = c.r * scale;
+              const col = bubbleColor(c.sent);
+              const isSel = selectedKey === c.key;
+              return (
+                <circle
+                  key={c.key}
+                  cx={cx}
+                  cy={cy}
+                  r={r}
+                  fill={col.fill}
+                  stroke={isSel ? "#e9edf5" : col.stroke}
+                  strokeWidth={isSel ? 3.5 : 1.5}
+                  style={{ cursor: "pointer" }}
+                  onClick={() =>
+                    setSelectedKey((k) => (k === c.key ? null : c.key))
+                  }
+                />
+              );
+            })}
+            {placed.map((c) => {
+              const cx = (c.x - minX) * scale + offX;
+              const cy = (c.y - minY) * scale + offY;
+              const r = c.r * scale;
+              const fs = Math.max(10.5, Math.min(19, r * 0.26));
+              return (
+                <foreignObject
+                  key={c.key}
+                  x={cx - r}
+                  y={cy - r}
+                  width={2 * r}
+                  height={2 * r}
                 >
                   <div
-                    style={{
-                      fontWeight: 600,
-                      fontSize: fs,
-                      lineHeight: 1.15,
-                      letterSpacing: "-0.01em",
-                      color: "#1a1c1a",
-                    }}
+                    className="an-bubble-fo-wrap"
+                    style={{ padding: Math.round(r * 0.2) }}
                   >
-                    {c.label}
+                    <div
+                      style={{
+                        fontWeight: 600,
+                        fontSize: fs,
+                        lineHeight: 1.15,
+                        letterSpacing: "-0.01em",
+                        color: "#1a1c1a",
+                      }}
+                    >
+                      {c.label}
+                    </div>
+                    <div
+                      className="an-mono"
+                      style={{
+                        fontSize: fs * 0.72,
+                        color: "rgba(20,22,20,0.55)",
+                        marginTop: 4,
+                      }}
+                    >
+                      {c.count.toLocaleString()} items
+                    </div>
                   </div>
-                  <div
-                    className="an-mono"
-                    style={{
-                      fontSize: fs * 0.72,
-                      color: "rgba(20,22,20,0.55)",
-                      marginTop: 4,
-                    }}
-                  >
-                    {c.count.toLocaleString()} items
-                  </div>
-                </div>
-              </foreignObject>
-            );
-          })}
-        </svg>
+                </foreignObject>
+              );
+            })}
+          </svg>
+        ) : (
+          <div className="an-empty" style={{ padding: "80px 0" }}>
+            {loading ? "Loading…" : "No items in this period."}
+          </div>
+        )}
       </div>
 
       {selected && (
@@ -324,21 +351,22 @@ export default function BubblesPage() {
                 Top stories · {selected.label}
               </div>
               <div className="an-stories-sub">
-                {selected.type === "topic" ? "Topic" : "Platform"} · {scrubLabel}
-                {stories.length === 0 ? " · no items in window" : ""}
+                {mode === "topic" ? "Topic" : "Platform"} · {scrubLabel}
+                {selected.stories.length === 0 ? " · no items in window" : ""}
               </div>
             </div>
             <button
               className="an-stories-close"
-              onClick={() => setSelected(null)}
+              onClick={() => setSelectedKey(null)}
             >
               Close
             </button>
           </div>
-          {stories.map((s, i) => {
+          {selected.stories.map((s) => {
             const pm = platformMeta(s.platform);
+            const text = [s.title, s.body].filter(Boolean).join(" — ");
             return (
-              <div key={i} className="an-story-row">
+              <div key={s.id} className="an-story-row">
                 <div>
                   <span
                     className="an-tag"
@@ -348,22 +376,34 @@ export default function BubblesPage() {
                   </span>
                 </div>
                 <div className="an-cell-source">
-                  <div className="an-cell-author">{s.author}</div>
-                  <div className="an-cell-meta">
-                    {pm.label} · {s.timeAgo}
-                  </div>
+                  <div className="an-cell-author">{s.author ?? "—"}</div>
+                  <div className="an-cell-meta">{pm.label}</div>
                 </div>
-                <div className="an-cell-text">{s.text}</div>
+                <div className="an-cell-text">
+                  {s.url ? (
+                    <a href={s.url} target="_blank" rel="noreferrer" className="an-cell-link">
+                      {text || s.url}
+                    </a>
+                  ) : (
+                    text || "—"
+                  )}
+                </div>
                 <div className="an-cell-sent">
-                  <span
-                    className="an-sent-dot"
-                    style={{ background: sentColor(s.sentiment) }}
-                  />
-                  <span className="an-cell-sent-score">
-                    {fmtScore(s.sentiment)}
-                  </span>
+                  {s.sentimentScore != null ? (
+                    <>
+                      <span
+                        className="an-sent-dot"
+                        style={{ background: sentColor(s.sentimentScore) }}
+                      />
+                      <span className="an-cell-sent-score">
+                        {fmtScore(s.sentimentScore)}
+                      </span>
+                    </>
+                  ) : (
+                    <span className="an-cell-meta">pending</span>
+                  )}
                 </div>
-                <div className="an-cell-eng">{s.engagement}</div>
+                <div className="an-cell-eng">{fmtCount(s.reach)}</div>
               </div>
             );
           })}
