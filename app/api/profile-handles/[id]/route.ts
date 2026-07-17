@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { trackedUserHandles } from "@/lib/db/schema";
+import { profileHandles } from "@/lib/db/schema";
 import { and, eq } from "drizzle-orm";
 
 export async function DELETE(
@@ -12,9 +12,9 @@ export async function DELETE(
   const companyId = searchParams.get("companyId");
 
   const where = companyId
-    ? and(eq(trackedUserHandles.id, id), eq(trackedUserHandles.companyId, companyId))
-    : eq(trackedUserHandles.id, id);
+    ? and(eq(profileHandles.id, id), eq(profileHandles.companyId, companyId))
+    : eq(profileHandles.id, id);
 
-  await db.delete(trackedUserHandles).where(where);
+  await db.delete(profileHandles).where(where);
   return NextResponse.json({ ok: true });
 }

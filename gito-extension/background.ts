@@ -34,8 +34,7 @@ interface ServerContext {
   topics: Array<{ id: string; label: string }>;
   keywords: Array<{ id: string; term: string; platforms: string[]; topicId: string | null }>;
   redditSubreddits: Array<{ subredditName: string; sorts: string[]; keywordFilters: string[] }>;
-  twitterAccounts: string[];
-  trackedProfiles: Array<{ platform: string; username: string }>;
+  profiles: Array<{ platform: string; username: string }>;
   trackedThreads: Array<{ url: string; platform: string; externalId?: string | null; topicId?: string | null }>;
   settings: {
     intervalMinutes: number;
@@ -391,14 +390,14 @@ function buildSessions(ctx: ServerContext): Session[] {
     sessions.push({ type: "thread", platform: t.platform, url: t.url, externalId: t.externalId, topicId: t.topicId });
   }
 
-  for (const handle of ctx.twitterAccounts) {
-    if (paused.has("twitter")) break;
-    sessions.push({ type: "profile", platform: "twitter", username: handle });
-  }
-  for (const p of ctx.trackedProfiles) {
+  // Profile timelines — collectors exist for twitter + threads only.
+  const seenProfiles = new Set<string>();
+  for (const p of ctx.profiles ?? []) {
     if (p.platform !== "twitter" && p.platform !== "threads") continue;
     if (paused.has(p.platform)) continue;
-    if (p.platform === "twitter" && ctx.twitterAccounts.includes(p.username)) continue;
+    const key = `${p.platform}:${p.username.toLowerCase()}`;
+    if (seenProfiles.has(key)) continue;
+    seenProfiles.add(key);
     sessions.push({ type: "profile", platform: p.platform, username: p.username });
   }
 

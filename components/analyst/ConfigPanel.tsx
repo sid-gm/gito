@@ -28,11 +28,6 @@ interface Subreddit {
   isActive: boolean;
 }
 
-interface Handle {
-  id: string;
-  handle: string;
-}
-
 interface Profile {
   id: string;
   platform: string;
@@ -479,33 +474,24 @@ function SubredditsCard({ companyId }: { companyId: string }) {
   );
 }
 
-/* ── Handles & profiles ─────────────────────────────────────────────── */
+/* ── Tracked profiles ───────────────────────────────────────────────── */
+
+// Profile timelines are collected by opening the account page and scraping it;
+// collectors exist for X and Threads only.
+const PROFILE_PLATFORMS = ["twitter", "threads"] as const;
 
 function ProfilesCard({ companyId }: { companyId: string }) {
-  const handlesRes = useFetched<Handle[]>(`/api/twitter-handles?companyId=${companyId}`);
-  const profilesRes = useFetched<Profile[]>(`/api/user-handles?companyId=${companyId}`);
-  const handles = handlesRes.data ?? [];
+  const profilesRes = useFetched<Profile[]>(`/api/profile-handles?companyId=${companyId}`);
   const profiles = profilesRes.data ?? [];
-  const load = () => {
-    handlesRes.refresh();
-    profilesRes.refresh();
-  };
-  const [newHandle, setNewHandle] = useState("");
-  const [newProfile, setNewProfile] = useState("");
-  const [newProfilePlatform, setNewProfilePlatform] = useState("threads");
+  const load = () => profilesRes.refresh();
 
-  async function addHandle() {
-    const handle = newHandle.trim();
-    if (!handle) return;
-    await jfetch("/api/twitter-handles", { method: "POST", body: JSON.stringify({ companyId, handle }) });
-    setNewHandle("");
-    load();
-  }
+  const [newProfile, setNewProfile] = useState("");
+  const [newProfilePlatform, setNewProfilePlatform] = useState<string>("twitter");
 
   async function addProfile() {
     const username = newProfile.trim();
     if (!username) return;
-    await jfetch("/api/user-handles", {
+    await jfetch("/api/profile-handles", {
       method: "POST",
       body: JSON.stringify({ companyId, platform: newProfilePlatform, username }),
     });
@@ -515,30 +501,16 @@ function ProfilesCard({ companyId }: { companyId: string }) {
 
   return (
     <section className="an-source-card">
-      <CardHead title="Tracked profiles" hint="Timelines collected every run (X handles + other platforms)" />
+      <CardHead title="Tracked profiles" hint="Account timelines scraped every run — X and Threads" />
       <div className="an-cfg-block">
         <div className="an-cfg-chipset">
-          {handles.map((h) => (
-            <span key={h.id} className="an-chip an-chip-x">
-              @{h.handle} · X
-              <button
-                type="button"
-                onClick={async () => {
-                  await jfetch(`/api/twitter-handles/${h.id}?companyId=${companyId}`, { method: "DELETE" });
-                  load();
-                }}
-              >
-                ×
-              </button>
-            </span>
-          ))}
           {profiles.map((p) => (
             <span key={p.id} className="an-chip an-chip-x">
               @{p.username} · {platformMeta(p.platform).label}
               <button
                 type="button"
                 onClick={async () => {
-                  await jfetch(`/api/user-handles/${p.id}?companyId=${companyId}`, { method: "DELETE" });
+                  await jfetch(`/api/profile-handles/${p.id}?companyId=${companyId}`, { method: "DELETE" });
                   load();
                 }}
               >
@@ -546,20 +518,10 @@ function ProfilesCard({ companyId }: { companyId: string }) {
               </button>
             </span>
           ))}
-          {handles.length === 0 && profiles.length === 0 && (
+          {profiles.length === 0 && (
             <span className="an-feed-meta">no tracked profiles</span>
           )}
         </div>
-      </div>
-      <div className="an-cfg-form">
-        <input
-          className="an-input"
-          placeholder="@handle on X"
-          value={newHandle}
-          onChange={(e) => setNewHandle(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && addHandle()}
-        />
-        <button type="button" className="an-btn" onClick={addHandle}>Add X handle</button>
       </div>
       <div className="an-cfg-form">
         <select
@@ -567,7 +529,7 @@ function ProfilesCard({ companyId }: { companyId: string }) {
           value={newProfilePlatform}
           onChange={(e) => setNewProfilePlatform(e.target.value)}
         >
-          {SOCIAL_PLATFORMS.filter((p) => p !== "twitter").map((p) => (
+          {PROFILE_PLATFORMS.map((p) => (
             <option key={p} value={p}>{platformMeta(p).label}</option>
           ))}
         </select>

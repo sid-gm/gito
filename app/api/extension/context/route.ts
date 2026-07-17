@@ -5,8 +5,7 @@ import {
   topics,
   collectKeywords,
   redditSubreddits,
-  twitterHandles,
-  trackedUserHandles,
+  profileHandles,
   trackedThreads,
   collectSettings,
 } from "@/lib/db/schema";
@@ -46,7 +45,7 @@ export async function GET(req: Request) {
     .from(collectSettings)
     .where(eq(collectSettings.companyId, companyId));
 
-  const [topicRows, keywords, subreddits, handles, userHandles, threads] = await Promise.all([
+  const [topicRows, keywords, subreddits, profiles, threads] = await Promise.all([
     db
       .select({ id: topics.id, label: topics.label })
       .from(topics)
@@ -70,13 +69,9 @@ export async function GET(req: Request) {
       .from(redditSubreddits)
       .where(and(eq(redditSubreddits.companyId, companyId), eq(redditSubreddits.isActive, true))),
     db
-      .select({ handle: twitterHandles.handle })
-      .from(twitterHandles)
-      .where(eq(twitterHandles.companyId, companyId)),
-    db
-      .select({ platform: trackedUserHandles.platform, username: trackedUserHandles.username })
-      .from(trackedUserHandles)
-      .where(eq(trackedUserHandles.companyId, companyId)),
+      .select({ platform: profileHandles.platform, username: profileHandles.username })
+      .from(profileHandles)
+      .where(eq(profileHandles.companyId, companyId)),
     db
       .select({
         url: trackedThreads.postUrl,
@@ -95,8 +90,12 @@ export async function GET(req: Request) {
       topics: topicRows,
       keywords,
       redditSubreddits: subreddits,
-      twitterAccounts: handles.map((h) => h.handle),
-      trackedProfiles: userHandles,
+      // Canonical: every tracked profile timeline, one row per (platform, username).
+      profiles,
+      // Transitional aliases for extension builds from before the profile_handles
+      // merge — safe to remove once every worker has reloaded.
+      twitterAccounts: profiles.filter((p) => p.platform === "twitter").map((p) => p.username),
+      trackedProfiles: profiles,
       trackedThreads: threads,
       settings: {
         intervalMinutes: settings.intervalMinutes,

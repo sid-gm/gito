@@ -134,20 +134,16 @@ export const redditSubreddits = pgTable("reddit_subreddits", {
   check("reddit_subreddits_sorts_check", sql`${t.sorts} <@ ARRAY['new','hot']::text[]`),
 ]);
 
-export const twitterHandles = pgTable("twitter_handles", {
-  id:        uuid("id").defaultRandom().primaryKey(),
-  companyId: uuid("company_id").references(() => companies.id, { onDelete: "cascade" }).notNull(),
-  handle:    text("handle").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-}, (t) => [unique("twitter_handles_company_handle_unique").on(t.companyId, t.handle)]);
-
-export const trackedUserHandles = pgTable("tracked_user_handles", {
+// Profile timelines to collect every run, one row per (platform, username).
+// Consolidates the old twitter-only `twitter_handles` table into this generic
+// one — profile collectors currently exist for twitter + threads.
+export const profileHandles = pgTable("profile_handles", {
   id:        uuid("id").defaultRandom().primaryKey(),
   companyId: uuid("company_id").references(() => companies.id, { onDelete: "cascade" }).notNull(),
   platform:  platformEnum("platform").notNull(),
   username:  text("username").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-}, (t) => [unique("tracked_user_handles_unique").on(t.companyId, t.platform, t.username)]);
+}, (t) => [unique("profile_handles_unique").on(t.companyId, t.platform, t.username)]);
 
 export const trackedThreads = pgTable("tracked_threads", {
   id:              uuid("id").defaultRandom().primaryKey(),
@@ -309,10 +305,8 @@ export type CollectKeyword = typeof collectKeywords.$inferSelect;
 export type NewCollectKeyword = typeof collectKeywords.$inferInsert;
 export type RedditSubreddit = typeof redditSubreddits.$inferSelect;
 export type NewRedditSubreddit = typeof redditSubreddits.$inferInsert;
-export type TwitterHandle = typeof twitterHandles.$inferSelect;
-export type NewTwitterHandle = typeof twitterHandles.$inferInsert;
-export type TrackedUserHandle = typeof trackedUserHandles.$inferSelect;
-export type NewTrackedUserHandle = typeof trackedUserHandles.$inferInsert;
+export type ProfileHandle = typeof profileHandles.$inferSelect;
+export type NewProfileHandle = typeof profileHandles.$inferInsert;
 export type TrackedThread = typeof trackedThreads.$inferSelect;
 export type NewTrackedThread = typeof trackedThreads.$inferInsert;
 export type RssFeed = typeof rssFeeds.$inferSelect;

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { trackedUserHandles } from "@/lib/db/schema";
+import { profileHandles } from "@/lib/db/schema";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
@@ -13,16 +13,16 @@ export async function GET(req: Request) {
   const platform = searchParams.get("platform");
 
   const conditions = [];
-  if (companyId) conditions.push(eq(trackedUserHandles.companyId, companyId));
+  if (companyId) conditions.push(eq(profileHandles.companyId, companyId));
   if (platform && (PLATFORMS as readonly string[]).includes(platform)) {
-    conditions.push(eq(trackedUserHandles.platform, platform as SocialPlatform));
+    conditions.push(eq(profileHandles.platform, platform as SocialPlatform));
   }
 
   const rows = await db
     .select()
-    .from(trackedUserHandles)
+    .from(profileHandles)
     .where(conditions.length > 0 ? and(...conditions) : undefined)
-    .orderBy(trackedUserHandles.createdAt);
+    .orderBy(profileHandles.createdAt);
 
   return NextResponse.json(rows);
 }
@@ -49,15 +49,15 @@ export async function POST(req: Request) {
 
   try {
     const [row] = await db
-      .insert(trackedUserHandles)
+      .insert(profileHandles)
       .values({ platform, username, companyId })
       .returning();
     return NextResponse.json(row, { status: 201 });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "";
     if (msg.includes("unique") || msg.includes("duplicate")) {
-      return NextResponse.json({ error: "User already tracked" }, { status: 409 });
+      return NextResponse.json({ error: "Profile already tracked" }, { status: 409 });
     }
-    return NextResponse.json({ error: "Failed to add user" }, { status: 500 });
+    return NextResponse.json({ error: "Failed to add profile" }, { status: 500 });
   }
 }
