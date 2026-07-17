@@ -1,28 +1,76 @@
-interface ExtensionItem {
-  url: string;
-  title?: string;
-  body?: string;
-  author?: string;
-  platform: string;
-  subtype?: string;
-  externalId?: string;
-  publishedAt?: string;
+// In-page manual capture — floating "→ Gito" button, context menu, topic
+// picker, include-comments checkbox. Items are sent in protocol-v2 shape
+// (kind post/comment, sourceKind manual, honest timestamps).
+
+interface Engagement {
+  likes?: number;
+  replies?: number;
+  reposts?: number;
+  upvotes?: number;
+  views?: number;
 }
 
-interface Entity { id: string; label: string }
+interface ExtensionItem {
+  platform: string;
+  kind: "post" | "comment";
+  externalId?: string | null;
+  url?: string | null;
+  author?: string | null;
+  title?: string | null;
+  body?: string | null;
+  publishedAt?: string | null;
+  publishedAtPrecision?: "exact" | "approx" | "unknown";
+  parentExternalId?: string | null;
+  rootExternalId?: string | null;
+  depth?: number | null;
+  sourceKind: "manual";
+  engagement?: Engagement | null;
+}
+
+interface Topic { id: string; label: string }
+
+function parseCount(t: string | null | undefined): number | undefined {
+  if (!t) return undefined;
+  const m = t.trim().replace(/,/g, "").match(/^([\d.]+)\s*([KMB])?$/i);
+  if (!m) return undefined;
+  let n = parseFloat(m[1]);
+  const u = (m[2] ?? "").toUpperCase();
+  if (u === "K") n *= 1e3;
+  if (u === "M") n *= 1e6;
+  if (u === "B") n *= 1e9;
+  return Math.round(n);
+}
 
 // ─── DOM extractors ──────────────────────────────────────────────────────────
 
 function extractTweetFromArticle(article: Element, fallbackText = ""): ExtensionItem {
   const body = article.querySelector('[data-testid="tweetText"]')?.textContent ?? fallbackText;
   const authorEl = article.querySelector('[data-testid="User-Name"] a') as HTMLAnchorElement | null;
-  const author = authorEl?.textContent?.replace(/^@/, "") ?? undefined;
-  const timeEl = article.querySelector("time") as HTMLTimeElement | null;
-  const publishedAt = timeEl?.getAttribute("datetime") ?? undefined;
+  const author = authorEl?.textContent?.replace(/^@/, "") ?? null;
+  const publishedAt = article.querySelector("time")?.getAttribute("datetime") ?? null;
   const statusLink = article.querySelector('a[href*="/status/"]') as HTMLAnchorElement | null;
   const canonicalUrl = statusLink ? `https://x.com${new URL(statusLink.href).pathname}` : window.location.href;
-  const externalId = canonicalUrl.match(/\/status\/(\d+)/)?.[1];
-  return { url: canonicalUrl, title: body.slice(0, 200), body, author, platform: "twitter", subtype: "x_post", externalId, publishedAt };
+  const externalId = canonicalUrl.match(/\/status\/(\d+)/)?.[1] ?? null;
+  const engagement: Engagement = {
+    replies: parseCount(article.querySelector('[data-testid="reply"]')?.textContent),
+    reposts: parseCount(article.querySelector('[data-testid="retweet"]')?.textContent),
+    likes: parseCount(article.querySelector('[data-testid="like"]')?.textContent),
+    views: parseCount(article.querySelector('a[href*="/analytics"]')?.textContent),
+  };
+  const hasEngagement = Object.values(engagement).some((v) => v != null);
+  return {
+    platform: "twitter",
+    kind: "post",
+    externalId,
+    url: canonicalUrl,
+    author: author ? `@${author.trim()}` : null,
+    title: null,
+    body,
+    publishedAt,
+    publishedAtPrecision: publishedAt ? "exact" : "unknown",
+    sourceKind: "manual",
+    engagement: hasEngagement ? engagement : null,
+  };
 }
 
 function extractTweet(selectedText: string): ExtensionItem {
@@ -38,15 +86,16 @@ function extractTweet(selectedText: string): ExtensionItem {
       }
     }
     if (!article) article = document.querySelector('article[data-testid="tweet"]');
-    if (!article) return { url, title: selectedText.slice(0, 200), body: selectedText, platform: "twitter", subtype: "x_post" };
-
+    if (!article) {
+      return { platform: "twitter", kind: "post", url, body: selectedText, publishedAtPrecision: "unknown", sourceKind: "manual" };
+    }
     return extractTweetFromArticle(article, selectedText);
   } catch {
-    return { url, title: selectedText.slice(0, 200), body: selectedText, platform: "twitter", subtype: "x_post" };
+    return { platform: "twitter", kind: "post", url, body: selectedText, publishedAtPrecision: "unknown", sourceKind: "manual" };
   }
 }
 
-function extractVisibleReplies(mainExternalId?: string): ExtensionItem[] {
+function extractVisibleReplies(mainExternalId?: string | null): ExtensionItem[] {
   const articles = Array.from(document.querySelectorAll('article[data-testid="tweet"]'));
   const replies: ExtensionItem[] = [];
   for (const article of articles) {
@@ -56,7 +105,9 @@ function extractVisibleReplies(mainExternalId?: string): ExtensionItem[] {
       : undefined;
     if (!articleId || articleId === mainExternalId) continue;
     const item = extractTweetFromArticle(article);
-    item.subtype = "x_reply";
+    item.kind = "comment";
+    item.parentExternalId = mainExternalId ?? null;
+    item.rootExternalId = mainExternalId ?? null;
     replies.push(item);
   }
   return replies;
@@ -75,13 +126,16 @@ function extractThreadsPost(selectedText: string): ExtensionItem {
       }
     }
     if (!article) article = document.querySelector('article, div[role="article"]');
-    const authorEl = article?.querySelector('a[href^="/@"]') as HTMLAnchorElement | null;
-    const author = authorEl?.getAttribute("href")?.replace("/@", "") ?? undefined;
+    const author = (article?.querySelector('a[href^="/@"]') as HTMLAnchorElement | null)?.getAttribute("href")?.replace("/@", "") ?? null;
     const body = article?.querySelector("[data-pressable-container]")?.textContent ?? selectedText;
-    const externalId = url.match(/\/post\/([A-Za-z0-9_-]+)/)?.[1];
-    return { url, title: body.slice(0, 200), body, author, platform: "threads", subtype: "threads_post", externalId };
+    const externalId = url.match(/\/post\/([A-Za-z0-9_-]+)/)?.[1] ?? null;
+    const publishedAt = article?.querySelector("time")?.getAttribute("datetime") ?? null;
+    return {
+      platform: "threads", kind: "post", externalId, url, author, body,
+      publishedAt, publishedAtPrecision: publishedAt ? "exact" : "unknown", sourceKind: "manual",
+    };
   } catch {
-    return { url, title: selectedText.slice(0, 200), body: selectedText, platform: "threads", subtype: "threads_post" };
+    return { platform: "threads", kind: "post", url, body: selectedText, publishedAtPrecision: "unknown", sourceKind: "manual" };
   }
 }
 
@@ -89,59 +143,64 @@ function extractRedditPost(selectedText: string): ExtensionItem {
   const url = window.location.href;
   try {
     const rawId = url.match(/comments\/([a-z0-9]+)\//i)?.[1];
-    const externalId = rawId ? `t3_${rawId}` : undefined;
-
     const postEl = document.querySelector("shreddit-post");
-    const author = postEl?.getAttribute("author") ?? undefined;
-    const publishedAt = postEl?.getAttribute("created-timestamp") ?? undefined;
+    const externalId = postEl?.getAttribute("id") ?? (rawId ? `t3_${rawId}` : null);
+    const author = postEl?.getAttribute("author") ?? null;
+    const publishedAt = postEl?.getAttribute("created-timestamp") ?? null;
+    const score = parseInt(postEl?.getAttribute("score") ?? "", 10);
+    const commentCount = parseInt(postEl?.getAttribute("comment-count") ?? "", 10);
 
-    // Title from shreddit-post attribute or first h1 on page
-    const postTitle = postEl?.getAttribute("post-title")
+    const title = postEl?.getAttribute("post-title")
       ?? (document.querySelector('h1[slot="title"], [slot="title"] h1, h1') as HTMLElement | null)?.textContent?.trim()
-      ?? selectedText.slice(0, 200);
+      ?? null;
+    const body = document.querySelector('shreddit-post-text-body [slot="text-body"]')?.textContent?.trim() ?? selectedText;
 
-    // Body from the slot-based text body (light DOM, accessible)
-    const postBodyEl = document.querySelector('shreddit-post-text-body [slot="text-body"]');
-    const postBody = postBodyEl?.textContent?.trim() ?? selectedText;
-
-    return { url, title: postTitle, body: postBody, author, platform: "reddit", subtype: "reddit_post", externalId, publishedAt };
+    return {
+      platform: "reddit", kind: "post", externalId, url, author, title, body,
+      publishedAt, publishedAtPrecision: publishedAt ? "exact" : "unknown", sourceKind: "manual",
+      engagement:
+        isNaN(score) && isNaN(commentCount)
+          ? null
+          : { upvotes: isNaN(score) ? undefined : score, replies: isNaN(commentCount) ? undefined : commentCount },
+    };
   } catch {
-    return { url, title: selectedText.slice(0, 200), body: selectedText, platform: "reddit", subtype: "reddit_post" };
+    return { platform: "reddit", kind: "post", url, body: selectedText, publishedAtPrecision: "unknown", sourceKind: "manual" };
   }
 }
 
-function extractVisibleRedditComments(mainPostExternalId?: string): ExtensionItem[] {
+function extractVisibleRedditComments(mainPostExternalId?: string | null): ExtensionItem[] {
   const commentEls = Array.from(document.querySelectorAll("shreddit-comment"));
   const comments: ExtensionItem[] = [];
 
   for (const el of commentEls) {
     const thingId = el.getAttribute("thingid");
     const postId = el.getAttribute("postid");
-
-    // Skip comments that don't belong to this post
     if (mainPostExternalId && postId && postId !== mainPostExternalId) continue;
 
-    const author = el.getAttribute("author") ?? undefined;
-    const depth = parseInt(el.getAttribute("depth") ?? "0", 10);
-    const permalinkAttr = el.getAttribute("permalink");
-    const commentUrl = permalinkAttr ? `https://www.reddit.com${permalinkAttr}` : window.location.href;
-
-    const commentTextEl = el.querySelector('[slot="comment"]');
-    const body = commentTextEl?.textContent?.trim();
+    const body = el.querySelector('[slot="comment"]')?.textContent?.trim();
     if (!body) continue;
 
-    const timeEl = el.querySelector('[slot="commentMeta"] time') as HTMLTimeElement | null;
-    const publishedAt = timeEl?.getAttribute("datetime") ?? undefined;
+    const author = el.getAttribute("author") ?? null;
+    const depth = parseInt(el.getAttribute("depth") ?? "0", 10);
+    const parentId = el.getAttribute("parentid");
+    const permalinkAttr = el.getAttribute("permalink");
+    const publishedAt = (el.querySelector('[slot="commentMeta"] time') as HTMLTimeElement | null)?.getAttribute("datetime") ?? null;
+    const score = parseInt(el.getAttribute("score") ?? "", 10);
 
     comments.push({
-      url: commentUrl,
-      title: body.slice(0, 200),
-      body,
-      author,
       platform: "reddit",
-      subtype: depth === 0 ? "reddit_comment" : "reddit_reply",
-      externalId: thingId ?? undefined,
+      kind: "comment",
+      externalId: thingId ?? null,
+      url: permalinkAttr ? `https://www.reddit.com${permalinkAttr}` : window.location.href,
+      author,
+      body,
       publishedAt,
+      publishedAtPrecision: publishedAt ? "exact" : "unknown",
+      parentExternalId: parentId ?? mainPostExternalId ?? null,
+      rootExternalId: mainPostExternalId ?? postId ?? null,
+      depth: isNaN(depth) ? null : depth,
+      sourceKind: "manual",
+      engagement: isNaN(score) ? null : { upvotes: score },
     });
   }
 
@@ -161,11 +220,11 @@ function extractInstagramPost(selectedText: string): ExtensionItem {
       }
     }
     if (!article) article = document.querySelector("article");
-    const author = (article?.querySelector("header a") as HTMLAnchorElement | null)?.textContent ?? undefined;
-    const externalId = url.match(/\/p\/([A-Za-z0-9_-]+)\//)?.[1];
-    return { url, title: selectedText.slice(0, 200), body: selectedText, author, platform: "instagram", subtype: "instagram_post", externalId };
+    const author = (article?.querySelector("header a") as HTMLAnchorElement | null)?.textContent ?? null;
+    const externalId = url.match(/\/p\/([A-Za-z0-9_-]+)\//)?.[1] ?? null;
+    return { platform: "instagram", kind: "post", externalId, url, author, body: selectedText, publishedAtPrecision: "unknown", sourceKind: "manual" };
   } catch {
-    return { url, title: selectedText.slice(0, 200), body: selectedText, platform: "instagram", subtype: "instagram_post" };
+    return { platform: "instagram", kind: "post", url, body: selectedText, publishedAtPrecision: "unknown", sourceKind: "manual" };
   }
 }
 
@@ -192,7 +251,7 @@ function parseFacebookRelativeTime(text: string | null | undefined): string | un
 function extractFacebookPost(selectedText: string): ExtensionItem {
   const url = window.location.href;
   try {
-    const externalId = extractFacebookExternalId(url);
+    const externalId = extractFacebookExternalId(url) ?? null;
     // data-ad-* attributes are Facebook's stable hooks; class names are atomic CSS and churn.
     const messageEl = document.querySelector(
       'div[data-ad-preview="message"], div[data-ad-rendering-role="story_message"]'
@@ -202,14 +261,14 @@ function extractFacebookPost(selectedText: string): ExtensionItem {
     const authorEl = postRoot.querySelector(
       '[data-ad-rendering-role="profile_name"], h2 a, h3 a'
     ) as HTMLElement | null;
-    const author = authorEl?.textContent?.trim() || undefined;
-    return { url, title: body.slice(0, 200), body, author, platform: "facebook", subtype: "facebook_post", externalId };
+    const author = authorEl?.textContent?.trim() || null;
+    return { platform: "facebook", kind: "post", externalId, url, author, body, publishedAtPrecision: "unknown", sourceKind: "manual" };
   } catch {
-    return { url, title: selectedText.slice(0, 200), body: selectedText, platform: "facebook", subtype: "facebook_post" };
+    return { platform: "facebook", kind: "post", url, body: selectedText, publishedAtPrecision: "unknown", sourceKind: "manual" };
   }
 }
 
-function extractVisibleFacebookComments(postUrl: string): ExtensionItem[] {
+function extractVisibleFacebookComments(postUrl: string, postExternalId?: string | null): ExtensionItem[] {
   const articles = Array.from(document.querySelectorAll('div[role="article"][aria-label]'));
   const comments: ExtensionItem[] = [];
 
@@ -219,8 +278,7 @@ function extractVisibleFacebookComments(postUrl: string): ExtensionItem[] {
     const aria = article.getAttribute("aria-label") ?? "";
     const m = aria.match(/^(comment|reply) by (.+)$/i);
     if (!m) continue;
-    const subtype = m[1].toLowerCase() === "reply" ? "facebook_reply" : "facebook_comment";
-    const author = m[2].replace(/\s+\d+\s+\w+\s+ago$/i, "").trim() || undefined;
+    const author = m[2].replace(/\s+\d+\s+\w+\s+ago$/i, "").trim() || null;
 
     // Replies are nested articles inside their parent comment — only take text
     // blocks that belong directly to this article, not to a nested one.
@@ -231,7 +289,7 @@ function extractVisibleFacebookComments(postUrl: string): ExtensionItem[] {
       .join("\n");
     if (!body) continue;
 
-    let externalId: string | undefined;
+    let externalId: string | null = null;
     let publishedAt: string | undefined;
     const permalink = Array.from(article.querySelectorAll('a[href*="comment_id"]'))
       .find((a) => (a as HTMLAnchorElement).closest('div[role="article"]') === article) as HTMLAnchorElement | undefined;
@@ -241,24 +299,44 @@ function extractVisibleFacebookComments(postUrl: string): ExtensionItem[] {
         // real permalink — use it only for the ID and relative timestamp, and
         // always link the comment back to the post itself.
         const parsed = new URL(permalink.href, window.location.origin);
-        externalId = parsed.searchParams.get("reply_comment_id") ?? parsed.searchParams.get("comment_id") ?? undefined;
+        externalId = parsed.searchParams.get("reply_comment_id") ?? parsed.searchParams.get("comment_id") ?? null;
         publishedAt = parseFacebookRelativeTime(permalink.textContent);
       } catch { /* keep fallbacks */ }
     }
 
     comments.push({
-      url: postUrl,
-      title: body.slice(0, 200),
-      body,
-      author,
       platform: "facebook",
-      subtype,
+      kind: "comment",
       externalId,
-      publishedAt,
+      url: postUrl,
+      author,
+      body,
+      publishedAt: publishedAt ?? null,
+      publishedAtPrecision: publishedAt ? "approx" : "unknown",
+      parentExternalId: postExternalId ?? null,
+      rootExternalId: postExternalId ?? null,
+      sourceKind: "manual",
     });
   }
 
   return comments;
+}
+
+function extractLinkedInPost(selectedText: string): ExtensionItem {
+  const url = window.location.href;
+  try {
+    const externalId = url.match(/urn:li:activity:(\d+)/)?.[1]
+      ?? url.match(/activity-(\d+)/)?.[1]
+      ?? null;
+    const postEl = document.querySelector('div[data-urn*="activity"], article');
+    const author = (postEl?.querySelector('.update-components-actor__title span[aria-hidden="true"], .update-components-actor__name') as HTMLElement | null)
+      ?.textContent?.trim() ?? null;
+    const body = (postEl?.querySelector('.update-components-text, .feed-shared-inline-show-more-text') as HTMLElement | null)
+      ?.textContent?.trim() || selectedText;
+    return { platform: "linkedin", kind: "post", externalId, url, author, body, publishedAtPrecision: "unknown", sourceKind: "manual" };
+  } catch {
+    return { platform: "linkedin", kind: "post", url, body: selectedText, publishedAtPrecision: "unknown", sourceKind: "manual" };
+  }
 }
 
 function extractItem(selectedText: string): ExtensionItem {
@@ -268,7 +346,8 @@ function extractItem(selectedText: string): ExtensionItem {
   if (/reddit\.com/.test(url)) return extractRedditPost(selectedText);
   if (/instagram\.com/.test(url)) return extractInstagramPost(selectedText);
   if (/facebook\.com/.test(url)) return extractFacebookPost(selectedText);
-  return { url, title: selectedText.slice(0, 200), body: selectedText, platform: "manual" };
+  if (/linkedin\.com/.test(url)) return extractLinkedInPost(selectedText);
+  return { platform: "manual", kind: "post", url, body: selectedText, publishedAtPrecision: "unknown", sourceKind: "manual" };
 }
 
 // ─── Toast ───────────────────────────────────────────────────────────────────
@@ -287,13 +366,7 @@ function showToast(text: string, type: "success" | "error") {
   setTimeout(() => el.remove(), 2500);
 }
 
-// ─── Runtime guard ───────────────────────────────────────────────────────────
-
-function runtimeOk(): boolean {
-  try { return !!chrome.runtime?.id; } catch { return false; }
-}
-
-// ─── Entity picker panel ─────────────────────────────────────────────────────
+// ─── Topic picker panel ──────────────────────────────────────────────────────
 
 let pickerEl: HTMLElement | null = null;
 
@@ -302,7 +375,7 @@ function removePickerPanel() {
   pickerEl = null;
 }
 
-function showPickerPanel(item: ExtensionItem, anchorRect: DOMRect, entities: Entity[], replies?: ExtensionItem[]) {
+function showPickerPanel(item: ExtensionItem, anchorRect: DOMRect, topics: Topic[], replies?: ExtensionItem[]) {
   removePickerPanel();
 
   const panel = document.createElement("div");
@@ -345,10 +418,10 @@ function showPickerPanel(item: ExtensionItem, anchorRect: DOMRect, entities: Ent
   const body = document.createElement("div");
   body.style.cssText = "padding:10px 12px;";
 
-  // Entity selector
+  // Topic selector
   const label = document.createElement("div");
   label.style.cssText = "font-size:11px;font-weight:500;color:#666;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:5px;";
-  label.textContent = "Entity";
+  label.textContent = "Topic";
 
   const select = document.createElement("select");
   select.style.cssText = `
@@ -357,14 +430,14 @@ function showPickerPanel(item: ExtensionItem, anchorRect: DOMRect, entities: Ent
     font-size:12px;background:#faf9f6;color:#1a1a1a;
     margin-bottom:10px;outline:none;cursor:pointer;
   `;
-  const noEntityOpt = document.createElement("option");
-  noEntityOpt.value = "";
-  noEntityOpt.textContent = "— No entity —";
-  select.appendChild(noEntityOpt);
-  for (const ent of entities) {
+  const noTopicOpt = document.createElement("option");
+  noTopicOpt.value = "";
+  noTopicOpt.textContent = "— No topic —";
+  select.appendChild(noTopicOpt);
+  for (const topic of topics) {
     const opt = document.createElement("option");
-    opt.value = ent.id;
-    opt.textContent = ent.label;
+    opt.value = topic.id;
+    opt.textContent = topic.label;
     select.appendChild(opt);
   }
 
@@ -376,8 +449,9 @@ function showPickerPanel(item: ExtensionItem, anchorRect: DOMRect, entities: Ent
     border:1px solid #e8e4dc;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
   `;
-  preview.textContent = item.title ?? item.body ?? item.url;
-  preview.title = item.title ?? item.body ?? item.url;
+  const previewText = item.title ?? item.body ?? item.url ?? "";
+  preview.textContent = previewText;
+  preview.title = previewText;
 
   // Replies/comments checkbox
   let includeRepliesCheckbox: HTMLInputElement | null = null;
@@ -411,13 +485,13 @@ function showPickerPanel(item: ExtensionItem, anchorRect: DOMRect, entities: Ent
   `;
 
   sendBtn.addEventListener("click", async () => {
-    const entityId = select.value || undefined;
+    const topicId = select.value || undefined;
     const replyItems = (includeRepliesCheckbox?.checked && replies?.length) ? replies : undefined;
     sendBtn.textContent = "Sending…";
     sendBtn.style.opacity = "0.6";
     sendBtn.style.cursor = "not-allowed";
 
-    chrome.runtime.sendMessage({ type: "SEND_ITEM", payload: item, replies: replyItems, entityId }, (response) => {
+    chrome.runtime.sendMessage({ type: "SEND_ITEM", payload: item, replies: replyItems, topicId }, (response) => {
       removePickerPanel();
       if (chrome.runtime.lastError || !response?.ok) {
         const msg = response?.error === "Not configured"
@@ -454,7 +528,7 @@ function onOutsideClick(e: MouseEvent) {
   }
 }
 
-// ─── Show picker (fetches entities via background) ────────────────────────────
+// ─── Show picker (fetches topics via background) ─────────────────────────────
 
 async function initiateCapture(selectedText: string, anchorRect: DOMRect) {
   const item = extractItem(selectedText);
@@ -467,7 +541,7 @@ async function initiateCapture(selectedText: string, anchorRect: DOMRect) {
     : isRedditThread
     ? extractVisibleRedditComments(item.externalId)
     : isFacebookPage
-    ? extractVisibleFacebookComments(item.url)
+    ? extractVisibleFacebookComments(item.url ?? window.location.href, item.externalId)
     : undefined;
 
   chrome.runtime.sendMessage({ type: "GET_CONTEXT" }, (response) => {
@@ -479,7 +553,7 @@ async function initiateCapture(selectedText: string, anchorRect: DOMRect) {
       }
       return;
     }
-    showPickerPanel(item, anchorRect, response.entities ?? [], replies);
+    showPickerPanel(item, anchorRect, response.topics ?? [], replies);
   });
 }
 
@@ -547,6 +621,7 @@ document.addEventListener("scroll", () => {
 
 // ─── Context menu entry point ────────────────────────────────────────────────
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 (window as any).__gitoSendSelection = () => {
   const selection = window.getSelection();
   if (!selection || selection.toString().trim().length === 0) {
@@ -557,11 +632,3 @@ document.addEventListener("scroll", () => {
   const rect = range.getBoundingClientRect();
   initiateCapture(selection.toString().trim(), rect);
 };
-
-// Listen for account switch from popup
-chrome.runtime.onMessage.addListener((msg) => {
-  if (msg.type === "ACCOUNT_CHANGED") {
-    removePickerPanel();
-    removeFloatingBtn();
-  }
-});

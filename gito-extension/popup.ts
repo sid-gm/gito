@@ -1,33 +1,36 @@
-interface Account {
-  id: string;
+// Popup — status surface. All config lives on the server; the popup holds only
+// the connection (URL + API key), shows health, and offers Run now + quick-add.
+
+interface Connection {
   gitoUrl: string;
   apiKey: string;
   companyId: string;
   companyName: string;
-  entities: { id: string; label: string }[];
-  trackedThreads: Array<{ url: string; platform: string; externalId?: string | null }>;
-  twitterAccounts: string[];
 }
 
-interface StorageData {
-  accounts?: Account[];
-  activeAccountId?: string;
-}
-
-interface SearchConfig {
-  terms: string[];
-  platforms: Array<"twitter" | "threads">;
+interface ServerSettings {
   intervalMinutes: number;
   enabled: boolean;
+  pausedPlatforms: string[];
+  maxThreadDrills: number;
+  visionDisabledPlatforms: string[];
+}
+
+interface HealthRow {
+  platform: string;
+  state: "ok" | "degraded" | "blocked";
+  since: string;
+  lastOkAt: string | null;
+}
+
+interface KeywordRow {
+  id: string;
+  term: string;
+  topicLabel: string | null;
 }
 
 interface PlatformStats {
-  [platform: string]: { collected: number; errors: number };
-}
-
-interface LastRunPlatforms {
-  at: string;
-  stats: PlatformStats;
+  [platform: string]: { collected: number; errors: number; blocked?: boolean };
 }
 
 const headerStatus = document.getElementById("header-status")!;
@@ -56,12 +59,16 @@ const disconnectBtn = document.getElementById("btn-disconnect")!;
 
 const COLORS = { pos: "#34d399", warn: "#f59e0b", neg: "#fb7185", idle: "#4b5568" };
 
-const PLATFORM_META: Record<string, { label: string; tag: string; color: string }> = {
-  reddit: { label: "Reddit", tag: "r/", color: "#ff5722" },
-  twitter: { label: "X", tag: "X", color: "#c9ccd1" },
-  threads: { label: "Threads", tag: "@", color: "#a78bfa" },
-  instagram: { label: "Instagram", tag: "IG", color: "#ec4899" },
+const PLATFORM_META: Record<string, { label: string; tag: string; color: string; site: string }> = {
+  twitter: { label: "X", tag: "X", color: "#c9ccd1", site: "x.com" },
+  threads: { label: "Threads", tag: "@", color: "#a78bfa", site: "threads.com" },
+  reddit: { label: "Reddit", tag: "r/", color: "#ff5722", site: "reddit.com" },
+  instagram: { label: "Instagram", tag: "IG", color: "#ec4899", site: "instagram.com" },
+  facebook: { label: "Facebook", tag: "f", color: "#60a5fa", site: "facebook.com" },
+  linkedin: { label: "LinkedIn", tag: "in", color: "#38bdf8", site: "linkedin.com" },
 };
+
+const AUTOMATED_PLATFORMS = new Set(["twitter", "threads", "reddit"]);
 
 function formatRelativeTime(isoString: string): string {
   const diff = Date.now() - new Date(isoString).getTime();
@@ -77,27 +84,30 @@ function todayKey(): string {
   return `count_${new Date().toISOString().slice(0, 10)}`;
 }
 
-async function getActiveAccount(): Promise<Account | null> {
-  const data = (await chrome.storage.sync.get(["accounts", "activeAccountId"])) as StorageData;
-  const accounts = data.accounts ?? [];
-  return accounts.find((a) => a.id === data.activeAccountId) ?? accounts[0] ?? null;
+async function getConnection(): Promise<Connection | null> {
+  const data = (await chrome.storage.sync.get(["connection"])) as { connection?: Connection };
+  return data.connection ?? null;
 }
 
-async function getConfig(): Promise<SearchConfig> {
-  const data = (await chrome.storage.sync.get(["autoCollect"])) as { autoCollect?: SearchConfig };
-  return (
-    data.autoCollect ?? { terms: [], platforms: ["twitter", "threads"], intervalMinutes: 60, enabled: false }
-  );
+async function api(conn: Connection, path: string, init?: RequestInit): Promise<Response> {
+  return fetch(new URL(path, conn.gitoUrl).href, {
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${conn.apiKey}`,
+      ...(init?.headers ?? {}),
+    },
+  });
 }
 
 // ── Header (next run) ─────────────────────────────────────────────────────────
 
-async function renderHeader(connected: boolean, config?: SearchConfig) {
+async function renderHeader(connected: boolean, settings?: ServerSettings | null) {
   if (!connected) {
     headerStatus.innerHTML = `<span class="offline-dot"></span>Offline`;
     return;
   }
-  if (config?.enabled) {
+  if (settings?.enabled) {
     const alarm = await chrome.alarms.get("gito-collect");
     if (alarm) {
       const mins = Math.max(0, Math.round((alarm.scheduledTime - Date.now()) / 60000));
@@ -111,23 +121,26 @@ async function renderHeader(connected: boolean, config?: SearchConfig) {
 // ── Status card ───────────────────────────────────────────────────────────────
 
 function renderStatus(
-  config: SearchConfig,
+  settings: ServerSettings | null,
   lastRun: string | undefined,
-  stats: PlatformStats | undefined
+  health: HealthRow[],
+  keywordCount: number
 ) {
-  const degraded = stats
-    ? Object.values(stats).filter((s) => s.errors > 0 || s.collected === 0).length
-    : 0;
+  const blocked = health.filter((h) => h.state === "blocked").length;
+  const degraded = health.filter((h) => h.state === "degraded").length;
 
-  if (!config.enabled) {
+  if (!settings?.enabled) {
     statusDot.style.background = COLORS.idle;
-    statusText.textContent = "Auto-collect off";
-  } else if (config.terms.length === 0) {
+    statusText.textContent = "Collector disabled";
+  } else if (keywordCount === 0) {
     statusDot.style.background = COLORS.warn;
     statusText.textContent = "No keywords yet";
+  } else if (blocked > 0) {
+    statusDot.style.background = COLORS.neg;
+    statusText.textContent = `${blocked} platform${blocked === 1 ? "" : "s"} blocked`;
   } else if (degraded > 0) {
     statusDot.style.background = COLORS.warn;
-    statusText.textContent = `Running · ${degraded} platform${degraded === 1 ? "" : "s"} degraded`;
+    statusText.textContent = `Running · ${degraded} degraded`;
   } else {
     statusDot.style.background = COLORS.pos;
     statusText.textContent = "Collecting on schedule";
@@ -137,9 +150,9 @@ function renderStatus(
 
 // ── Platform health card ──────────────────────────────────────────────────────
 
-type HealthState = "ok" | "degraded" | "blocked" | "paused" | "idle";
+type RowState = "ok" | "degraded" | "blocked" | "paused" | "idle";
 
-const HEALTH_META: Record<HealthState, { dot: string; word: string }> = {
+const HEALTH_META: Record<RowState, { dot: string; word: string }> = {
   ok: { dot: COLORS.pos, word: "OK" },
   degraded: { dot: COLORS.warn, word: "Degraded" },
   blocked: { dot: COLORS.neg, word: "Blocked" },
@@ -147,7 +160,7 @@ const HEALTH_META: Record<HealthState, { dot: string; word: string }> = {
   idle: { dot: COLORS.idle, word: "Idle" },
 };
 
-function platformRow(platform: string, state: HealthState, detail: string): HTMLElement {
+function platformRow(platform: string, state: RowState, detail: string): HTMLElement {
   const pm = PLATFORM_META[platform];
   const hm = HEALTH_META[state];
   const row = document.createElement("div");
@@ -187,79 +200,101 @@ function platformRow(platform: string, state: HealthState, detail: string): HTML
   return row;
 }
 
-function renderHealth(config: SearchConfig, last: LastRunPlatforms | undefined) {
+function renderHealth(
+  settings: ServerSettings | null,
+  health: HealthRow[],
+  lastStats: { at: string; stats: PlatformStats } | undefined
+) {
   platformRows.innerHTML = "";
-  healthHint.textContent = last ? `last run · ${formatRelativeTime(last.at)}` : "last run · —";
+  healthHint.textContent = lastStats ? `last run · ${formatRelativeTime(lastStats.at)}` : "last run · —";
 
-  for (const platform of ["reddit", "twitter", "threads", "instagram"]) {
-    // Reddit and Instagram are manual-capture only until subreddit browsing returns.
-    if (platform === "reddit" || platform === "instagram") {
-      platformRows.appendChild(platformRow(platform, "paused", "Manual capture only"));
+  const healthByPlatform = new Map(health.map((h) => [h.platform, h]));
+  const paused = new Set(settings?.pausedPlatforms ?? []);
+  const blockedRows: string[] = [];
+
+  for (const platform of Object.keys(PLATFORM_META)) {
+    if (paused.has(platform)) {
+      platformRows.appendChild(platformRow(platform, "paused", "Paused on server"));
       continue;
     }
-    if (!config.platforms.includes(platform as "twitter" | "threads")) {
-      platformRows.appendChild(platformRow(platform, "paused", "Not in collector config"));
+
+    const h = healthByPlatform.get(platform);
+    if (h?.state === "blocked") {
+      const pm = PLATFORM_META[platform];
+      platformRows.appendChild(platformRow(platform, "blocked", `Blocked since ${formatRelativeTime(h.since)}`));
+      blockedRows.push(`<strong>${pm.label}</strong> is blocked — open ${pm.site} and log back in.`);
       continue;
     }
-    const stats = last?.stats?.[platform];
-    if (!stats) {
-      platformRows.appendChild(platformRow(platform, "idle", "No runs yet"));
+    if (h?.state === "degraded") {
+      platformRows.appendChild(platformRow(platform, "degraded", `Degraded since ${formatRelativeTime(h.since)}`));
       continue;
     }
-    if (stats.errors > 0) {
-      platformRows.appendChild(
-        platformRow(platform, "degraded", `${stats.errors} error${stats.errors === 1 ? "" : "s"} last run`)
-      );
-    } else if (stats.collected === 0) {
-      platformRows.appendChild(platformRow(platform, "degraded", "0 items last run"));
-    } else {
-      platformRows.appendChild(platformRow(platform, "ok", `Last run OK · ${stats.collected} items`));
+    if (h?.state === "ok") {
+      const stats = lastStats?.stats?.[platform];
+      const detail = stats?.collected
+        ? `Last run OK · ${stats.collected} items`
+        : h.lastOkAt
+          ? `OK · last items ${formatRelativeTime(h.lastOkAt)}`
+          : "OK";
+      platformRows.appendChild(platformRow(platform, "ok", detail));
+      continue;
     }
+    platformRows.appendChild(
+      platformRow(platform, "idle", AUTOMATED_PLATFORMS.has(platform) ? "No runs yet" : "Manual capture / tracked only")
+    );
   }
 
-  // Blocked-state banner is reserved for the health-event pipeline (login wall /
-  // 403 detection). Nothing sets it yet, so it stays hidden.
-  blockedBanner.classList.remove("visible");
-  blockedText.textContent = "";
+  if (blockedRows.length > 0) {
+    blockedText.innerHTML = blockedRows.join("<br>");
+    blockedBanner.classList.add("visible");
+  } else {
+    blockedBanner.classList.remove("visible");
+    blockedText.textContent = "";
+  }
 }
 
-// ── Quick-add keywords ────────────────────────────────────────────────────────
+// ── Keywords (server-backed quick-add) ────────────────────────────────────────
 
-async function renderKeywords() {
-  const config = await getConfig();
+function renderKeywords(conn: Connection, keywords: KeywordRow[]) {
   kwChips.innerHTML = "";
-  if (config.terms.length === 0) {
+  if (keywords.length === 0) {
     kwChips.classList.remove("visible");
     return;
   }
   kwChips.classList.add("visible");
-  config.terms.forEach((term, i) => {
+  for (const kw of keywords) {
     const chip = document.createElement("span");
     chip.className = "kw-chip";
-    chip.appendChild(document.createTextNode(term));
+    chip.title = kw.topicLabel ? `Topic: ${kw.topicLabel}` : "No topic — assign on the site";
+    chip.appendChild(document.createTextNode(kw.term));
     const remove = document.createElement("button");
     remove.textContent = "×";
     remove.addEventListener("click", async () => {
-      const cfg = await getConfig();
-      cfg.terms = cfg.terms.filter((_, j) => j !== i);
-      await chrome.storage.sync.set({ autoCollect: cfg });
-      await renderKeywords();
+      await api(conn, `/api/collect-keywords/${kw.id}?companyId=${conn.companyId}`, { method: "DELETE" }).catch(() => {});
+      await loadState();
     });
     chip.appendChild(remove);
     kwChips.appendChild(chip);
-  });
+  }
 }
 
 async function addKeyword() {
   const term = kwInput.value.trim();
   if (!term) return;
-  const config = await getConfig();
-  if (!config.terms.some((t) => t.toLowerCase() === term.toLowerCase())) {
-    config.terms.push(term);
-    await chrome.storage.sync.set({ autoCollect: config });
+  const conn = await getConnection();
+  if (!conn) return;
+  addKwBtn.disabled = true;
+  try {
+    // Quick-adds land unassigned; topics are managed on the site
+    const res = await api(conn, "/api/collect-keywords", {
+      method: "POST",
+      body: JSON.stringify({ term }),
+    });
+    if (res.ok || res.status === 409) kwInput.value = "";
+  } finally {
+    addKwBtn.disabled = false;
   }
-  kwInput.value = "";
-  await renderKeywords();
+  await loadState();
 }
 
 addKwBtn.addEventListener("click", addKeyword);
@@ -276,7 +311,6 @@ runNowBtn.addEventListener("click", async () => {
 
   const response = (await chrome.runtime.sendMessage({ type: "RUN_COLLECT_NOW" })) as {
     ok: boolean;
-    inserted?: number;
     pendingSessions?: number;
     error?: string;
   };
@@ -285,9 +319,9 @@ runNowBtn.addEventListener("click", async () => {
   runNowBtn.classList.remove("running");
   runNowBtn.textContent = "Run now";
 
-  if (!response.ok) {
+  if (!response?.ok) {
     statusDot.style.background = COLORS.warn;
-    statusText.textContent = response.error ?? "Run failed";
+    statusText.textContent = response?.error ?? "Run failed";
     statusMeta.textContent = "";
     return;
   }
@@ -333,40 +367,22 @@ saveBtn.addEventListener("click", async () => {
     const ctx = (await res.json()) as {
       companyId: string;
       companyName: string;
-      entities: { id: string; label: string }[];
-      trackedThreads?: Array<{ url: string; platform: string; externalId?: string | null }>;
-      twitterAccounts?: string[];
+      settings: ServerSettings;
     };
 
-    const account: Account = {
-      id: ctx.companyId,
+    const connection: Connection = {
       gitoUrl: origin,
       apiKey,
       companyId: ctx.companyId,
       companyName: ctx.companyName,
-      entities: ctx.entities,
-      trackedThreads: ctx.trackedThreads ?? [],
-      twitterAccounts: ctx.twitterAccounts ?? [],
     };
+    await chrome.storage.sync.set({ connection });
+    await chrome.storage.local.set({ serverSettings: ctx.settings });
 
-    // Single-account model: connecting replaces any previous account.
-    await chrome.storage.sync.set({ accounts: [account], activeAccountId: account.id });
-
-    // Auto-collect defaults on first connect; schedule editing lives on the site.
-    const existing = (await chrome.storage.sync.get(["autoCollect"])) as { autoCollect?: SearchConfig };
-    const config: SearchConfig = existing.autoCollect ?? {
-      terms: [],
-      platforms: ["twitter", "threads"],
-      intervalMinutes: 60,
-      enabled: true,
-    };
-    if (!existing.autoCollect) {
-      await chrome.storage.sync.set({ autoCollect: config });
-    }
-    if (config.enabled) {
-      await chrome.storage.local.set({ failureCount: 0 });
-      chrome.alarms.create("gito-collect", { periodInMinutes: config.intervalMinutes });
-    }
+    // Schedule from server config — the popup never owns the interval
+    chrome.alarms.create("gito-collect", {
+      periodInMinutes: Math.max(10, ctx.settings.intervalMinutes ?? 30),
+    });
 
     await loadState();
   } catch {
@@ -380,17 +396,19 @@ saveBtn.addEventListener("click", async () => {
 
 disconnectBtn.addEventListener("click", async () => {
   chrome.alarms.clear("gito-collect");
-  await chrome.storage.sync.set({ accounts: [], activeAccountId: null });
+  chrome.alarms.clear("gito-collect-next");
+  await chrome.storage.sync.remove(["connection"]);
+  await chrome.storage.local.remove(["serverSettings", "gitoCollectQueue"]);
   await loadState();
 });
 
 // ── Load ──────────────────────────────────────────────────────────────────────
 
 async function loadState() {
-  const account = await getActiveAccount();
+  const conn = await getConnection();
   footerVersion.textContent = `v${chrome.runtime.getManifest().version} · Chrome`;
 
-  if (!account) {
+  if (!conn) {
     setupEl.style.display = "flex";
     configuredEl.style.display = "none";
     urlInput.value = "";
@@ -401,20 +419,19 @@ async function loadState() {
 
   setupEl.style.display = "none";
   configuredEl.style.display = "flex";
-  manageLink.href = `${account.gitoUrl}/analyst/sources`;
-
-  const config = await getConfig();
-  await renderHeader(true, config);
+  manageLink.href = `${conn.gitoUrl}/analyst/sources`;
 
   const local = (await chrome.storage.local.get([
     "lastRun",
     "dailyCount",
     "lastRunPlatforms",
+    "serverSettings",
     todayKey(),
   ])) as {
     lastRun?: string;
     dailyCount?: { date: string; count: number };
-    lastRunPlatforms?: LastRunPlatforms;
+    lastRunPlatforms?: { at: string; stats: PlatformStats };
+    serverSettings?: ServerSettings;
     [key: string]: unknown;
   };
 
@@ -423,9 +440,35 @@ async function loadState() {
   const manualCount = (local[todayKey()] as number | undefined) ?? 0;
   itemsToday.textContent = String(autoCount + manualCount);
 
-  renderStatus(config, local.lastRun, local.lastRunPlatforms?.stats);
-  renderHealth(config, local.lastRunPlatforms);
-  await renderKeywords();
+  // Fresh server state: settings (via context), health, keywords
+  let settings: ServerSettings | null = local.serverSettings ?? null;
+  let health: HealthRow[] = [];
+  let keywords: KeywordRow[] = [];
+
+  try {
+    const [ctxRes, healthRes, kwRes] = await Promise.all([
+      api(conn, "/api/extension/context"),
+      api(conn, "/api/extension/health"),
+      api(conn, "/api/collect-keywords"),
+    ]);
+    if (ctxRes.ok) {
+      const ctx = await ctxRes.json();
+      settings = ctx.settings as ServerSettings;
+      await chrome.storage.local.set({ serverSettings: settings });
+    } else if (ctxRes.status === 401) {
+      statusDot.style.background = COLORS.neg;
+      statusText.textContent = "API key rejected — reconnect";
+    }
+    if (healthRes.ok) health = (await healthRes.json()) as HealthRow[];
+    if (kwRes.ok) keywords = (await kwRes.json()) as KeywordRow[];
+  } catch {
+    // Offline — render from cached settings
+  }
+
+  await renderHeader(true, settings);
+  renderStatus(settings, local.lastRun, health, keywords.length);
+  renderHealth(settings, health, local.lastRunPlatforms);
+  renderKeywords(conn, keywords);
 }
 
 loadState();
