@@ -6,10 +6,10 @@ import { z } from "zod";
 
 const createSchema = z.object({
   companyId: z.string().uuid(),
-  platform: z.enum(["twitter", "threads"]),
+  platform: z.enum(["twitter", "threads", "reddit", "instagram", "facebook", "linkedin"]),
   postUrl: z.string().url(),
   postExternalId: z.string().optional(),
-  entityId: z.string().uuid().optional(),
+  topicId: z.string().uuid().optional(),
   label: z.string().optional(),
 });
 
@@ -38,7 +38,7 @@ export async function POST(req: Request) {
       platform: body.data.platform,
       postUrl: body.data.postUrl,
       postExternalId: body.data.postExternalId ?? null,
-      entityId: body.data.entityId ?? null,
+      topicId: body.data.topicId ?? null,
       label: body.data.label ?? null,
     })
     .onConflictDoNothing({ target: [trackedThreads.companyId, trackedThreads.postUrl] })

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { companies, trackedEntities } from "@/lib/db/schema";
-import { asc, isNull, eq } from "drizzle-orm";
+import { companies } from "@/lib/db/schema";
+import { asc } from "drizzle-orm";
 import { z } from "zod";
 
 const createSchema = z.object({ name: z.string().min(1) });
@@ -15,12 +15,6 @@ export async function GET() {
         .insert(companies)
         .values({ name: "Your Company" })
         .returning();
-
-      await db
-        .update(trackedEntities)
-        .set({ companyId: defaultCompany.id })
-        .where(isNull(trackedEntities.companyId));
-
       rows = [defaultCompany];
     }
 

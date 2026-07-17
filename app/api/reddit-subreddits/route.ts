@@ -7,32 +7,29 @@ import { z } from "zod";
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const companyId = searchParams.get("companyId");
+  if (!companyId) {
+    return NextResponse.json({ error: "companyId required" }, { status: 400 });
+  }
 
   const rows = await db
     .select()
     .from(redditSubreddits)
-    .where(companyId ? eq(redditSubreddits.companyId, companyId) : undefined)
+    .where(eq(redditSubreddits.companyId, companyId))
     .orderBy(redditSubreddits.createdAt);
 
-  return NextResponse.json(
-    rows.map((r) => ({
-      id: r.id,
-      subredditName: r.subredditName,
-      keywordFilters: r.keywordFilters ?? [],
-      createdAt: r.createdAt,
-    }))
-  );
+  return NextResponse.json(rows);
 }
 
 const addSchema = z.object({
+  companyId: z.string().uuid(),
   subredditName: z
     .string()
     .min(3)
     .max(21)
-    .regex(/^[a-zA-Z0-9_]+$/, "Subreddit names may only contain letters, numbers, and underscores")
+    .regex(/^[a-zA-Z0-9_\/]+$/, "Subreddit names may only contain letters, numbers, and underscores")
     .transform((v) => v.toLowerCase().replace(/^r\//, "")),
+  sorts: z.array(z.enum(["new", "hot"])).min(1).optional().default(["new"]),
   keywordFilters: z.array(z.string().min(1).max(100)).optional().default([]),
-  companyId: z.string().uuid().optional(),
 }).refine(
   (data) => data.subredditName !== "all" || data.keywordFilters.length > 0,
   { message: "Keywords are required when tracking all of Reddit", path: ["keywordFilters"] }
@@ -45,27 +42,22 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid input" }, { status: 400 });
   }
 
-  const { subredditName, keywordFilters, companyId } = parsed.data;
+  const { companyId, subredditName, sorts, keywordFilters } = parsed.data;
 
-  if (companyId) {
-    const [{ total }] = await db
-      .select({ total: count() })
-      .from(redditSubreddits)
-      .where(eq(redditSubreddits.companyId, companyId));
-    if (total >= 20) {
-      return NextResponse.json({ error: "Maximum of 20 subreddits per company" }, { status: 400 });
-    }
+  const [{ total }] = await db
+    .select({ total: count() })
+    .from(redditSubreddits)
+    .where(eq(redditSubreddits.companyId, companyId));
+  if (total >= 20) {
+    return NextResponse.json({ error: "Maximum of 20 subreddits per company" }, { status: 400 });
   }
 
   try {
     const [row] = await db
       .insert(redditSubreddits)
-      .values({ subredditName, keywordFilters, companyId: companyId ?? null })
+      .values({ companyId, subredditName, sorts: [...new Set(sorts)], keywordFilters })
       .returning();
-    return NextResponse.json(
-      { id: row.id, subredditName: row.subredditName, keywordFilters: row.keywordFilters ?? [], createdAt: row.createdAt },
-      { status: 201 }
-    );
+    return NextResponse.json(row, { status: 201 });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "";
     if (msg.includes("unique") || msg.includes("duplicate")) {

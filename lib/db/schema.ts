@@ -6,405 +6,332 @@ import {
   jsonb,
   pgEnum,
   unique,
+  uniqueIndex,
+  index,
   integer,
+  bigint,
   real,
   primaryKey,
   boolean,
+  check,
 } from "drizzle-orm/pg-core";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
-export const entityTypeEnum = pgEnum("entity_type", [
-  "keyword",
-  "executive",
-  "product",
-]);
-
-export const clusterClassificationEnum = pgEnum("cluster_classification", [
-  "unclassified",
-  "narrative",
-  "noise",
-]);
-
-export const narrativeStageEnum = pgEnum("narrative_stage", [
-  "emerging",
-  "relaxed",
-  "developing",
-  "peaked",
-  "revival",
-  "declining",
-]);
-
-export const itemSignalEnum = pgEnum("item_signal", [
-  "unclassified",
-  "signal",
-  "noise",
-  "watch",
-]);
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
 
 export const platformEnum = pgEnum("platform", [
-  "hackernews",
-  "reddit",
   "twitter",
-  "google_alerts",
-  "manual",
   "threads",
+  "reddit",
   "instagram",
   "facebook",
+  "linkedin",
+  "news",
+  "manual",
 ]);
+
+export const itemKindEnum = pgEnum("item_kind", ["post", "comment"]);
+
+// 'exact' = platform gave a real timestamp; 'approx' = derived from a relative
+// label ("2h ago", vision OCR); 'unknown' = platform gave nothing — never fake
+// published_at to ingest time.
+export const publishedAtPrecisionEnum = pgEnum("published_at_precision", [
+  "exact",
+  "approx",
+  "unknown",
+]);
+
+export const sourceKindEnum = pgEnum("source_kind", [
+  "keyword_search",
+  "subreddit_new",
+  "subreddit_hot",
+  "tracked_thread",
+  "profile",
+  "manual",
+  "rss",
+]);
+
+export const extractionMethodEnum = pgEnum("extraction_method", [
+  "dom",
+  "vision",
+]);
+
+export const runTriggerEnum = pgEnum("run_trigger", ["auto", "manual"]);
+
+export const runStatusEnum = pgEnum("run_status", [
+  "running",
+  "ok",
+  "partial",
+  "failed",
+]);
+
+export const runEventStatusEnum = pgEnum("run_event_status", [
+  "ok",
+  "zero_results",
+  "http_403",
+  "logged_out",
+  "checkpoint",
+  "vision_fallback",
+  "error",
+]);
+
+export const healthStateEnum = pgEnum("health_state", [
+  "ok",
+  "degraded",
+  "blocked",
+]);
+
+// ---------------------------------------------------------------------------
+// Companies & collection config
+// ---------------------------------------------------------------------------
 
 export const companies = pgTable("companies", {
   id:        uuid("id").defaultRandom().primaryKey(),
   name:      text("name").notNull(),
   apiKey:    text("api_key").unique(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
-export const trackedEntities = pgTable("tracked_entities", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  companyId: uuid("company_id").references(() => companies.id, { onDelete: "cascade" }),
-  label: text("label").notNull(),
-  queryString: text("query_string").notNull(),
-  entityType: entityTypeEnum("entity_type").notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
-
-export const rssFeeds = pgTable("rss_feeds", {
+// Topics = analysis grouping (header chips in the analyst UI). Items are
+// assigned a topic by provenance: whichever keyword/subreddit/feed found them.
+export const topics = pgTable("topics", {
   id:        uuid("id").defaultRandom().primaryKey(),
-  entityId:  uuid("entity_id").references(() => trackedEntities.id, { onDelete: "cascade" }).notNull(),
+  companyId: uuid("company_id").references(() => companies.id, { onDelete: "cascade" }).notNull(),
   label:     text("label").notNull(),
-  feedUrl:   text("feed_url").notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-}, (t) => [unique("rss_feeds_entity_url_unique").on(t.entityId, t.feedUrl)]);
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [unique("topics_company_label_unique").on(t.companyId, t.label)]);
 
-export const newsTimelineDays = pgTable("news_timeline_days", {
-  id:             uuid("id").defaultRandom().primaryKey(),
-  rssFeedId:      uuid("rss_feed_id").references(() => rssFeeds.id, { onDelete: "cascade" }).notNull(),
-  periodDate:     text("period_date").notNull(),
-  aiSummary:      text("ai_summary"),
-  sentimentScore: real("sentiment_score"),
-  sentimentLabel: text("sentiment_label"),
-  itemCount:      integer("item_count").default(0).notNull(),
-  stories:        jsonb("stories").$type<Array<{ label: string; summary: string; sentiment: string; score: number; count: number }>>(),
-  generatedAt:    timestamp("generated_at"),
-  createdAt:      timestamp("created_at").defaultNow().notNull(),
-  updatedAt:      timestamp("updated_at").defaultNow().notNull(),
-}, (t) => [unique("news_timeline_days_feed_date_unique").on(t.rssFeedId, t.periodDate)]);
-
-export const extensionCollectRuns = pgTable("extension_collect_runs", {
-  id:             uuid("id").primaryKey(),
-  companyId:      uuid("company_id").references(() => companies.id, { onDelete: "cascade" }).notNull(),
-  triggeredBy:    text("triggered_by").notNull(), // "auto" | "manual"
-  ranAt:          timestamp("ran_at").notNull(),
-  searchTerms:    text("search_terms").array().notNull().default([]),
-  platforms:      text("platforms").array().notNull().default([]),
-  itemsCollected: integer("items_collected").notNull().default(0),
-  itemsInserted:  integer("items_inserted").notNull().default(0),
-});
-
-export const ingestedItems = pgTable(
-  "ingested_items",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    entityId: uuid("entity_id").references(() => trackedEntities.id, {
-      onDelete: "set null",
-    }),
-    rssFeedId: uuid("rss_feed_id").references(() => rssFeeds.id, { onDelete: "set null" }),
-    collectRunId: uuid("collect_run_id").references(() => extensionCollectRuns.id, { onDelete: "set null" }),
-    platform: platformEnum("platform").notNull(),
-    externalId: text("external_id"),
-    url: text("url"),
-    title: text("title"),
-    body: text("body"),
-    author: text("author"),
-    publishedAt: timestamp("published_at"),
-    rawJson: jsonb("raw_json"),
-    subtype: text("subtype"),
-    parentId: uuid("parent_id").references((): AnyPgColumn => ingestedItems.id, { onDelete: "set null" }),
-    rootPostId: uuid("root_post_id").references((): AnyPgColumn => ingestedItems.id, { onDelete: "set null" }),
-    showInNewsTimeline: boolean("show_in_news_timeline").default(false).notNull(),
-    // Per-item sentiment towards the tracked entity (batched LLM scoring)
-    sentimentScore: real("sentiment_score"),
-    sentimentLabel: text("sentiment_label"),
-    sentimentAnalyzedAt: timestamp("sentiment_analyzed_at"),
-    createdAt: timestamp("created_at").defaultNow().notNull(),
-  },
-  (t) => [unique("platform_external_id_unique").on(t.platform, t.externalId)]
-);
-
-export const clusters = pgTable("clusters", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  entityId: uuid("entity_id").references(() => trackedEntities.id, { onDelete: "cascade" }),
-  label: text("label"),
-  itemCount: integer("item_count").default(1).notNull(),
-  firstSeenAt: timestamp("first_seen_at").notNull(),
-  lastSeenAt: timestamp("last_seen_at").notNull(),
-  archivedAt: timestamp("archived_at"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  // Classification fields
-  classification: clusterClassificationEnum("classification").default("unclassified").notNull(),
-  narrativeStage: narrativeStageEnum("narrative_stage"),
-  narrativeSummary: text("narrative_summary"),
-  momentum: real("momentum"),
-  peakMomentum: real("peak_momentum"),
-  velocity24h: real("velocity_24h"),
-  prevVelocity24h: real("prev_velocity_24h"),
-  platformCount: integer("platform_count"),
-  classificationConfidence: real("classification_confidence"),
-  analystClassification: text("analyst_classification"), // 'narrative' | 'noise'
-  analystNote: text("analyst_note"),
-  analystReviewedAt: timestamp("analyst_reviewed_at"),
-  classifiedAt: timestamp("classified_at"),
-  // Sentiment fields
-  sentimentScore: real("sentiment_score"),
-  sentimentLabel: text("sentiment_label"),
-  sentimentAnalyzedAt: timestamp("sentiment_analyzed_at"),
-  // LLM-suggested keywords when the cluster was formed
-  suggestedKeywords: jsonb("suggested_keywords").$type<string[]>(),
-  // Narrative arc this cluster belongs to (clusters are the event layer)
-  storylineId: uuid("storyline_id").references((): AnyPgColumn => storylines.id, { onDelete: "set null" }),
-});
-
-// Narrative arcs above clusters: a storyline groups related event clusters
-// over days/weeks ("billionaire policy backlash") with origin tracing and
-// cached per-platform lens digests.
-export const storylines = pgTable("storylines", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  entityId: uuid("entity_id")
-    .references(() => trackedEntities.id, { onDelete: "cascade" })
-    .notNull(),
-  title: text("title").notNull(),
-  summary: text("summary"),
-  status: text("status").default("open").notNull(), // open | closed
-  originClusterId: uuid("origin_cluster_id").references((): AnyPgColumn => clusters.id, { onDelete: "set null" }),
-  firstSeenAt: timestamp("first_seen_at").notNull(),
-  lastSeenAt: timestamp("last_seen_at").notNull(),
-  newsSentimentScore: real("news_sentiment_score"),
-  socialSentimentScore: real("social_sentiment_score"),
-  platformLens: jsonb("platform_lens").$type<Record<string, { digest: string; quote: string | null }>>(),
-  lensGeneratedAt: timestamp("lens_generated_at"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
-
-// Tracks merge history — one row per absorbed cluster
-export const clusterMerges = pgTable("cluster_merges", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  survivingClusterId: uuid("surviving_cluster_id")
-    .references(() => clusters.id, { onDelete: "cascade" })
-    .notNull(),
-  absorbedLabel: text("absorbed_label"),
-  absorbedFirstSeenAt: timestamp("absorbed_first_seen_at").notNull(),
-  absorbedLastSeenAt: timestamp("absorbed_last_seen_at").notNull(),
-  absorbedItemCount: integer("absorbed_item_count").notNull(),
-  mergedAt: timestamp("merged_at").defaultNow().notNull(),
-});
-
-export const clusterItems = pgTable(
-  "cluster_items",
-  {
-    clusterId: uuid("cluster_id")
-      .references(() => clusters.id, { onDelete: "cascade" })
-      .notNull(),
-    itemId: uuid("item_id")
-      .references(() => ingestedItems.id, { onDelete: "cascade" })
-      .notNull(),
-    similarity: real("similarity").notNull(),
-    addedAt: timestamp("added_at").defaultNow().notNull(),
-    // Signal classification
-    itemSignal: itemSignalEnum("item_signal").default("unclassified").notNull(),
-    signalReason: text("signal_reason"),
-    analystSignal: text("analyst_signal"), // 'signal' | 'noise' | 'watch'
-    analystNote: text("analyst_note"),
-    analystFlag: text("analyst_flag"), // null | 'review' | 'highlight'
-    // Merge provenance — null means item was original to this cluster
-    mergeId: uuid("merge_id").references(() => clusterMerges.id, { onDelete: "set null" }),
-  },
-  (t) => [primaryKey({ columns: [t.clusterId, t.itemId] })]
-);
-
-export const clusterPeriodNarratives = pgTable(
-  "cluster_period_narratives",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    clusterId: uuid("cluster_id")
-      .references(() => clusters.id, { onDelete: "cascade" })
-      .notNull(),
-    periodDate: text("period_date").notNull(), // "YYYY-MM-DD" UTC
-    aiNarrative: text("ai_narrative"),
-    analystNarrative: text("analyst_narrative"),
-    generatedAt: timestamp("generated_at"),
-    createdAt: timestamp("created_at").defaultNow().notNull(),
-    updatedAt: timestamp("updated_at").defaultNow().notNull(),
-  },
-  (t) => [unique("cluster_period_unique").on(t.clusterId, t.periodDate)]
-);
-
-// Per-entity per-day insight: news vs social sentiment gap and an LLM line on
-// what drove the day's sentiment — powers "why did sentiment move" on the
-// Global Narratives page.
-export const entityDayInsights = pgTable(
-  "entity_day_insights",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    entityId: uuid("entity_id")
-      .references(() => trackedEntities.id, { onDelete: "cascade" })
-      .notNull(),
-    periodDate: text("period_date").notNull(), // "YYYY-MM-DD" UTC
-    newsScore: real("news_score"),
-    socialScore: real("social_score"),
-    divergence: real("divergence"), // newsScore - socialScore when both present
-    driverSummary: text("driver_summary"),
-    topClusterIds: jsonb("top_cluster_ids").$type<string[]>(),
-    generatedAt: timestamp("generated_at"),
-    createdAt: timestamp("created_at").defaultNow().notNull(),
-    updatedAt: timestamp("updated_at").defaultNow().notNull(),
-  },
-  (t) => [unique("entity_day_insights_entity_date_unique").on(t.entityId, t.periodDate)]
-);
-
-// News articles linked to a cluster of social discussion — news stays OUT of
-// cluster membership; this records "the closest related news" with an explanation.
-// headline/url/publishedAt are denormalized so links survive the 7-day news purge.
-export const clusterNewsLinks = pgTable("cluster_news_links", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  clusterId: uuid("cluster_id")
-    .references(() => clusters.id, { onDelete: "cascade" })
-    .notNull(),
-  newsItemId: uuid("news_item_id").references(() => ingestedItems.id, { onDelete: "set null" }),
-  headline: text("headline").notNull(),
-  url: text("url"),
-  publishedAt: timestamp("published_at"),
-  relationship: text("relationship").notNull(), // 'driving' | 'related'
-  explanation: text("explanation"),
-  confidence: real("confidence"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
-
-// LLM-proposed cluster merges awaiting analyst review (no auto-merge)
-export const clusterMergeSuggestions = pgTable("cluster_merge_suggestions", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  entityId: uuid("entity_id")
-    .references(() => trackedEntities.id, { onDelete: "cascade" })
-    .notNull(),
-  clusterIds: jsonb("cluster_ids").$type<string[]>().notNull(),
-  suggestedLabel: text("suggested_label"),
-  confidence: real("confidence"),
-  reason: text("reason"),
-  status: text("status").default("pending").notNull(), // pending | accepted | dismissed | stale
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  resolvedAt: timestamp("resolved_at"),
-});
+// Search keywords owned by a topic. Keyword search sessions only run on
+// twitter/threads/reddit — other platforms are collected via tracked
+// threads, profiles, and manual capture.
+export const collectKeywords = pgTable("collect_keywords", {
+  id:        uuid("id").defaultRandom().primaryKey(),
+  companyId: uuid("company_id").references(() => companies.id, { onDelete: "cascade" }).notNull(),
+  // Nullable: popup quick-add lands unassigned, re-assignable on the site
+  topicId:   uuid("topic_id").references(() => topics.id, { onDelete: "set null" }),
+  term:      text("term").notNull(),
+  platforms: text("platforms").array().notNull().default(["twitter", "threads", "reddit"]),
+  isActive:  boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [
+  unique("collect_keywords_company_term_unique").on(t.companyId, t.term),
+  check("collect_keywords_platforms_check", sql`${t.platforms} <@ ARRAY['twitter','threads','reddit']::text[]`),
+]);
 
 export const redditSubreddits = pgTable("reddit_subreddits", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  companyId: uuid("company_id").references(() => companies.id, { onDelete: "cascade" }),
-  subredditName: text("subreddit_name").notNull(),
+  id:             uuid("id").defaultRandom().primaryKey(),
+  companyId:      uuid("company_id").references(() => companies.id, { onDelete: "cascade" }).notNull(),
+  subredditName:  text("subreddit_name").notNull(),
+  sorts:          text("sorts").array().notNull().default(["new"]),
   keywordFilters: text("keyword_filters").array().notNull().default([]),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-}, (t) => [unique("reddit_subreddits_company_subreddit_unique").on(t.companyId, t.subredditName)]);
+  isActive:       boolean("is_active").default(true).notNull(),
+  createdAt:      timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [
+  unique("reddit_subreddits_company_subreddit_unique").on(t.companyId, t.subredditName),
+  check("reddit_subreddits_sorts_check", sql`${t.sorts} <@ ARRAY['new','hot']::text[]`),
+]);
 
 export const twitterHandles = pgTable("twitter_handles", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  companyId: uuid("company_id").references(() => companies.id, { onDelete: "cascade" }),
-  handle: text("handle").notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
+  id:        uuid("id").defaultRandom().primaryKey(),
+  companyId: uuid("company_id").references(() => companies.id, { onDelete: "cascade" }).notNull(),
+  handle:    text("handle").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (t) => [unique("twitter_handles_company_handle_unique").on(t.companyId, t.handle)]);
 
-export const threadsFilters = pgTable("threads_filters", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  companyId: uuid("company_id").references(() => companies.id, { onDelete: "cascade" }),
-  filterType: text("filter_type").notNull(), // 'keyword' | 'user'
-  value: text("value").notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-}, (t) => [unique("threads_filters_company_type_value_unique").on(t.companyId, t.filterType, t.value)]);
-
 export const trackedUserHandles = pgTable("tracked_user_handles", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  companyId: uuid("company_id").references(() => companies.id, { onDelete: "cascade" }),
-  platform: text("platform").notNull(),
-  username: text("username").notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
+  id:        uuid("id").defaultRandom().primaryKey(),
+  companyId: uuid("company_id").references(() => companies.id, { onDelete: "cascade" }).notNull(),
+  platform:  platformEnum("platform").notNull(),
+  username:  text("username").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (t) => [unique("tracked_user_handles_unique").on(t.companyId, t.platform, t.username)]);
 
 export const trackedThreads = pgTable("tracked_threads", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  companyId: uuid("company_id").references(() => companies.id, { onDelete: "cascade" }),
-  platform: platformEnum("platform").notNull(),
-  postUrl: text("post_url").notNull(),
-  postExternalId: text("post_external_id"),
-  entityId: uuid("entity_id").references(() => trackedEntities.id, { onDelete: "set null" }),
-  label: text("label"),
-  isActive: boolean("is_active").default(true).notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  lastCollectedAt: timestamp("last_collected_at"),
+  id:              uuid("id").defaultRandom().primaryKey(),
+  companyId:       uuid("company_id").references(() => companies.id, { onDelete: "cascade" }).notNull(),
+  platform:        platformEnum("platform").notNull(),
+  postUrl:         text("post_url").notNull(),
+  postExternalId:  text("post_external_id"),
+  topicId:         uuid("topic_id").references(() => topics.id, { onDelete: "set null" }),
+  label:           text("label"),
+  isActive:        boolean("is_active").default(true).notNull(),
+  createdAt:       timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  lastCollectedAt: timestamp("last_collected_at", { withTimezone: true }),
 }, (t) => [unique("tracked_threads_company_url_unique").on(t.companyId, t.postUrl)]);
 
-// Daily Executive Brief: per-company per-Pacific-day LLM snapshot answering
-// "what do I need to pay attention to today and what should I do about it"
-export const dailyBriefs = pgTable(
-  "daily_briefs",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    companyId: uuid("company_id")
-      .references(() => companies.id, { onDelete: "cascade" })
-      .notNull(),
-    periodDate: text("period_date").notNull(), // "YYYY-MM-DD" Pacific (matches daily report)
-    snapshotData: jsonb("snapshot_data").notNull(),
-    generatedAt: timestamp("generated_at").defaultNow().notNull(),
-    createdAt: timestamp("created_at").defaultNow().notNull(),
-  },
-  (t) => [unique("daily_briefs_company_date_unique").on(t.companyId, t.periodDate)]
-);
+export const rssFeeds = pgTable("rss_feeds", {
+  id:        uuid("id").defaultRandom().primaryKey(),
+  companyId: uuid("company_id").references(() => companies.id, { onDelete: "cascade" }).notNull(),
+  topicId:   uuid("topic_id").references(() => topics.id, { onDelete: "set null" }),
+  label:     text("label").notNull(),
+  feedUrl:   text("feed_url").notNull(),
+  isActive:  boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [unique("rss_feeds_company_url_unique").on(t.companyId, t.feedUrl)]);
 
-export const clusterReports = pgTable("cluster_reports", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  clusterId: uuid("cluster_id")
-    .references(() => clusters.id, { onDelete: "cascade" })
-    .notNull(),
-  companyId: uuid("company_id")
-    .references(() => companies.id, { onDelete: "cascade" }),
-  snapshotData: jsonb("snapshot_data").notNull(),
-  clusterLabel: text("cluster_label"),
-  companyName: text("company_name"),
-  analystSummary: text("analyst_summary"),
-  generatedAt: timestamp("generated_at").defaultNow().notNull(),
+// One row per company. The extension pulls this (plus keywords/subreddits/
+// handles/threads) as its config snapshot at the start of every run.
+export const collectSettings = pgTable("collect_settings", {
+  companyId:               uuid("company_id").references(() => companies.id, { onDelete: "cascade" }).primaryKey(),
+  intervalMinutes:         integer("interval_minutes").default(30).notNull(),
+  enabled:                 boolean("enabled").default(true).notNull(),
+  pausedPlatforms:         text("paused_platforms").array().notNull().default([]),
+  maxThreadDrills:         integer("max_thread_drills").default(5).notNull(),
+  // Per-platform kill-switch for the screenshot/OCR fallback tier
+  visionDisabledPlatforms: text("vision_disabled_platforms").array().notNull().default([]),
+  updatedAt:               timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
+
+// ---------------------------------------------------------------------------
+// Runs
+// ---------------------------------------------------------------------------
+
+export const collectRuns = pgTable("collect_runs", {
+  id:             uuid("id").defaultRandom().primaryKey(),
+  companyId:      uuid("company_id").references(() => companies.id, { onDelete: "cascade" }).notNull(),
+  triggeredBy:    runTriggerEnum("triggered_by").notNull(),
+  startedAt:      timestamp("started_at", { withTimezone: true }).defaultNow().notNull(),
+  finishedAt:     timestamp("finished_at", { withTimezone: true }),
+  status:         runStatusEnum("status").default("running").notNull(),
+  itemsCollected: integer("items_collected").default(0).notNull(),
+  itemsInserted:  integer("items_inserted").default(0).notNull(),
+}, (t) => [index("collect_runs_company_started_idx").on(t.companyId, t.startedAt)]);
+
+// ---------------------------------------------------------------------------
+// Items — posts and comments, threaded for real
+// ---------------------------------------------------------------------------
+
+export const items = pgTable("items", {
+  id:        uuid("id").defaultRandom().primaryKey(),
+  companyId: uuid("company_id").references(() => companies.id, { onDelete: "cascade" }).notNull(),
+  platform:  platformEnum("platform").notNull(),
+  kind:      itemKindEnum("kind").notNull(),
+  externalId: text("external_id"),
+  url:        text("url"),
+  author:     text("author"),
+  title:      text("title"), // real titles only (reddit/news); never body[:200] copies
+  body:       text("body"),
+  publishedAt:          timestamp("published_at", { withTimezone: true }),
+  publishedAtPrecision: publishedAtPrecisionEnum("published_at_precision").default("unknown").notNull(),
+  // Threading (structural — replaces the old cluster-per-thread hack)
+  parentId:   uuid("parent_id").references((): AnyPgColumn => items.id, { onDelete: "set null" }),
+  rootPostId: uuid("root_post_id").references((): AnyPgColumn => items.id, { onDelete: "set null" }),
+  threadKey:  text("thread_key"), // platform:root_external_id
+  depth:      integer("depth"),   // reddit comment depth preserved
+  // Analysis
+  topicId:             uuid("topic_id").references(() => topics.id, { onDelete: "set null" }), // by provenance, editable
+  sentimentScore:      real("sentiment_score"),
+  sentimentLabel:      text("sentiment_label"),
+  sentimentAnalyzedAt: timestamp("sentiment_analyzed_at", { withTimezone: true }),
+  // Provenance
+  sourceKind:   sourceKindEnum("source_kind").notNull(),
+  sourceRef:    text("source_ref"), // the term / subreddit / handle / feed id
+  collectRunId: uuid("collect_run_id").references(() => collectRuns.id, { onDelete: "set null" }),
+  // Extraction tier
+  extractionMethod:     extractionMethodEnum("extraction_method").default("dom").notNull(),
+  extractionConfidence: real("extraction_confidence"), // mean OCR confidence for vision items
+  dedupeKey:            text("dedupe_key"),            // hash(platform, author, body prefix)
+  latestEngagement:     jsonb("latest_engagement").$type<{
+    likes?: number; replies?: number; reposts?: number; upvotes?: number; views?: number;
+  }>(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [
+  // Company-scoped so two companies can both ingest the same viral post
+  unique("items_company_platform_external_id_unique").on(t.companyId, t.platform, t.externalId),
+  // Vision items have no external id — dedupe on the content hash instead
+  uniqueIndex("items_company_dedupe_key_unique")
+    .on(t.companyId, t.dedupeKey)
+    .where(sql`${t.externalId} IS NULL AND ${t.dedupeKey} IS NOT NULL`),
+  index("items_company_published_idx").on(t.companyId, t.publishedAt),
+  index("items_company_platform_idx").on(t.companyId, t.platform),
+  index("items_topic_idx").on(t.topicId),
+  index("items_root_post_idx").on(t.rootPostId),
+  index("items_thread_key_idx").on(t.threadKey),
+  index("items_collect_run_idx").on(t.collectRunId),
+  // Sentiment batch scoring scans for unscored items
+  index("items_unscored_idx").on(t.createdAt).where(sql`${t.sentimentAnalyzedAt} IS NULL`),
+]);
+
+// Re-scrapes of an already-seen item upsert a snapshot here (and refresh
+// items.latest_engagement) instead of being dropped silently.
+export const engagementSnapshots = pgTable("engagement_snapshots", {
+  itemId:     uuid("item_id").references(() => items.id, { onDelete: "cascade" }).notNull(),
+  capturedAt: timestamp("captured_at", { withTimezone: true }).notNull(),
+  likes:   integer("likes"),
+  replies: integer("replies"),
+  reposts: integer("reposts"),
+  upvotes: integer("upvotes"),
+  views:   bigint("views", { mode: "number" }),
+}, (t) => [primaryKey({ columns: [t.itemId, t.capturedAt] })]);
+
+// ---------------------------------------------------------------------------
+// Run events & source health
+// ---------------------------------------------------------------------------
+
+export const collectRunEvents = pgTable("collect_run_events", {
+  id:         uuid("id").defaultRandom().primaryKey(),
+  runId:      uuid("run_id").references(() => collectRuns.id, { onDelete: "cascade" }).notNull(),
+  at:         timestamp("at", { withTimezone: true }).defaultNow().notNull(),
+  platform:   platformEnum("platform").notNull(),
+  sourceKind: sourceKindEnum("source_kind"),
+  sourceRef:  text("source_ref"),
+  status:     runEventStatusEnum("status").notNull(),
+  detail:     text("detail"),
+  itemsCount: integer("items_count").default(0).notNull(),
+}, (t) => [
+  index("collect_run_events_run_idx").on(t.runId),
+  index("collect_run_events_platform_at_idx").on(t.platform, t.at),
+]);
+
+// Per-platform health state machine — drives Telegram alerts (on state
+// transitions, throttled) and the Sources view. Never alerts per-event.
+export const sourceHealth = pgTable("source_health", {
+  companyId:      uuid("company_id").references(() => companies.id, { onDelete: "cascade" }).notNull(),
+  platform:       platformEnum("platform").notNull(),
+  state:          healthStateEnum("state").default("ok").notNull(),
+  since:          timestamp("since", { withTimezone: true }).defaultNow().notNull(),
+  lastOkAt:       timestamp("last_ok_at", { withTimezone: true }),
+  lastNotifiedAt: timestamp("last_notified_at", { withTimezone: true }),
+}, (t) => [primaryKey({ columns: [t.companyId, t.platform] })]);
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
 
 export type Company = typeof companies.$inferSelect;
 export type NewCompany = typeof companies.$inferInsert;
-export type TrackedEntity = typeof trackedEntities.$inferSelect;
-export type NewTrackedEntity = typeof trackedEntities.$inferInsert;
-export type IngestedItem = typeof ingestedItems.$inferSelect;
-export type NewIngestedItem = typeof ingestedItems.$inferInsert;
-export type Cluster = typeof clusters.$inferSelect;
-export type NewCluster = typeof clusters.$inferInsert;
-export type ClusterItem = typeof clusterItems.$inferSelect;
-export type ClusterPeriodNarrative = typeof clusterPeriodNarratives.$inferSelect;
-export type ClusterMerge = typeof clusterMerges.$inferSelect;
-export type ClusterNewsLink = typeof clusterNewsLinks.$inferSelect;
-export type NewClusterNewsLink = typeof clusterNewsLinks.$inferInsert;
-export type ClusterMergeSuggestion = typeof clusterMergeSuggestions.$inferSelect;
-export type Storyline = typeof storylines.$inferSelect;
-export type NewStoryline = typeof storylines.$inferInsert;
-export type EntityDayInsight = typeof entityDayInsights.$inferSelect;
-export type DailyBrief = typeof dailyBriefs.$inferSelect;
-export type TwitterHandle = typeof twitterHandles.$inferSelect;
-export type NewTwitterHandle = typeof twitterHandles.$inferInsert;
-export type ThreadsFilter = typeof threadsFilters.$inferSelect;
+export type Topic = typeof topics.$inferSelect;
+export type NewTopic = typeof topics.$inferInsert;
+export type CollectKeyword = typeof collectKeywords.$inferSelect;
+export type NewCollectKeyword = typeof collectKeywords.$inferInsert;
 export type RedditSubreddit = typeof redditSubreddits.$inferSelect;
 export type NewRedditSubreddit = typeof redditSubreddits.$inferInsert;
+export type TwitterHandle = typeof twitterHandles.$inferSelect;
+export type NewTwitterHandle = typeof twitterHandles.$inferInsert;
 export type TrackedUserHandle = typeof trackedUserHandles.$inferSelect;
 export type NewTrackedUserHandle = typeof trackedUserHandles.$inferInsert;
-export type ClusterReport = typeof clusterReports.$inferSelect;
 export type TrackedThread = typeof trackedThreads.$inferSelect;
 export type NewTrackedThread = typeof trackedThreads.$inferInsert;
 export type RssFeed = typeof rssFeeds.$inferSelect;
 export type NewRssFeed = typeof rssFeeds.$inferInsert;
-export type NewsTimelineDay = typeof newsTimelineDays.$inferSelect;
-export type NewNewsTimelineDay = typeof newsTimelineDays.$inferInsert;
-export type ExtensionCollectRun = typeof extensionCollectRuns.$inferSelect;
-export type NewExtensionCollectRun = typeof extensionCollectRuns.$inferInsert;
+export type CollectSettings = typeof collectSettings.$inferSelect;
+export type NewCollectSettings = typeof collectSettings.$inferInsert;
+export type CollectRun = typeof collectRuns.$inferSelect;
+export type NewCollectRun = typeof collectRuns.$inferInsert;
+export type Item = typeof items.$inferSelect;
+export type NewItem = typeof items.$inferInsert;
+export type EngagementSnapshot = typeof engagementSnapshots.$inferSelect;
+export type NewEngagementSnapshot = typeof engagementSnapshots.$inferInsert;
+export type CollectRunEvent = typeof collectRunEvents.$inferSelect;
+export type NewCollectRunEvent = typeof collectRunEvents.$inferInsert;
+export type SourceHealth = typeof sourceHealth.$inferSelect;
+export type NewSourceHealth = typeof sourceHealth.$inferInsert;
 
-export type ClusterClassification = "unclassified" | "narrative" | "noise";
-export type NarrativeStage = "relaxed" | "emerging" | "developing" | "peaked" | "revival" | "declining";
-export type ItemSignal = "unclassified" | "signal" | "noise" | "watch";
+export type Platform = (typeof platformEnum.enumValues)[number];
+export type ItemKind = (typeof itemKindEnum.enumValues)[number];
+export type SourceKind = (typeof sourceKindEnum.enumValues)[number];
+export type RunEventStatus = (typeof runEventStatusEnum.enumValues)[number];
+export type HealthState = (typeof healthStateEnum.enumValues)[number];

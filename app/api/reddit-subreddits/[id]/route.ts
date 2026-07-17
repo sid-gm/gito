@@ -21,7 +21,9 @@ export async function DELETE(
 }
 
 const patchSchema = z.object({
-  keywordFilters: z.array(z.string().min(1).max(100)),
+  keywordFilters: z.array(z.string().min(1).max(100)).optional(),
+  sorts: z.array(z.enum(["new", "hot"])).min(1).optional(),
+  isActive: z.boolean().optional(),
 });
 
 export async function PATCH(
@@ -35,27 +37,24 @@ export async function PATCH(
   const body = await req.json();
   const parsed = patchSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json({ error: "Invalid keyword filters" }, { status: 400 });
+    return NextResponse.json({ error: "Invalid input" }, { status: 400 });
+  }
+
+  const updates: Partial<typeof redditSubreddits.$inferInsert> = {};
+  if (parsed.data.keywordFilters) updates.keywordFilters = parsed.data.keywordFilters;
+  if (parsed.data.sorts) updates.sorts = [...new Set(parsed.data.sorts)];
+  if (parsed.data.isActive !== undefined) updates.isActive = parsed.data.isActive;
+  if (Object.keys(updates).length === 0) {
+    return NextResponse.json({ error: "Nothing to update" }, { status: 400 });
   }
 
   const where = companyId
     ? and(eq(redditSubreddits.id, id), eq(redditSubreddits.companyId, companyId))
     : eq(redditSubreddits.id, id);
 
-  const [row] = await db
-    .update(redditSubreddits)
-    .set({ keywordFilters: parsed.data.keywordFilters })
-    .where(where)
-    .returning();
-
+  const [row] = await db.update(redditSubreddits).set(updates).where(where).returning();
   if (!row) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
-
-  return NextResponse.json({
-    id: row.id,
-    subredditName: row.subredditName,
-    keywordFilters: row.keywordFilters ?? [],
-    createdAt: row.createdAt,
-  });
+  return NextResponse.json(row);
 }

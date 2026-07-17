@@ -25,7 +25,7 @@ const addSchema = z.object({
     .min(1)
     .max(50)
     .transform((v) => v.replace(/^@/, "").trim().toLowerCase()),
-  companyId: z.string().uuid().optional(),
+  companyId: z.string().uuid(),
 });
 
 export async function POST(req: Request) {
@@ -44,7 +44,7 @@ export async function POST(req: Request) {
   try {
     const [row] = await db
       .insert(twitterHandles)
-      .values({ handle, companyId: companyId ?? null })
+      .values({ handle, companyId })
       .returning();
     return NextResponse.json(
       { id: row.id, handle: row.handle, createdAt: row.createdAt },

@@ -4,6 +4,9 @@ import { trackedUserHandles } from "@/lib/db/schema";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
+const PLATFORMS = ["twitter", "threads", "reddit", "instagram", "facebook", "linkedin"] as const;
+type SocialPlatform = (typeof PLATFORMS)[number];
+
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const companyId = searchParams.get("companyId");
@@ -11,7 +14,9 @@ export async function GET(req: Request) {
 
   const conditions = [];
   if (companyId) conditions.push(eq(trackedUserHandles.companyId, companyId));
-  if (platform) conditions.push(eq(trackedUserHandles.platform, platform));
+  if (platform && (PLATFORMS as readonly string[]).includes(platform)) {
+    conditions.push(eq(trackedUserHandles.platform, platform as SocialPlatform));
+  }
 
   const rows = await db
     .select()
@@ -23,9 +28,14 @@ export async function GET(req: Request) {
 }
 
 const addSchema = z.object({
-  platform: z.string().min(1).max(50).transform((v) => v.trim().toLowerCase()),
+  platform: z
+    .string()
+    .min(1)
+    .max(50)
+    .transform((v) => v.trim().toLowerCase())
+    .pipe(z.enum(["twitter", "threads", "reddit", "instagram", "facebook", "linkedin"])),
   username: z.string().min(1).max(100).transform((v) => v.replace(/^[@u\/]+/, "").trim()),
-  companyId: z.string().uuid().optional(),
+  companyId: z.string().uuid(),
 });
 
 export async function POST(req: Request) {
@@ -40,7 +50,7 @@ export async function POST(req: Request) {
   try {
     const [row] = await db
       .insert(trackedUserHandles)
-      .values({ platform, username, companyId: companyId ?? null })
+      .values({ platform, username, companyId })
       .returning();
     return NextResponse.json(row, { status: 201 });
   } catch (err: unknown) {

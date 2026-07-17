@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
+import { createHash } from "node:crypto";
 import { db } from "@/lib/db";
-import { trackedEntities, ingestedItems, clusters, clusterItems } from "@/lib/db/schema";
-import type { NewIngestedItem } from "@/lib/db/schema";
+import { items, collectKeywords, engagementSnapshots } from "@/lib/db/schema";
+import type { NewItem } from "@/lib/db/schema";
 import { verifyExtensionKey } from "@/lib/extension-auth";
-import { eq, inArray, and } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 
 const CORS = {
@@ -15,24 +16,61 @@ export async function OPTIONS() {
   return new Response(null, { status: 204, headers: CORS });
 }
 
+const engagementSchema = z.object({
+  likes: z.number().int().min(0).nullish(),
+  replies: z.number().int().min(0).nullish(),
+  reposts: z.number().int().min(0).nullish(),
+  upvotes: z.number().int().min(0).nullish(),
+  views: z.number().int().min(0).nullish(),
+});
+
 const itemSchema = z.object({
-  url: z.string(),
-  title: z.string().min(1),
-  body: z.string().nullish(),
-  author: z.string().nullish(),
-  publishedAt: z.string().nullish(),
-  platform: z.enum(["twitter", "reddit", "instagram", "threads", "facebook", "manual"]),
-  subtype: z.string().nullish(),
+  platform: z.enum(["twitter", "threads", "reddit", "instagram", "facebook", "linkedin", "manual"]),
+  kind: z.enum(["post", "comment"]),
   externalId: z.string().nullish(),
+  url: z.string().nullish(),
+  author: z.string().nullish(),
+  title: z.string().nullish(), // real titles only (reddit); never body prefixes
+  body: z.string().nullish(),
+  publishedAt: z.string().nullish(),
+  publishedAtPrecision: z.enum(["exact", "approx", "unknown"]).optional(),
   parentExternalId: z.string().nullish(),
   rootExternalId: z.string().nullish(),
+  depth: z.number().int().min(0).nullish(),
+  sourceKind: z.enum(["keyword_search", "subreddit_new", "subreddit_hot", "tracked_thread", "profile", "manual"]),
+  sourceRef: z.string().nullish(),
+  extractionMethod: z.enum(["dom", "vision"]).optional(),
+  extractionConfidence: z.number().min(0).max(1).nullish(),
+  engagement: engagementSchema.nullish(),
+  topicId: z.string().uuid().nullish(),
 });
 
 const bodySchema = z.object({
-  items: z.array(itemSchema).min(1).max(100),
-  entityId: z.string().uuid().optional(),
+  items: z.array(itemSchema).min(1).max(200),
   collectRunId: z.string().uuid().optional(),
 });
+
+// Content hash for items without a platform id (vision-extracted): stable
+// across re-scrapes of the same rendered post.
+function computeDedupeKey(platform: string, author: string | null | undefined, body: string | null | undefined): string | null {
+  const text = (body ?? "").toLowerCase().replace(/\s+/g, " ").trim().slice(0, 120);
+  if (!text) return null;
+  return createHash("sha256")
+    .update(`${platform}|${(author ?? "").toLowerCase().trim()}|${text}`)
+    .digest("hex");
+}
+
+function parseDate(s: string | null | undefined): Date | null {
+  if (!s) return null;
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+type Engagement = z.infer<typeof engagementSchema>;
+
+function hasEngagement(e: Engagement | null | undefined): e is Engagement {
+  return !!e && [e.likes, e.replies, e.reposts, e.upvotes, e.views].some((v) => v != null);
+}
 
 export async function POST(req: Request) {
   const companyId = await verifyExtensionKey(req);
@@ -40,152 +78,214 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401, headers: CORS });
   }
 
-  let body: unknown;
+  let raw: unknown;
   try {
-    body = await req.json();
+    raw = await req.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400, headers: CORS });
   }
 
-  const parsed = bodySchema.safeParse(body);
+  const parsed = bodySchema.safeParse(raw);
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400, headers: CORS });
   }
 
-  const { items, entityId, collectRunId } = parsed.data;
+  const { items: batch, collectRunId } = parsed.data;
 
-  let entities: { id: string; label: string }[] = [];
-  if (!entityId) {
-    entities = await db
-      .select({ id: trackedEntities.id, label: trackedEntities.label })
-      .from(trackedEntities)
-      .where(eq(trackedEntities.companyId, companyId));
+  // Topic by provenance: keyword_search items inherit the owning topic of the
+  // keyword that found them (replaces the old substring-match against labels).
+  const keywordTerms = [...new Set(
+    batch
+      .filter((i) => i.sourceKind === "keyword_search" && i.sourceRef && !i.topicId)
+      .map((i) => i.sourceRef!.toLowerCase())
+  )];
+  const termToTopic = new Map<string, string | null>();
+  if (keywordTerms.length > 0) {
+    const kws = await db
+      .select({ term: collectKeywords.term, topicId: collectKeywords.topicId })
+      .from(collectKeywords)
+      .where(and(
+        eq(collectKeywords.companyId, companyId),
+        inArray(sql`lower(${collectKeywords.term})`, keywordTerms)
+      ));
+    for (const kw of kws) termToTopic.set(kw.term.toLowerCase(), kw.topicId);
   }
 
-  const now = new Date();
-  const safeDate = (s: string | null | undefined): Date => {
-    if (!s) return now;
-    const d = new Date(s);
-    return isNaN(d.getTime()) ? now : d;
-  };
-
-  const toInsert: NewIngestedItem[] = items.map((item) => {
-    let matchedEntityId: string | null = entityId ?? null;
-    if (!matchedEntityId && entities.length > 0) {
-      const titleLower = item.title.toLowerCase();
-      const bodyLower = (item.body ?? "").toLowerCase();
-      const match = entities.find(
-        (e) => titleLower.includes(e.label.toLowerCase()) || bodyLower.includes(e.label.toLowerCase())
-      );
-      matchedEntityId = match?.id ?? null;
-    }
+  const toRow = (i: z.infer<typeof itemSchema>): NewItem => {
+    const publishedAt = parseDate(i.publishedAt);
+    const externalId = i.externalId ?? null;
+    const dedupeKey = computeDedupeKey(i.platform, i.author, i.body);
+    const rootExternalId = i.rootExternalId ?? null;
+    const threadKey = rootExternalId
+      ? `${i.platform}:${rootExternalId}`
+      : i.kind === "post" && externalId
+        ? `${i.platform}:${externalId}`
+        : null;
+    const topicId = i.topicId
+      ?? (i.sourceKind === "keyword_search" && i.sourceRef
+        ? termToTopic.get(i.sourceRef.toLowerCase()) ?? null
+        : null);
 
     return {
-      platform: item.platform,
-      externalId: item.externalId ?? null,
-      url: item.url,
-      title: item.title,
-      body: item.body ?? null,
-      author: item.author ?? null,
-      publishedAt: safeDate(item.publishedAt),
-      entityId: matchedEntityId,
-      subtype: item.subtype ?? null,
-      rawJson: null,
+      companyId,
+      platform: i.platform,
+      kind: i.kind,
+      externalId,
+      url: i.url ?? null,
+      author: i.author ?? null,
+      title: i.title ?? null,
+      body: i.body ?? null,
+      publishedAt,
+      publishedAtPrecision: publishedAt ? (i.publishedAtPrecision ?? "exact") : "unknown",
+      threadKey,
+      depth: i.depth ?? null,
+      topicId,
+      sourceKind: i.sourceKind,
+      sourceRef: i.sourceRef ?? null,
       collectRunId: collectRunId ?? null,
+      extractionMethod: i.extractionMethod ?? "dom",
+      extractionConfidence: i.extractionConfidence ?? null,
+      dedupeKey,
+      latestEngagement: hasEngagement(i.engagement)
+        ? {
+            likes: i.engagement.likes ?? undefined,
+            replies: i.engagement.replies ?? undefined,
+            reposts: i.engagement.reposts ?? undefined,
+            upvotes: i.engagement.upvotes ?? undefined,
+            views: i.engagement.views ?? undefined,
+          }
+        : null,
     };
-  });
+  };
 
-  // Insert all items
-  const insertedRows = await db
-    .insert(ingestedItems)
-    .values(toInsert)
-    .onConflictDoNothing({ target: [ingestedItems.platform, ingestedItems.externalId] })
-    .returning({ id: ingestedItems.id });
+  const rows = batch.map(toRow);
+  const withExternalId = rows.filter((r) => r.externalId);
+  const withDedupeOnly = rows.filter((r) => !r.externalId && r.dedupeKey);
+  const anonymous = rows.filter((r) => !r.externalId && !r.dedupeKey);
 
-  const insertedCount = insertedRows.length;
+  let inserted = 0;
+  let updated = 0;
+  const idByExternalId = new Map<string, string>();
+  const engagementTargets: Array<{ itemId: string; engagement: Engagement }> = [];
 
-  // Resolve parentId / rootPostId for items that supplied parentExternalId / rootExternalId
-  const itemsWithParent = items.filter((i) => i.parentExternalId || i.rootExternalId);
-  if (itemsWithParent.length > 0) {
-    const toResolve = [...new Set([
-      ...itemsWithParent.map((i) => i.externalId).filter(Boolean),
-      ...itemsWithParent.map((i) => i.parentExternalId).filter(Boolean),
-      ...itemsWithParent.map((i) => i.rootExternalId).filter(Boolean),
-    ])] as string[];
+  // DOM re-scrapes of a known item refresh latest_engagement + add a snapshot
+  // instead of being dropped silently.
+  if (withExternalId.length > 0) {
+    const returned = await db
+      .insert(items)
+      .values(withExternalId)
+      .onConflictDoUpdate({
+        target: [items.companyId, items.platform, items.externalId],
+        set: {
+          latestEngagement: sql`COALESCE(excluded.latest_engagement, ${items.latestEngagement})`,
+        },
+      })
+      .returning({
+        id: items.id,
+        externalId: items.externalId,
+        wasInserted: sql<boolean>`(xmax = 0)`,
+      });
 
-    const resolved = toResolve.length > 0
-      ? await db
-          .select({ id: ingestedItems.id, externalId: ingestedItems.externalId })
-          .from(ingestedItems)
-          .where(inArray(ingestedItems.externalId, toResolve))
-      : [];
+    for (const r of returned) {
+      if (r.externalId) idByExternalId.set(r.externalId, r.id);
+      if (r.wasInserted) inserted++;
+      else updated++;
+    }
+    for (const row of withExternalId) {
+      const id = row.externalId ? idByExternalId.get(row.externalId) : undefined;
+      if (id && hasEngagement(row.latestEngagement as Engagement | null)) {
+        engagementTargets.push({ itemId: id, engagement: row.latestEngagement as Engagement });
+      }
+    }
 
-    const eidToId = new Map(resolved.map((r) => [r.externalId!, r.id]));
+    // DOM wins over vision: absorb earlier vision rows of the same content
+    const domKeys = [...new Set(withExternalId.map((r) => r.dedupeKey).filter((k): k is string => !!k))];
+    if (domKeys.length > 0) {
+      await db.delete(items).where(and(
+        eq(items.companyId, companyId),
+        isNull(items.externalId),
+        inArray(items.dedupeKey, domKeys)
+      ));
+    }
+  }
 
-    for (const item of itemsWithParent) {
-      if (!item.externalId) continue;
-      const itemId = eidToId.get(item.externalId);
-      if (!itemId) continue;
-      const parentId = item.parentExternalId ? (eidToId.get(item.parentExternalId) ?? null) : null;
-      const rootPostId = item.rootExternalId ? (eidToId.get(item.rootExternalId) ?? null) : null;
-      if (parentId || rootPostId) {
-        await db
-          .update(ingestedItems)
-          .set({ ...(parentId ? { parentId } : {}), ...(rootPostId ? { rootPostId } : {}) })
-          .where(and(eq(ingestedItems.id, itemId)));
+  // Vision items: no platform id, dedupe on the content hash (partial index)
+  if (withDedupeOnly.length > 0) {
+    const returned = await db
+      .insert(items)
+      .values(withDedupeOnly)
+      .onConflictDoUpdate({
+        target: [items.companyId, items.dedupeKey],
+        targetWhere: sql`external_id IS NULL AND dedupe_key IS NOT NULL`,
+        set: {
+          latestEngagement: sql`COALESCE(excluded.latest_engagement, ${items.latestEngagement})`,
+        },
+      })
+      .returning({ id: items.id, dedupeKey: items.dedupeKey, wasInserted: sql<boolean>`(xmax = 0)` });
+
+    const idByKey = new Map(returned.map((r) => [r.dedupeKey!, r.id]));
+    for (const r of returned) {
+      if (r.wasInserted) inserted++;
+      else updated++;
+    }
+    for (const row of withDedupeOnly) {
+      const id = idByKey.get(row.dedupeKey!);
+      if (id && hasEngagement(row.latestEngagement as Engagement | null)) {
+        engagementTargets.push({ itemId: id, engagement: row.latestEngagement as Engagement });
       }
     }
   }
 
-  // Cluster Twitter threads (x_post + x_reply) and Reddit threads (reddit_post + reddit_comment/reddit_reply)
-  const isTwitterThread = items.some((i) => i.subtype === "x_post") && items.some((i) => i.subtype === "x_reply");
-  const isRedditThread =
-    items.some((i) => i.subtype === "reddit_post") &&
-    items.some((i) => i.subtype === "reddit_comment" || i.subtype === "reddit_reply");
-  const isFacebookThread =
-    items.some((i) => i.subtype === "facebook_post") &&
-    items.some((i) => i.subtype === "facebook_comment" || i.subtype === "facebook_reply");
+  if (anonymous.length > 0) {
+    const returned = await db.insert(items).values(anonymous).returning({ id: items.id });
+    inserted += returned.length;
+  }
 
-  if (isTwitterThread || isRedditThread || isFacebookThread) {
-    // Resolve IDs for all items in the batch (including pre-existing duplicates).
-    const externalIds = toInsert.map((i) => i.externalId).filter((id): id is string => !!id);
-    const resolvedRows = externalIds.length > 0
-      ? await db
-          .select({ id: ingestedItems.id })
-          .from(ingestedItems)
-          .where(inArray(ingestedItems.externalId, externalIds))
-      : [];
+  if (engagementTargets.length > 0) {
+    const capturedAt = new Date();
+    await db
+      .insert(engagementSnapshots)
+      .values(engagementTargets.map((t) => ({
+        itemId: t.itemId,
+        capturedAt,
+        likes: t.engagement.likes ?? null,
+        replies: t.engagement.replies ?? null,
+        reposts: t.engagement.reposts ?? null,
+        upvotes: t.engagement.upvotes ?? null,
+        views: t.engagement.views ?? null,
+      })))
+      .onConflictDoNothing();
+  }
 
-    // Fall back to the freshly inserted IDs for items that had no externalId.
-    const resolvedIds = new Set([
-      ...resolvedRows.map((r) => r.id),
-      ...insertedRows.map((r) => r.id),
-    ]);
+  // Structural threading: resolve parent/root external ids to row ids. Every
+  // collector supplies these now (reddit thingid/postid, fb comment_id, x).
+  const needsLinking = batch.filter((i) => i.externalId && (i.parentExternalId || i.rootExternalId));
+  if (needsLinking.length > 0) {
+    const toResolve = [...new Set(
+      needsLinking.flatMap((i) => [i.externalId, i.parentExternalId, i.rootExternalId]).filter((x): x is string => !!x)
+    )];
+    const resolved = await db
+      .select({ id: items.id, externalId: items.externalId })
+      .from(items)
+      .where(and(eq(items.companyId, companyId), inArray(items.externalId, toResolve)));
+    const eidToId = new Map(resolved.map((r) => [r.externalId!, r.id]));
 
-    if (resolvedIds.size > 0) {
-      const post = items.find((i) => i.subtype === "x_post" || i.subtype === "reddit_post" || i.subtype === "facebook_post");
-      const defaultLabel = isRedditThread ? "Reddit thread" : isFacebookThread ? "Facebook thread" : "Twitter thread";
-      const clusterLabel = (post?.title ?? post?.body ?? defaultLabel).slice(0, 80);
-      const resolvedEntityId = toInsert.find((i) => i.entityId)?.entityId ?? null;
-
-      const [newCluster] = await db
-        .insert(clusters)
-        .values({
-          entityId: resolvedEntityId,
-          label: clusterLabel,
-          itemCount: resolvedIds.size,
-          firstSeenAt: now,
-          lastSeenAt: now,
-          classification: "unclassified",
-        })
-        .returning({ id: clusters.id });
-
-      await db
-        .insert(clusterItems)
-        .values([...resolvedIds].map((itemId) => ({ clusterId: newCluster.id, itemId, similarity: 1.0 })))
-        .onConflictDoNothing();
+    for (const i of needsLinking) {
+      const itemId = eidToId.get(i.externalId!);
+      if (!itemId) continue;
+      const parentId = i.parentExternalId ? eidToId.get(i.parentExternalId) ?? null : null;
+      const rootPostId = i.rootExternalId ? eidToId.get(i.rootExternalId) ?? null : null;
+      if (parentId || rootPostId) {
+        await db
+          .update(items)
+          .set({ ...(parentId ? { parentId } : {}), ...(rootPostId ? { rootPostId } : {}) })
+          .where(eq(items.id, itemId));
+      }
     }
   }
 
-  return NextResponse.json({ inserted: insertedCount, skipped: items.length - insertedCount }, { headers: CORS });
+  return NextResponse.json(
+    { inserted, updated, total: batch.length },
+    { headers: CORS }
+  );
 }

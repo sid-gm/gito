@@ -1,85 +1,68 @@
 {
-  "id": "4760e550-3f2e-4845-8ed1-3939b902ffba",
+  "id": "5463c478-40e9-4b9c-97a1-5b34a285ea34",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
-    "public.cluster_items": {
-      "name": "cluster_items",
+    "public.collect_keywords": {
+      "name": "collect_keywords",
       "schema": "",
       "columns": {
-        "cluster_id": {
-          "name": "cluster_id",
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "company_id": {
+          "name": "company_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
         },
-        "item_id": {
-          "name": "item_id",
+        "topic_id": {
+          "name": "topic_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
-        "similarity": {
-          "name": "similarity",
-          "type": "real",
+        "term": {
+          "name": "term",
+          "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "added_at": {
-          "name": "added_at",
-          "type": "timestamp",
+        "platforms": {
+          "name": "platforms",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{\"twitter\",\"threads\",\"reddit\"}'"
+        },
+        "is_active": {
+          "name": "is_active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
-        },
-        "item_signal": {
-          "name": "item_signal",
-          "type": "item_signal",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'unclassified'"
-        },
-        "signal_reason": {
-          "name": "signal_reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "analyst_signal": {
-          "name": "analyst_signal",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "analyst_note": {
-          "name": "analyst_note",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "analyst_flag": {
-          "name": "analyst_flag",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "merge_id": {
-          "name": "merge_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
         }
       },
       "indexes": {},
       "foreignKeys": {
-        "cluster_items_cluster_id_clusters_id_fk": {
-          "name": "cluster_items_cluster_id_clusters_id_fk",
-          "tableFrom": "cluster_items",
-          "tableTo": "clusters",
+        "collect_keywords_company_id_companies_id_fk": {
+          "name": "collect_keywords_company_id_companies_id_fk",
+          "tableFrom": "collect_keywords",
+          "tableTo": "companies",
           "columnsFrom": [
-            "cluster_id"
+            "company_id"
           ],
           "columnsTo": [
             "id"
@@ -87,25 +70,12 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "cluster_items_item_id_ingested_items_id_fk": {
-          "name": "cluster_items_item_id_ingested_items_id_fk",
-          "tableFrom": "cluster_items",
-          "tableTo": "ingested_items",
+        "collect_keywords_topic_id_topics_id_fk": {
+          "name": "collect_keywords_topic_id_topics_id_fk",
+          "tableFrom": "collect_keywords",
+          "tableTo": "topics",
           "columnsFrom": [
-            "item_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "cluster_items_merge_id_cluster_merges_id_fk": {
-          "name": "cluster_items_merge_id_cluster_merges_id_fk",
-          "tableFrom": "cluster_items",
-          "tableTo": "cluster_merges",
-          "columnsFrom": [
-            "merge_id"
+            "topic_id"
           ],
           "columnsTo": [
             "id"
@@ -114,22 +84,28 @@
           "onUpdate": "no action"
         }
       },
-      "compositePrimaryKeys": {
-        "cluster_items_cluster_id_item_id_pk": {
-          "name": "cluster_items_cluster_id_item_id_pk",
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "collect_keywords_company_term_unique": {
+          "name": "collect_keywords_company_term_unique",
+          "nullsNotDistinct": false,
           "columns": [
-            "cluster_id",
-            "item_id"
+            "company_id",
+            "term"
           ]
         }
       },
-      "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "collect_keywords_platforms_check": {
+          "name": "collect_keywords_platforms_check",
+          "value": "\"collect_keywords\".\"platforms\" <@ ARRAY['twitter','threads','reddit']::text[]"
+        }
+      },
       "isRLSEnabled": false
     },
-    "public.cluster_merges": {
-      "name": "cluster_merges",
+    "public.collect_run_events": {
+      "name": "collect_run_events",
       "schema": "",
       "columns": {
         "id": {
@@ -139,52 +115,105 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
-        "surviving_cluster_id": {
-          "name": "surviving_cluster_id",
+        "run_id": {
+          "name": "run_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
         },
-        "absorbed_label": {
-          "name": "absorbed_label",
+        "at": {
+          "name": "at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "platform": {
+          "name": "platform",
+          "type": "platform",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source_kind": {
+          "name": "source_kind",
+          "type": "source_kind",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source_ref": {
+          "name": "source_ref",
           "type": "text",
           "primaryKey": false,
           "notNull": false
         },
-        "absorbed_first_seen_at": {
-          "name": "absorbed_first_seen_at",
-          "type": "timestamp",
+        "status": {
+          "name": "status",
+          "type": "run_event_status",
+          "typeSchema": "public",
           "primaryKey": false,
           "notNull": true
         },
-        "absorbed_last_seen_at": {
-          "name": "absorbed_last_seen_at",
-          "type": "timestamp",
+        "detail": {
+          "name": "detail",
+          "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
-        "absorbed_item_count": {
-          "name": "absorbed_item_count",
+        "items_count": {
+          "name": "items_count",
           "type": "integer",
           "primaryKey": false,
-          "notNull": true
-        },
-        "merged_at": {
-          "name": "merged_at",
-          "type": "timestamp",
-          "primaryKey": false,
           "notNull": true,
-          "default": "now()"
+          "default": 0
         }
       },
-      "indexes": {},
+      "indexes": {
+        "collect_run_events_run_idx": {
+          "name": "collect_run_events_run_idx",
+          "columns": [
+            {
+              "expression": "run_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "collect_run_events_platform_at_idx": {
+          "name": "collect_run_events_platform_at_idx",
+          "columns": [
+            {
+              "expression": "platform",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
-        "cluster_merges_surviving_cluster_id_clusters_id_fk": {
-          "name": "cluster_merges_surviving_cluster_id_clusters_id_fk",
-          "tableFrom": "cluster_merges",
-          "tableTo": "clusters",
+        "collect_run_events_run_id_collect_runs_id_fk": {
+          "name": "collect_run_events_run_id_collect_runs_id_fk",
+          "tableFrom": "collect_run_events",
+          "tableTo": "collect_runs",
           "columnsFrom": [
-            "surviving_cluster_id"
+            "run_id"
           ],
           "columnsTo": [
             "id"
@@ -199,8 +228,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.cluster_period_narratives": {
-      "name": "cluster_period_narratives",
+    "public.collect_runs": {
+      "name": "collect_runs",
       "schema": "",
       "columns": {
         "id": {
@@ -210,46 +239,147 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
-        "cluster_id": {
-          "name": "cluster_id",
+        "company_id": {
+          "name": "company_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
         },
-        "period_date": {
-          "name": "period_date",
-          "type": "text",
+        "triggered_by": {
+          "name": "triggered_by",
+          "type": "run_trigger",
+          "typeSchema": "public",
           "primaryKey": false,
           "notNull": true
         },
-        "ai_narrative": {
-          "name": "ai_narrative",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "analyst_narrative": {
-          "name": "analyst_narrative",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "generated_at": {
-          "name": "generated_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp",
+        "started_at": {
+          "name": "started_at",
+          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "finished_at": {
+          "name": "finished_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "run_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'running'"
+        },
+        "items_collected": {
+          "name": "items_collected",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "items_inserted": {
+          "name": "items_inserted",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        }
+      },
+      "indexes": {
+        "collect_runs_company_started_idx": {
+          "name": "collect_runs_company_started_idx",
+          "columns": [
+            {
+              "expression": "company_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "started_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "collect_runs_company_id_companies_id_fk": {
+          "name": "collect_runs_company_id_companies_id_fk",
+          "tableFrom": "collect_runs",
+          "tableTo": "companies",
+          "columnsFrom": [
+            "company_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.collect_settings": {
+      "name": "collect_settings",
+      "schema": "",
+      "columns": {
+        "company_id": {
+          "name": "company_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "interval_minutes": {
+          "name": "interval_minutes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 30
+        },
+        "enabled": {
+          "name": "enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "paused_platforms": {
+          "name": "paused_platforms",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'"
+        },
+        "max_thread_drills": {
+          "name": "max_thread_drills",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 5
+        },
+        "vision_disabled_platforms": {
+          "name": "vision_disabled_platforms",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'"
         },
         "updated_at": {
           "name": "updated_at",
-          "type": "timestamp",
+          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
@@ -257,198 +387,12 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "cluster_period_narratives_cluster_id_clusters_id_fk": {
-          "name": "cluster_period_narratives_cluster_id_clusters_id_fk",
-          "tableFrom": "cluster_period_narratives",
-          "tableTo": "clusters",
+        "collect_settings_company_id_companies_id_fk": {
+          "name": "collect_settings_company_id_companies_id_fk",
+          "tableFrom": "collect_settings",
+          "tableTo": "companies",
           "columnsFrom": [
-            "cluster_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "cluster_period_unique": {
-          "name": "cluster_period_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "cluster_id",
-            "period_date"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.clusters": {
-      "name": "clusters",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "entity_id": {
-          "name": "entity_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "label": {
-          "name": "label",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "centroid_embedding": {
-          "name": "centroid_embedding",
-          "type": "vector(1536)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "item_count": {
-          "name": "item_count",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 1
-        },
-        "first_seen_at": {
-          "name": "first_seen_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "last_seen_at": {
-          "name": "last_seen_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "archived_at": {
-          "name": "archived_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "classification": {
-          "name": "classification",
-          "type": "cluster_classification",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'unclassified'"
-        },
-        "narrative_stage": {
-          "name": "narrative_stage",
-          "type": "narrative_stage",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "narrative_summary": {
-          "name": "narrative_summary",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "momentum": {
-          "name": "momentum",
-          "type": "real",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "peak_momentum": {
-          "name": "peak_momentum",
-          "type": "real",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "velocity_24h": {
-          "name": "velocity_24h",
-          "type": "real",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "prev_velocity_24h": {
-          "name": "prev_velocity_24h",
-          "type": "real",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "platform_count": {
-          "name": "platform_count",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "classification_confidence": {
-          "name": "classification_confidence",
-          "type": "real",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "analyst_classification": {
-          "name": "analyst_classification",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "analyst_note": {
-          "name": "analyst_note",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "classified_at": {
-          "name": "classified_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "sentiment_score": {
-          "name": "sentiment_score",
-          "type": "real",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "sentiment_label": {
-          "name": "sentiment_label",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "sentiment_analyzed_at": {
-          "name": "sentiment_analyzed_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "clusters_entity_id_tracked_entities_id_fk": {
-          "name": "clusters_entity_id_tracked_entities_id_fk",
-          "tableFrom": "clusters",
-          "tableTo": "tracked_entities",
-          "columnsFrom": [
-            "entity_id"
+            "company_id"
           ],
           "columnsTo": [
             "id"
@@ -480,9 +424,15 @@
           "primaryKey": false,
           "notNull": true
         },
+        "api_key": {
+          "name": "api_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
-          "type": "timestamp",
+          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
@@ -491,13 +441,98 @@
       "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "companies_api_key_unique": {
+          "name": "companies_api_key_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "api_key"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.engagement_snapshots": {
+      "name": "engagement_snapshots",
+      "schema": "",
+      "columns": {
+        "item_id": {
+          "name": "item_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "captured_at": {
+          "name": "captured_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "likes": {
+          "name": "likes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "replies": {
+          "name": "replies",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reposts": {
+          "name": "reposts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "upvotes": {
+          "name": "upvotes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "views": {
+          "name": "views",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "engagement_snapshots_item_id_items_id_fk": {
+          "name": "engagement_snapshots_item_id_items_id_fk",
+          "tableFrom": "engagement_snapshots",
+          "tableTo": "items",
+          "columnsFrom": [
+            "item_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "engagement_snapshots_item_id_captured_at_pk": {
+          "name": "engagement_snapshots_item_id_captured_at_pk",
+          "columns": [
+            "item_id",
+            "captured_at"
+          ]
+        }
+      },
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.ingested_items": {
-      "name": "ingested_items",
+    "public.items": {
+      "name": "items",
       "schema": "",
       "columns": {
         "id": {
@@ -507,15 +542,22 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
-        "entity_id": {
-          "name": "entity_id",
+        "company_id": {
+          "name": "company_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "platform": {
           "name": "platform",
           "type": "platform",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "item_kind",
           "typeSchema": "public",
           "primaryKey": false,
           "notNull": true
@@ -532,6 +574,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "author": {
+          "name": "author",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "title": {
           "name": "title",
           "type": "text",
@@ -544,52 +592,322 @@
           "primaryKey": false,
           "notNull": false
         },
-        "author": {
-          "name": "author",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "published_at": {
           "name": "published_at",
-          "type": "timestamp",
+          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
         },
-        "raw_json": {
-          "name": "raw_json",
-          "type": "jsonb",
+        "published_at_precision": {
+          "name": "published_at_precision",
+          "type": "published_at_precision",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'unknown'"
+        },
+        "parent_id": {
+          "name": "parent_id",
+          "type": "uuid",
           "primaryKey": false,
           "notNull": false
         },
-        "subtype": {
-          "name": "subtype",
+        "root_post_id": {
+          "name": "root_post_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "thread_key": {
+          "name": "thread_key",
           "type": "text",
           "primaryKey": false,
           "notNull": false
         },
-        "embedding": {
-          "name": "embedding",
-          "type": "vector(1536)",
+        "depth": {
+          "name": "depth",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "topic_id": {
+          "name": "topic_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sentiment_score": {
+          "name": "sentiment_score",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sentiment_label": {
+          "name": "sentiment_label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sentiment_analyzed_at": {
+          "name": "sentiment_analyzed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source_kind": {
+          "name": "source_kind",
+          "type": "source_kind",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source_ref": {
+          "name": "source_ref",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "collect_run_id": {
+          "name": "collect_run_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "extraction_method": {
+          "name": "extraction_method",
+          "type": "extraction_method",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'dom'"
+        },
+        "extraction_confidence": {
+          "name": "extraction_confidence",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "dedupe_key": {
+          "name": "dedupe_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "latest_engagement": {
+          "name": "latest_engagement",
+          "type": "jsonb",
           "primaryKey": false,
           "notNull": false
         },
         "created_at": {
           "name": "created_at",
-          "type": "timestamp",
+          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "items_company_dedupe_key_unique": {
+          "name": "items_company_dedupe_key_unique",
+          "columns": [
+            {
+              "expression": "company_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "dedupe_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"items\".\"external_id\" IS NULL AND \"items\".\"dedupe_key\" IS NOT NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "items_company_published_idx": {
+          "name": "items_company_published_idx",
+          "columns": [
+            {
+              "expression": "company_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "published_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "items_company_platform_idx": {
+          "name": "items_company_platform_idx",
+          "columns": [
+            {
+              "expression": "company_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "platform",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "items_topic_idx": {
+          "name": "items_topic_idx",
+          "columns": [
+            {
+              "expression": "topic_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "items_root_post_idx": {
+          "name": "items_root_post_idx",
+          "columns": [
+            {
+              "expression": "root_post_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "items_thread_key_idx": {
+          "name": "items_thread_key_idx",
+          "columns": [
+            {
+              "expression": "thread_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "items_collect_run_idx": {
+          "name": "items_collect_run_idx",
+          "columns": [
+            {
+              "expression": "collect_run_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "items_unscored_idx": {
+          "name": "items_unscored_idx",
+          "columns": [
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"items\".\"sentiment_analyzed_at\" IS NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
-        "ingested_items_entity_id_tracked_entities_id_fk": {
-          "name": "ingested_items_entity_id_tracked_entities_id_fk",
-          "tableFrom": "ingested_items",
-          "tableTo": "tracked_entities",
+        "items_company_id_companies_id_fk": {
+          "name": "items_company_id_companies_id_fk",
+          "tableFrom": "items",
+          "tableTo": "companies",
           "columnsFrom": [
-            "entity_id"
+            "company_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "items_parent_id_items_id_fk": {
+          "name": "items_parent_id_items_id_fk",
+          "tableFrom": "items",
+          "tableTo": "items",
+          "columnsFrom": [
+            "parent_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "items_root_post_id_items_id_fk": {
+          "name": "items_root_post_id_items_id_fk",
+          "tableFrom": "items",
+          "tableTo": "items",
+          "columnsFrom": [
+            "root_post_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "items_topic_id_topics_id_fk": {
+          "name": "items_topic_id_topics_id_fk",
+          "tableFrom": "items",
+          "tableTo": "topics",
+          "columnsFrom": [
+            "topic_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "items_collect_run_id_collect_runs_id_fk": {
+          "name": "items_collect_run_id_collect_runs_id_fk",
+          "tableFrom": "items",
+          "tableTo": "collect_runs",
+          "columnsFrom": [
+            "collect_run_id"
           ],
           "columnsTo": [
             "id"
@@ -600,10 +918,11 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
-        "platform_external_id_unique": {
-          "name": "platform_external_id_unique",
+        "items_company_platform_external_id_unique": {
+          "name": "items_company_platform_external_id_unique",
           "nullsNotDistinct": false,
           "columns": [
+            "company_id",
             "platform",
             "external_id"
           ]
@@ -628,7 +947,7 @@
           "name": "company_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "subreddit_name": {
           "name": "subreddit_name",
@@ -636,9 +955,30 @@
           "primaryKey": false,
           "notNull": true
         },
+        "sorts": {
+          "name": "sorts",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{\"new\"}'"
+        },
+        "keyword_filters": {
+          "name": "keyword_filters",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'"
+        },
+        "is_active": {
+          "name": "is_active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
         "created_at": {
           "name": "created_at",
-          "type": "timestamp",
+          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
@@ -672,11 +1012,16 @@
         }
       },
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "reddit_subreddits_sorts_check": {
+          "name": "reddit_subreddits_sorts_check",
+          "value": "\"reddit_subreddits\".\"sorts\" <@ ARRAY['new','hot']::text[]"
+        }
+      },
       "isRLSEnabled": false
     },
-    "public.tracked_entities": {
-      "name": "tracked_entities",
+    "public.rss_feeds": {
+      "name": "rss_feeds",
       "schema": "",
       "columns": {
         "id": {
@@ -690,6 +1035,12 @@
           "name": "company_id",
           "type": "uuid",
           "primaryKey": false,
+          "notNull": true
+        },
+        "topic_id": {
+          "name": "topic_id",
+          "type": "uuid",
+          "primaryKey": false,
           "notNull": false
         },
         "label": {
@@ -698,28 +1049,22 @@
           "primaryKey": false,
           "notNull": true
         },
-        "query_string": {
-          "name": "query_string",
+        "feed_url": {
+          "name": "feed_url",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "entity_type": {
-          "name": "entity_type",
-          "type": "entity_type",
-          "typeSchema": "public",
+        "is_active": {
+          "name": "is_active",
+          "type": "boolean",
           "primaryKey": false,
-          "notNull": true
-        },
-        "google_alerts_feed_url": {
-          "name": "google_alerts_feed_url",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
+          "notNull": true,
+          "default": true
         },
         "created_at": {
           "name": "created_at",
-          "type": "timestamp",
+          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
@@ -727,9 +1072,159 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "tracked_entities_company_id_companies_id_fk": {
-          "name": "tracked_entities_company_id_companies_id_fk",
-          "tableFrom": "tracked_entities",
+        "rss_feeds_company_id_companies_id_fk": {
+          "name": "rss_feeds_company_id_companies_id_fk",
+          "tableFrom": "rss_feeds",
+          "tableTo": "companies",
+          "columnsFrom": [
+            "company_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "rss_feeds_topic_id_topics_id_fk": {
+          "name": "rss_feeds_topic_id_topics_id_fk",
+          "tableFrom": "rss_feeds",
+          "tableTo": "topics",
+          "columnsFrom": [
+            "topic_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "rss_feeds_company_url_unique": {
+          "name": "rss_feeds_company_url_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "company_id",
+            "feed_url"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.source_health": {
+      "name": "source_health",
+      "schema": "",
+      "columns": {
+        "company_id": {
+          "name": "company_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "platform": {
+          "name": "platform",
+          "type": "platform",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "state": {
+          "name": "state",
+          "type": "health_state",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'ok'"
+        },
+        "since": {
+          "name": "since",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "last_ok_at": {
+          "name": "last_ok_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_notified_at": {
+          "name": "last_notified_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "source_health_company_id_companies_id_fk": {
+          "name": "source_health_company_id_companies_id_fk",
+          "tableFrom": "source_health",
+          "tableTo": "companies",
+          "columnsFrom": [
+            "company_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "source_health_company_id_platform_pk": {
+          "name": "source_health_company_id_platform_pk",
+          "columns": [
+            "company_id",
+            "platform"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.topics": {
+      "name": "topics",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "company_id": {
+          "name": "company_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "label": {
+          "name": "label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "topics_company_id_companies_id_fk": {
+          "name": "topics_company_id_companies_id_fk",
+          "tableFrom": "topics",
           "tableTo": "companies",
           "columnsFrom": [
             "company_id"
@@ -742,62 +1237,357 @@
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
+      "uniqueConstraints": {
+        "topics_company_label_unique": {
+          "name": "topics_company_label_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "company_id",
+            "label"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.tracked_threads": {
+      "name": "tracked_threads",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "company_id": {
+          "name": "company_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "platform": {
+          "name": "platform",
+          "type": "platform",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "post_url": {
+          "name": "post_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "post_external_id": {
+          "name": "post_external_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "topic_id": {
+          "name": "topic_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "label": {
+          "name": "label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "is_active": {
+          "name": "is_active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "last_collected_at": {
+          "name": "last_collected_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "tracked_threads_company_id_companies_id_fk": {
+          "name": "tracked_threads_company_id_companies_id_fk",
+          "tableFrom": "tracked_threads",
+          "tableTo": "companies",
+          "columnsFrom": [
+            "company_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "tracked_threads_topic_id_topics_id_fk": {
+          "name": "tracked_threads_topic_id_topics_id_fk",
+          "tableFrom": "tracked_threads",
+          "tableTo": "topics",
+          "columnsFrom": [
+            "topic_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "tracked_threads_company_url_unique": {
+          "name": "tracked_threads_company_url_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "company_id",
+            "post_url"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.tracked_user_handles": {
+      "name": "tracked_user_handles",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "company_id": {
+          "name": "company_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "platform": {
+          "name": "platform",
+          "type": "platform",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "username": {
+          "name": "username",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "tracked_user_handles_company_id_companies_id_fk": {
+          "name": "tracked_user_handles_company_id_companies_id_fk",
+          "tableFrom": "tracked_user_handles",
+          "tableTo": "companies",
+          "columnsFrom": [
+            "company_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "tracked_user_handles_unique": {
+          "name": "tracked_user_handles_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "company_id",
+            "platform",
+            "username"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.twitter_handles": {
+      "name": "twitter_handles",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "company_id": {
+          "name": "company_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "handle": {
+          "name": "handle",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "twitter_handles_company_id_companies_id_fk": {
+          "name": "twitter_handles_company_id_companies_id_fk",
+          "tableFrom": "twitter_handles",
+          "tableTo": "companies",
+          "columnsFrom": [
+            "company_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "twitter_handles_company_handle_unique": {
+          "name": "twitter_handles_company_handle_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "company_id",
+            "handle"
+          ]
+        }
+      },
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
     }
   },
   "enums": {
-    "public.cluster_classification": {
-      "name": "cluster_classification",
+    "public.extraction_method": {
+      "name": "extraction_method",
       "schema": "public",
       "values": [
-        "unclassified",
-        "narrative",
-        "noise"
+        "dom",
+        "vision"
       ]
     },
-    "public.entity_type": {
-      "name": "entity_type",
+    "public.health_state": {
+      "name": "health_state",
       "schema": "public",
       "values": [
-        "keyword",
-        "executive",
-        "product"
+        "ok",
+        "degraded",
+        "blocked"
       ]
     },
-    "public.item_signal": {
-      "name": "item_signal",
+    "public.item_kind": {
+      "name": "item_kind",
       "schema": "public",
       "values": [
-        "unclassified",
-        "signal",
-        "noise",
-        "watch"
-      ]
-    },
-    "public.narrative_stage": {
-      "name": "narrative_stage",
-      "schema": "public",
-      "values": [
-        "emerging",
-        "relaxed",
-        "developing",
-        "peaked",
-        "revival",
-        "declining"
+        "post",
+        "comment"
       ]
     },
     "public.platform": {
       "name": "platform",
       "schema": "public",
       "values": [
-        "hackernews",
-        "reddit",
         "twitter",
-        "google_alerts",
+        "threads",
+        "reddit",
+        "instagram",
+        "facebook",
+        "linkedin",
+        "news",
         "manual"
+      ]
+    },
+    "public.published_at_precision": {
+      "name": "published_at_precision",
+      "schema": "public",
+      "values": [
+        "exact",
+        "approx",
+        "unknown"
+      ]
+    },
+    "public.run_event_status": {
+      "name": "run_event_status",
+      "schema": "public",
+      "values": [
+        "ok",
+        "zero_results",
+        "http_403",
+        "logged_out",
+        "checkpoint",
+        "vision_fallback",
+        "error"
+      ]
+    },
+    "public.run_status": {
+      "name": "run_status",
+      "schema": "public",
+      "values": [
+        "running",
+        "ok",
+        "partial",
+        "failed"
+      ]
+    },
+    "public.run_trigger": {
+      "name": "run_trigger",
+      "schema": "public",
+      "values": [
+        "auto",
+        "manual"
+      ]
+    },
+    "public.source_kind": {
+      "name": "source_kind",
+      "schema": "public",
+      "values": [
+        "keyword_search",
+        "subreddit_new",
+        "subreddit_hot",
+        "tracked_thread",
+        "profile",
+        "manual",
+        "rss"
       ]
     }
   },
