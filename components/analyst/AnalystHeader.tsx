@@ -2,6 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import { useAnalyst } from "@/components/analyst/AnalystContext";
+import { CompanySwitcher } from "@/components/analyst/CompanySwitcher";
 
 const TITLES: Record<string, [string, string]> = {
   "/analyst": ["Raw data", "Every scraped post and article, newest first"],
@@ -24,7 +25,7 @@ const RANGES = [
 export function AnalystHeader() {
   const path = usePathname();
   const [title, sub] = TITLES[path] ?? TITLES["/analyst"];
-  const { companies, companyId, setCompanyId, topics, days, setDays } = useAnalyst();
+  const { topics, days, setDays } = useAnalyst();
 
   return (
     <header className="an-header">
@@ -41,19 +42,7 @@ export function AnalystHeader() {
           ))}
           {topics.length === 0 && <span className="an-chip">No topics yet</span>}
         </div>
-        {companies.length > 1 && (
-          <select
-            className="an-select"
-            value={companyId ?? ""}
-            onChange={(e) => setCompanyId(e.target.value)}
-          >
-            {companies.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        )}
+        <CompanySwitcher />
         <div className="an-range">
           <span className="an-range-dot" />
           <select

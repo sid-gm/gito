@@ -108,6 +108,43 @@
 .an-range-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--an-accent); }
 .an-content { flex: 1; overflow: auto; padding: 24px 28px 40px 28px; }
 
+/* ─── Company switcher ────────────────────────────────────────────────── */
+.an-company { position: relative; }
+.an-company-trigger {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 11px; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--an-border-3); background: var(--an-panel-2);
+  color: var(--an-text); font-family: inherit; font-size: 12.5px; font-weight: 600;
+}
+.an-company-trigger:hover { border-color: var(--an-border-3); background: #1b2130; }
+.an-company-name { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.an-company-caret { color: var(--an-muted); flex: none; transition: transform 0.15s ease; }
+.an-company-caret-up { transform: rotate(180deg); }
+.an-company-menu {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 40;
+  min-width: 224px; padding: 6px;
+  background: var(--an-panel); border: 1px solid var(--an-border-2); border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+.an-company-list { display: flex; flex-direction: column; gap: 1px; max-height: 260px; overflow-y: auto; }
+.an-company-item {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 8px 10px; border: none; border-radius: 8px; cursor: pointer;
+  background: transparent; color: var(--an-text-2);
+  font-family: inherit; font-size: 13px; font-weight: 500; text-align: left;
+}
+.an-company-item:hover { background: var(--an-panel-2); color: var(--an-text); }
+.an-company-item-on { color: var(--an-text); font-weight: 600; }
+.an-company-item-on svg { color: var(--an-accent); margin-left: auto; }
+.an-company-item-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.an-company-sep { height: 1px; margin: 6px 4px; background: var(--an-border); }
+.an-company-new { color: var(--an-muted); }
+.an-company-new:hover { color: #c9d6ff; }
+.an-company-new svg { color: inherit; }
+.an-company-create { display: flex; gap: 6px; padding: 2px 4px 4px; }
+.an-company-create .an-input { min-width: 0; }
+.an-company-create .an-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
 /* ─── Shared bits ─────────────────────────────────────────────────────── */
 .an-card { background: var(--an-panel); border: 1px solid var(--an-border-2); border-radius: 14px; }
 .an-tag {

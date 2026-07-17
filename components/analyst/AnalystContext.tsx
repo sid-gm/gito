@@ -13,6 +13,7 @@ interface AnalystState {
   companies: Company[];
   companyId: string | null;
   setCompanyId: (id: string) => void;
+  createCompany: (name: string) => Promise<Company | null>;
   topics: Topic[];
   days: number;
   setDays: (d: number) => void;
@@ -25,6 +26,7 @@ const AnalystContext = createContext<AnalystState>({
   companies: [],
   companyId: null,
   setCompanyId: () => {},
+  createCompany: async () => null,
   topics: [],
   days: 7,
   setDays: () => {},
@@ -56,6 +58,31 @@ export function AnalystProvider({ children }: { children: React.ReactNode }) {
       /* private mode */
     }
   }, []);
+
+  // Create a company, add it to the list, and switch to it.
+  const createCompany = useCallback(
+    async (name: string): Promise<Company | null> => {
+      const trimmed = name.trim();
+      if (!trimmed) return null;
+      try {
+        const res = await fetch("/api/companies", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: trimmed }),
+        });
+        if (!res.ok) return null;
+        const company = (await res.json()) as Company;
+        setCompanies((prev) =>
+          prev.some((c) => c.id === company.id) ? prev : [...prev, company],
+        );
+        setCompanyId(company.id);
+        return company;
+      } catch {
+        return null;
+      }
+    },
+    [setCompanyId],
+  );
 
   // Companies once on mount; restore the last-used company
   useEffect(() => {
@@ -111,6 +138,7 @@ export function AnalystProvider({ children }: { children: React.ReactNode }) {
         companies,
         companyId,
         setCompanyId,
+        createCompany,
         topics,
         days,
         setDays,
